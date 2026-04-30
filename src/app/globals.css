@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+body {
+  background: #09090b;
+  color: #fafafa;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+
+::selection {
+  background: rgba(16, 185, 129, 0.2);
+  color: #fafafa;
+}
+
+.recharts-default-tooltip {
+  background: #1c1c23 !important;
+  border: 1px solid #2a2a3a !important;
+  border-radius: 8px !important;
+}
+
+.fi {
+  @apply w-full px-3.5 py-2.5 bg-bg-2 border border-border rounded-sm text-t-1 font-sans text-[13px] outline-none transition-all;
+}
+.fi:focus {
+  @apply border-accent shadow-[0_0_0_2px_rgba(16,185,129,0.1)];
+}
+select.fi {
+  @apply cursor-pointer;
+}
+
+.amounts-hidden .mono-value {
+  color: transparent !important;
+  text-shadow: 0 0 14px rgba(16, 185, 129, 0.2);
+  user-select: none;
+}
