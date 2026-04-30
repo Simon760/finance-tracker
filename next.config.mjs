@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
+const isProd = process.env.NODE_ENV === 'production';
+
 const nextConfig = {
   output: 'export',
-  basePath: '/finance-tracker',
+  basePath: isProd ? '/finance-tracker' : '',
   images: { unoptimized: true },
   trailingSlash: true,
 };
