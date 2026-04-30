@@ -1,0 +1,36 @@
+:root {
+  --bg: #0c0c10;
+  --bg2: #111116;
+  --bg3: #18181f;
+  --bg4: #1e1e28;
+  --border: #26263a;
+  --border2: #333348;
+  --t1: #f2f2fa;
+  --t2: #b0b0c8;
+  --t3: #72728a;
+  --green: #34d399;
+  --green-bg: rgba(52, 211, 153, .12);
+  --green-b: rgba(52, 211, 153, .28);
+  --red: #f87171;
+  --red-bg: rgba(248, 113, 113, .12);
+  --red-b: rgba(248, 113, 113, .28);
+  --blue: #60a5fa;
+  --blue-bg: rgba(96, 165, 250, .12);
+  --blue-b: rgba(96, 165, 250, .28);
+  --amber: #fbbf24;
+  --amber-bg: rgba(251, 191, 36, .12);
+  --amber-b: rgba(251, 191, 36, .28);
+  --purple: #a78bfa;
+  --purple-bg: rgba(167, 139, 250, .12);
+  --purple-b: rgba(167, 139, 250, .28);
+  --cyan: #22d3ee;
+  --cyan-bg: rgba(34, 211, 238, .12);
+  --cyan-b: rgba(34, 211, 238, .28);
+  --pink: #f472b6;
+  --pink-bg: rgba(244, 114, 182, .12);
+  --pink-b: rgba(244, 114, 182, .28);
+  --lime: #a3e635;
+  --lime-bg: rgba(163, 230, 53, .12);
+  --r: 12px;
+  --rs: 8px;
+}
