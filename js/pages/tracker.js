@@ -1,10 +1,54 @@
-import { app, gm, save, PIE_COLORS, ensureRevState } from '../core/state.js';
+import { app, gm, save, PIE_COLORS, MOIS_LIST, ensureRevState } from '../core/state.js';
 import { f$, f0 } from '../utils/format.js';
 import { toEur, toAed, rowEur } from '../utils/currency.js';
 import { sumEur, sumAed, sumEurBudget, sumAedBudget } from '../services/budget.js';
 import { isRevSynced, getMonthRevEur, getMonthRevAed } from '../services/revenue.js';
 import { createChart, destroyChart, CHART_TOOLTIP, CHART_LEGEND } from '../components/charts.js';
 import { openOverlay, closeOverlay } from '../components/modals.js';
+
+// Year detection: assigns years to months based on their order and MOIS_LIST position
+function detectYears(months) {
+  const yearSet = new Set();
+  let curYear = new Date().getFullYear();
+  const moisIdx = n => MOIS_LIST.findIndex(m => m === n || m.replace(/[ÉÈÊË]/g, c => ({É:'E',È:'E',Ê:'E',Ë:'E'}[c])) === n || n.startsWith(m.slice(0, 3)));
+
+  if (months.length > 0) {
+    // Estimate start year: if first month is late in year, it started previous year
+    const firstIdx = moisIdx(months[0].id);
+    const lastIdx = moisIdx(months[months.length - 1].id);
+    const nowMonth = new Date().getMonth();
+
+    // Work backwards from current date
+    if (lastIdx <= nowMonth) {
+      curYear = new Date().getFullYear();
+    }
+
+    let yr = curYear;
+    // Assign from the end backwards
+    let prevIdx = lastIdx;
+    for (let i = months.length - 1; i >= 0; i--) {
+      const idx = moisIdx(months[i].id);
+      if (idx > prevIdx) yr--;
+      prevIdx = idx;
+      months[i]._year = yr;
+      yearSet.add(yr);
+    }
+  }
+  return [...yearSet].sort();
+}
+
+function filterMonthsByYear(months, year) {
+  return months.filter(m => m._year === parseInt(year));
+}
+
+export function setYear(y) {
+  app.curYear = y;
+  const filtered = y === 'all' ? app.state.months : filterMonthsByYear(app.state.months, y);
+  if (filtered.length > 0 && !filtered.find(m => m.id === app.curMonth)) {
+    app.curMonth = filtered[filtered.length - 1].id;
+  }
+  renderTracker();
+}
 
 export function renderTracker() {
   if (!app.curMonth && app.state.months.length > 0) {
@@ -23,10 +67,23 @@ export function renderTracker() {
   }
   document.getElementById('monthChartsArea').style.display = '';
 
+  // Year filter
+  const years = detectYears(app.state.months);
+  const yearSelect = document.getElementById('yearFilter');
+  if (yearSelect) {
+    yearSelect.innerHTML = `<option value="all">Tous</option>` + years.map(y =>
+      `<option value="${y}" ${app.curYear === y ? 'selected' : ''}>${y}</option>`
+    ).join('');
+    yearSelect.value = app.curYear;
+  }
+
+  // Filtered months
+  const filteredMonths = app.curYear === 'all' ? app.state.months : filterMonthsByYear(app.state.months, app.curYear);
+
   // Tabs
-  document.getElementById('mTabs').innerHTML = app.state.months.map(m =>
+  document.getElementById('mTabs').innerHTML = filteredMonths.map(m =>
     `<button class="tab ${m.id === app.curMonth ? 'on' : ''}" onclick="window._app.setCurMonth('${m.id}')">${m.id}</button>`
-  ).join('') + `<button class="btn btn-red" style="margin-left:8px;padding:6px 12px;font-size:12px" onclick="window._app.deleteMonth()">🗑 Supprimer ${app.curMonth}</button>`;
+  ).join('') + `<button class="btn btn-red btn-sm" style="margin-left:6px" onclick="window._app.deleteMonth()">Supprimer</button>`;
 
   const m = gm(app.curMonth);
   if (!m) return;
@@ -193,17 +250,17 @@ function renderMonthCharts(m) {
     data: {
       labels: allLabels.map(l => l.slice(0, 8)),
       datasets: [
-        { label: 'Budget', data: allLabels.map(l => bMap[l] || 0), backgroundColor: 'rgba(96,165,250,.35)', borderRadius: 4 },
-        { label: 'Réel', data: allLabels.map(l => aMap[l] || 0), backgroundColor: 'rgba(244,114,182,.45)', borderRadius: 4 },
+        { label: 'Budget', data: allLabels.map(l => bMap[l] || 0), backgroundColor: 'rgba(59,130,246,.3)', borderRadius: 4 },
+        { label: 'Réel', data: allLabels.map(l => aMap[l] || 0), backgroundColor: 'rgba(236,72,153,.35)', borderRadius: 4 },
       ]
     },
     options: {
       responsive: true, indexAxis: 'y',
       plugins: {
-        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#b0b0c8' } },
+        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#a1a1aa' } },
         tooltip: CHART_TOOLTIP
       },
-      scales: { x: { grid: { color: 'rgba(38,38,58,.4)' } }, y: { grid: { display: false } } }
+      scales: { x: { grid: { color: 'rgba(30,30,42,.5)' } }, y: { grid: { display: false } } }
     }
   });
 }

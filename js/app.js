@@ -2,7 +2,7 @@ import { app, loadStateLocal, gm, save, ensureRevState } from './core/state.js';
 import { loginPin, logoutUser, autoLogin } from './core/auth.js';
 import { go } from './core/router.js';
 import { fetchLiveRate } from './utils/currency.js';
-import { renderTracker, openNewMonth, createMonth, deleteMonth, openAddRow, addCustomRow } from './pages/tracker.js';
+import { renderTracker, openNewMonth, createMonth, deleteMonth, openAddRow, addCustomRow, setYear } from './pages/tracker.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { setRevPage, openAddRevenu, openEditRevenu, submitRevenu, deleteRevenu, confirmRevenu, saveRevCats } from './pages/revenus.js';
 import { saveRate, savePostes, exportAll, importAll, resetAll } from './pages/settings.js';
@@ -35,6 +35,7 @@ window._app = {
   deleteExtraActual(id, i) { gm(id).extraActual.splice(i, 1); save(); renderTracker(); },
   openNewMonth, createMonth, deleteMonth,
   openAddRow, addCustomRow,
+  setYear,
 
   // Transactions
   openTxnModal, openTxnModalExtra, openTxnView, openTxnViewExtra,
@@ -74,14 +75,14 @@ window._app = {
   // Hide amounts
   toggleHideAmounts() {
     app.hiddenMode = !app.hiddenMode;
-    document.getElementById('hideToggleLabel').textContent = app.hiddenMode ? 'Afficher €' : 'Masquer €';
+    document.getElementById('hideToggleLabel').textContent = app.hiddenMode ? 'Afficher' : 'Masquer';
     document.body.classList.toggle('amounts-hidden', app.hiddenMode);
   }
 };
 
 // Chart.js defaults
-Chart.defaults.color = '#72728a';
-Chart.defaults.borderColor = '#26263a';
+Chart.defaults.color = '#52525b';
+Chart.defaults.borderColor = '#1e1e2a';
 Chart.defaults.font.family = "'DM Sans',sans-serif";
 
 // Show initial rate

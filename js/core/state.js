@@ -25,14 +25,14 @@ export const CAT_COLORS = {
 };
 
 export const CAT_CHART = {
-  vital: '#34d399', lifestyle: '#f472b6',
-  finance: '#fbbf24', logement: '#60a5fa'
+  vital: '#10b981', lifestyle: '#ec4899',
+  finance: '#f59e0b', logement: '#3b82f6'
 };
 
 export const PIE_COLORS = [
-  '#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa',
-  '#22d3ee', '#f472b6', '#a3e635', '#fb923c', '#818cf8',
-  '#2dd4bf', '#fb7185', '#38bdf8'
+  '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#f43f5e', '#0ea5e9'
 ];
 
 export const MOIS_LIST = [
@@ -41,8 +41,8 @@ export const MOIS_LIST = [
 ];
 
 export const REV_BASE_COLORS = [
-  '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6',
-  '#22d3ee', '#fb923c', '#f87171', '#a3e635', '#818cf8'
+  '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
+  '#06b6d4', '#f97316', '#ef4444', '#84cc16', '#6366f1'
 ];
 
 const STORAGE_KEY = 'fdxb_state';
@@ -52,6 +52,7 @@ export const app = {
   state: null,
   curMonth: null,
   curRevMonth: null,
+  curYear: 'all',
   dashCur: 'EUR',
   revPage: 'tracker',
   userId: null,

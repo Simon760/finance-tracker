@@ -1,10 +1,10 @@
 import { app } from '../core/state.js';
 
 export const CHART_TOOLTIP = {
-  backgroundColor: '#1e1e28',
-  titleColor: '#f2f2fa',
-  bodyColor: '#b0b0c8',
-  borderColor: '#1e1e2e',
+  backgroundColor: '#1c1c23',
+  titleColor: '#fafafa',
+  bodyColor: '#a1a1aa',
+  borderColor: '#2a2a3a',
   borderWidth: 1,
   padding: 10,
   cornerRadius: 8
@@ -15,7 +15,7 @@ export const CHART_LEGEND = {
   usePointStyle: true,
   pointStyle: 'circle',
   font: { size: 10 },
-  color: '#b0b0c8'
+  color: '#a1a1aa'
 };
 
 export function destroyChart(id) {

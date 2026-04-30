@@ -37,18 +37,18 @@ export function renderDashboard() {
     data: {
       labels,
       datasets: [
-        { label: 'Dépenses', data: spendD, borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,.08)', fill: true, tension: .4, pointRadius: 6, pointBackgroundColor: '#f87171', borderWidth: 2.5 },
-        { label: 'Revenus', data: earnD, borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.08)', fill: true, tension: .4, pointRadius: 6, pointBackgroundColor: '#34d399', borderWidth: 2.5 },
+        { label: 'Dépenses', data: spendD, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.06)', fill: true, tension: .4, pointRadius: 5, pointBackgroundColor: '#ef4444', borderWidth: 2 },
+        { label: 'Revenus', data: earnD, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.06)', fill: true, tension: .4, pointRadius: 5, pointBackgroundColor: '#10b981', borderWidth: 2 },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        y: { min: Math.max(0, Math.floor(evoMinVal - evoPad)), max: Math.ceil(evoMax + evoPad), grid: { color: 'rgba(38,38,58,.4)' }, ticks: { color: '#8888a8', font: { size: 11 } } },
-        x: { grid: { display: false }, ticks: { color: '#8888a8', font: { size: 11 } } }
+        y: { min: Math.max(0, Math.floor(evoMinVal - evoPad)), max: Math.ceil(evoMax + evoPad), grid: { color: 'rgba(30,30,42,.5)' }, ticks: { color: '#52525b', font: { size: 11 } } },
+        x: { grid: { display: false }, ticks: { color: '#52525b', font: { size: 11 } } }
       },
       plugins: {
-        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 12 }, color: '#b0b0c8' } },
+        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 12 }, color: '#a1a1aa' } },
         tooltip: { ...CHART_TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label}: ${f$(ctx.parsed.y)} ${dcSym()}` } }
       }
     }
@@ -70,18 +70,18 @@ export function renderDashboard() {
       data: {
         labels: soldeLabels,
         datasets: [
-          { label: 'Début de mois', data: soldeStart, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,.1)', fill: true, tension: .3, pointRadius: 6, pointBackgroundColor: '#60a5fa', borderWidth: 2.5 },
-          { label: 'Fin de mois', data: soldeEnd, borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,.1)', fill: true, tension: .3, pointRadius: 6, pointBackgroundColor: '#22d3ee', borderWidth: 2.5 },
+          { label: 'Début de mois', data: soldeStart, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.06)', fill: true, tension: .3, pointRadius: 5, pointBackgroundColor: '#3b82f6', borderWidth: 2 },
+          { label: 'Fin de mois', data: soldeEnd, borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,.06)', fill: true, tension: .3, pointRadius: 5, pointBackgroundColor: '#06b6d4', borderWidth: 2 },
         ]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
-          y: { min: Math.max(0, Math.floor(soldeMinVal - soldePad)), max: Math.ceil(soldeMax + soldePad), grid: { color: 'rgba(38,38,58,.4)' }, ticks: { color: '#8888a8', font: { size: 11 } } },
-          x: { grid: { display: false }, ticks: { color: '#8888a8', font: { size: 11 } } }
+          y: { min: Math.max(0, Math.floor(soldeMinVal - soldePad)), max: Math.ceil(soldeMax + soldePad), grid: { color: 'rgba(30,30,42,.5)' }, ticks: { color: '#52525b', font: { size: 11 } } },
+          x: { grid: { display: false }, ticks: { color: '#52525b', font: { size: 11 } } }
         },
         plugins: {
-          legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 12 }, color: '#b0b0c8' } },
+          legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 12 }, color: '#a1a1aa' } },
           tooltip: { ...CHART_TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label}: ${f0(ctx.parsed.y)} AED` } }
         }
       }
@@ -132,7 +132,7 @@ export function renderDashboard() {
     options: {
       responsive: true, cutout: '58%',
       plugins: {
-        legend: { position: 'right', labels: { padding: 6, usePointStyle: true, pointStyle: 'circle', font: { size: 9 }, color: '#b0b0c8' } },
+        legend: { position: 'right', labels: { padding: 6, usePointStyle: true, pointStyle: 'circle', font: { size: 9 }, color: '#a1a1aa' } },
         tooltip: { ...CHART_TOOLTIP, callbacks: { label: ctx => `${ctx.label}: ${f$(ctx.parsed)} ${dcSym()}` } }
       }
     }

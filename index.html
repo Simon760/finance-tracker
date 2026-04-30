@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FinanceDXB — Tracker</title>
+<title>FinanceHQ — Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/variables.css">
 <link rel="stylesheet" href="css/base.css">
@@ -15,9 +15,9 @@
 <!-- Login Screen -->
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
-    <div class="login-logo">SF</div>
-    <div class="login-title">FinanceDXB</div>
-    <div class="login-sub">Entre ton identifiant pour synchroniser tes données</div>
+    <div class="login-logo">FH</div>
+    <div class="login-title">FinanceHQ</div>
+    <div class="login-sub">Connecte-toi pour accéder à ton cockpit financier</div>
     <div class="fg" style="text-align:left">
       <label class="fl">Identifiant</label>
       <input class="fi" id="loginId" placeholder="Ex: simon" style="text-align:center">
@@ -26,7 +26,7 @@
       <label class="fl">Code PIN</label>
       <input class="fi" id="loginPin" type="password" placeholder="••••" maxlength="20" style="text-align:center" onkeydown="if(event.key==='Enter')window._app.loginPin()">
     </div>
-    <button class="login-btn" onclick="window._app.loginPin()">🔐 Se connecter</button>
+    <button class="login-btn" onclick="window._app.loginPin()">Se connecter</button>
     <div class="login-status" id="loginStatus"></div>
   </div>
 </div>
@@ -36,23 +36,37 @@
 <!-- Sidebar -->
 <aside class="side">
   <div class="brand">
-    <div class="brand-dot">SF</div>
+    <div class="brand-dot">FH</div>
     <div>
-      <div class="brand-name">FinanceDXB</div>
-      <div class="brand-sub">Tracker Personnel</div>
+      <div class="brand-name">FinanceHQ</div>
+      <div class="brand-sub">Cockpit</div>
     </div>
   </div>
 
   <div class="user-info" id="userInfo" style="display:none">
-    <span style="font-size:16px">👤</span>
+    <span style="font-size:14px">👤</span>
     <span class="user-name" id="userName"></span>
     <button class="user-logout" onclick="window._app.logoutUser()" title="Déconnexion">✕</button>
   </div>
 
+  <!-- Space Switcher -->
+  <div class="space-switcher" id="spaceSwitcher">
+    <span class="space-emoji">🇦🇪</span>
+    <div class="space-info">
+      <div class="space-name">Dubai</div>
+      <div class="space-currency">AED · Actif</div>
+    </div>
+    <span class="space-chevron">▾</span>
+  </div>
+
+  <!-- Space Navigation -->
+  <div class="nav-section">
+    <div class="nav-label">Espace</div>
+  </div>
   <nav class="nav">
     <button class="nav-btn on" data-pg="tracker" onclick="window._app.go('tracker')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Tracker Mensuel
+      Tracker
     </button>
     <button class="nav-btn" data-pg="dashboard" onclick="window._app.go('dashboard')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
@@ -64,23 +78,30 @@
     </button>
     <button class="nav-btn" data-pg="emmenagement" onclick="window._app.go('emmenagement')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      Emménagement
+      Setup
     </button>
-    <div class="nav-sep"></div>
+  </nav>
+
+  <div class="nav-sep"></div>
+
+  <div class="nav-section">
+    <div class="nav-label">Système</div>
+  </div>
+  <nav class="nav">
     <button class="nav-btn" data-pg="settings" onclick="window._app.go('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Paramètres
     </button>
     <button class="nav-btn" id="hideToggleBtn" onclick="window._app.toggleHideAmounts()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-      <span id="hideToggleLabel">Masquer €</span>
+      <span id="hideToggleLabel">Masquer</span>
     </button>
   </nav>
 
   <div class="side-footer">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div class="side-footer-label">EUR / AED</div>
-      <button onclick="window._app.fetchLiveRate()" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;opacity:.5;transition:opacity .2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.5" title="Rafraîchir le taux">🔄</button>
+      <button onclick="window._app.fetchLiveRate()" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px;color:var(--t3);transition:color .15s" onmouseover="this.style.color='var(--t1)'" onmouseout="this.style.color='var(--t3)'" title="Rafraîchir le taux">↻</button>
     </div>
     <div class="side-footer-val" id="sideRate">4.3284</div>
     <div class="side-footer-sub">Taux de conversion</div>
@@ -94,17 +115,21 @@
 
   <!-- TRACKER -->
   <div class="pg on" id="pg-tracker">
+    <div class="breadcrumb"><span>Dubai</span><span class="bc-sep">›</span><span class="bc-current">Tracker</span><span id="lastUpdateBadge" style="margin-left:auto;font-size:10px;color:var(--t4)"></span></div>
     <div class="hdr">
       <div>
-        <div class="hdr-title">Tracker Mensuel <span id="lastUpdateBadge" style="font-size:11px;font-weight:400;color:var(--t3);margin-left:10px"></span></div>
+        <div class="hdr-title">Tracker</div>
         <div class="hdr-sub">Budget prévisionnel & dépenses réelles</div>
       </div>
-      <button class="btn btn-green btn-add" onclick="window._app.openNewMonth()">
+      <button class="btn btn-p btn-add" onclick="window._app.openNewMonth()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Nouveau mois
       </button>
     </div>
-    <div class="tabs" id="mTabs"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <select class="fi" id="yearFilter" style="width:auto;padding:6px 12px;font-size:12px;font-weight:600;background:var(--bg3);border-color:var(--border);border-radius:6px" onchange="window._app.setYear(this.value)"></select>
+      <div class="tabs" id="mTabs" style="margin-bottom:0"></div>
+    </div>
     <div class="solde-row" id="soldeRow"></div>
     <div class="row r2" id="mKpis"></div>
     <div class="tbl-wrap" id="budgetWrap">
@@ -124,8 +149,9 @@
 
   <!-- DASHBOARD -->
   <div class="pg" id="pg-dashboard">
+    <div class="breadcrumb"><span>Dubai</span><span class="bc-sep">›</span><span class="bc-current">Dashboard</span></div>
     <div class="hdr">
-      <div><div class="hdr-title">Dashboard</div><div class="hdr-sub">Vue d'ensemble de tes finances</div></div>
+      <div><div class="hdr-title">Dashboard</div><div class="hdr-sub">Vue d'ensemble</div></div>
       <div class="cur-toggle" id="dashCurToggle">
         <button class="cur-btn on" onclick="window._app.setDashCur('EUR')">EUR €</button>
         <button class="cur-btn" onclick="window._app.setDashCur('AED')">AED د.إ</button>
@@ -142,8 +168,9 @@
 
   <!-- REVENUS -->
   <div class="pg" id="pg-revenus">
+    <div class="breadcrumb"><span>Dubai</span><span class="bc-sep">›</span><span class="bc-current">Revenus</span></div>
     <div class="hdr">
-      <div><div class="hdr-title">Revenus 2026</div><div class="hdr-sub">Suivi des revenus par source</div></div>
+      <div><div class="hdr-title">Revenus</div><div class="hdr-sub">Suivi des revenus par source</div></div>
       <div style="display:flex;gap:8px;align-items:center">
         <div class="cur-toggle" id="revPageToggle">
           <button class="cur-btn on" onclick="window._app.setRevPage('tracker')">Tracker</button>
@@ -199,7 +226,8 @@
 
   <!-- EMMENAGEMENT -->
   <div class="pg" id="pg-emmenagement">
-    <div class="hdr"><div><div class="hdr-title">Emménagement Dubai</div><div class="hdr-sub">Coûts d'installation</div></div></div>
+    <div class="breadcrumb"><span>Dubai</span><span class="bc-sep">›</span><span class="bc-current">Setup</span></div>
+    <div class="hdr"><div><div class="hdr-title">Setup Dubai</div><div class="hdr-sub">Coûts d'installation</div></div></div>
     <div class="row r3" id="emKpis"></div>
     <div class="row r2">
       <div class="chart-box"><div class="chart-head"><div class="chart-title">Par catégorie</div></div><canvas id="cEmPie" height="200"></canvas></div>
@@ -212,6 +240,7 @@
 
   <!-- SETTINGS -->
   <div class="pg" id="pg-settings">
+    <div class="breadcrumb"><span>Système</span><span class="bc-sep">›</span><span class="bc-current">Paramètres</span></div>
     <div class="hdr"><div><div class="hdr-title">Paramètres</div><div class="hdr-sub">Configuration et données</div></div></div>
     <div class="card" style="max-width:460px;margin-bottom:16px">
       <div class="kpi-label">Taux EUR/AED</div>

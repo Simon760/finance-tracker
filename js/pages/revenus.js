@@ -116,7 +116,7 @@ function renderRevTracker() {
 
   document.getElementById('revTabs').innerHTML = MOIS_LIST.map(m => {
     const hasData = rm[m] && rm[m].length > 0;
-    return `<button class="tab ${m === app.curRevMonth ? 'on' : ''}" onclick="window._app.setCurRevMonth('${m}')" style="color:${hasData ? '#f2f2fa' : '#6e6e8a'}">${m.slice(0, 3)}</button>`;
+    return `<button class="tab ${m === app.curRevMonth ? 'on' : ''}" onclick="window._app.setCurRevMonth('${m}')" style="color:${hasData ? 'var(--t1)' : 'var(--t4)'}">${m.slice(0, 3)}</button>`;
   }).join('');
 
   const entries = rm[app.curRevMonth] || [];
@@ -182,15 +182,15 @@ function renderRevTracker() {
     data: {
       labels: evoLabels,
       datasets: [
-        { label: 'Encaissé', data: evoCashed, backgroundColor: MOIS_LIST.map(m => m === app.curRevMonth ? 'rgba(52,211,153,.7)' : 'rgba(52,211,153,.3)'), borderRadius: 6 },
-        { type: 'line', label: 'Objectif', data: MOIS_LIST.map(() => obj), borderColor: '#f87171', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false },
+        { label: 'Encaissé', data: evoCashed, backgroundColor: MOIS_LIST.map(m => m === app.curRevMonth ? 'rgba(16,185,129,.7)' : 'rgba(16,185,129,.3)'), borderRadius: 6 },
+        { type: 'line', label: 'Objectif', data: MOIS_LIST.map(() => obj), borderColor: '#ef4444', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false },
       ]
     },
     options: {
       responsive: true,
-      scales: { y: { grid: { color: 'rgba(38,38,58,.4)' } }, x: { grid: { display: false } } },
+      scales: { y: { grid: { color: 'rgba(30,30,42,.5)' } }, x: { grid: { display: false } } },
       plugins: {
-        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#b0b0c8' } },
+        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#a1a1aa' } },
         tooltip: { ...CHART_TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label}: ${f$(ctx.parsed.y)} €` } }
       }
     }
@@ -271,16 +271,16 @@ export function renderRevGlobal() {
     data: {
       labels: evoLabels,
       datasets: [
-        { label: 'Encaissé', data: evoCashed, backgroundColor: 'rgba(52,211,153,.5)', borderRadius: 6 },
-        { label: 'Contracté', data: evoContracted, backgroundColor: 'rgba(96,165,250,.3)', borderRadius: 6 },
-        { type: 'line', label: 'Objectif', data: MOIS_LIST.map(() => obj), borderColor: '#f87171', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false },
+        { label: 'Encaissé', data: evoCashed, backgroundColor: 'rgba(16,185,129,.5)', borderRadius: 6 },
+        { label: 'Contracté', data: evoContracted, backgroundColor: 'rgba(59,130,246,.3)', borderRadius: 6 },
+        { type: 'line', label: 'Objectif', data: MOIS_LIST.map(() => obj), borderColor: '#ef4444', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { y: { grid: { color: 'rgba(38,38,58,.4)' } }, x: { grid: { display: false } } },
+      scales: { y: { grid: { color: 'rgba(30,30,42,.5)' } }, x: { grid: { display: false } } },
       plugins: {
-        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#b0b0c8' } },
+        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#a1a1aa' } },
         tooltip: { ...CHART_TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label}: ${f$(ctx.parsed.y)} €` } }
       }
     }
@@ -308,15 +308,15 @@ export function renderRevGlobal() {
     data: {
       labels: quarters,
       datasets: [
-        { label: 'Encaissé', data: qData, backgroundColor: 'rgba(167,139,250,.5)', borderRadius: 8, barThickness: 50 },
-        { type: 'line', label: 'Objectif trimestre', data: quarters.map(() => qObj), borderColor: '#f87171', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false },
+        { label: 'Encaissé', data: qData, backgroundColor: 'rgba(139,92,246,.5)', borderRadius: 8, barThickness: 50 },
+        { type: 'line', label: 'Objectif trimestre', data: quarters.map(() => qObj), borderColor: '#ef4444', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { y: { grid: { color: 'rgba(38,38,58,.4)' } }, x: { grid: { display: false } } },
+      scales: { y: { grid: { color: 'rgba(30,30,42,.5)' } }, x: { grid: { display: false } } },
       plugins: {
-        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#b0b0c8' } },
+        legend: { labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, color: '#a1a1aa' } },
         tooltip: { ...CHART_TOOLTIP, callbacks: { label: ctx => `${ctx.dataset.label}: ${f$(ctx.parsed.y)} €` } }
       }
     }

@@ -18,15 +18,15 @@ export function renderEmmenagement() {
 
   createChart('cEmPie', {
     type: 'doughnut',
-    data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#34d399', '#60a5fa', '#a78bfa'], borderWidth: 0, spacing: 3 }] },
-    options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, pointStyle: 'circle', color: '#b0b0c8' } } } }
+    data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#10b981', '#3b82f6', '#8b5cf6'], borderWidth: 0, spacing: 3 }] },
+    options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { padding: 14, usePointStyle: true, pointStyle: 'circle', color: '#a1a1aa' } } } }
   });
 
   const sorted = [...d].sort((a, b) => b.eur - a.eur).slice(0, 8);
   createChart('cEmBar', {
     type: 'bar',
     data: { labels: sorted.map(e => e.poste.slice(0, 14)), datasets: [{ data: sorted.map(e => e.eur), backgroundColor: PIE_COLORS, borderRadius: 6 }] },
-    options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(38,38,58,.4)' } }, y: { grid: { display: false } } } }
+    options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(30,30,42,.5)' } }, y: { grid: { display: false } } } }
   });
 
   let tH = '';

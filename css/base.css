@@ -1,52 +1,64 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--t1);
   min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--t3); }
 
 input, select, button, textarea { font-family: inherit; }
 
-.mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+.mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500; }
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.anim { animation: fadeUp .3s ease forwards; }
-.d1 { animation-delay: .03s; opacity: 0; }
-.d2 { animation-delay: .06s; opacity: 0; }
-.d3 { animation-delay: .09s; opacity: 0; }
-.d4 { animation-delay: .12s; opacity: 0; }
+.anim { animation: fadeUp .25s var(--ease) forwards; }
+.d1 { animation-delay: .02s; opacity: 0; }
+.d2 { animation-delay: .05s; opacity: 0; }
+.d3 { animation-delay: .08s; opacity: 0; }
+.d4 { animation-delay: .11s; opacity: 0; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .3; }
 }
 
+/* Hidden mode */
 .amounts-hidden .mono,
 .amounts-hidden .kpi-val,
+.amounts-hidden .kpi-hero,
 .amounts-hidden .solde-val,
 .amounts-hidden .kpi-sub,
 .amounts-hidden .cell-input.eur,
 .amounts-hidden .side-footer-val {
   color: transparent !important;
-  text-shadow: 0 0 12px rgba(52, 211, 153, .3);
+  text-shadow: 0 0 14px rgba(16, 185, 129, .2);
   user-select: none;
 }
 .amounts-hidden .solde-input {
   color: transparent !important;
-  text-shadow: 0 0 12px rgba(52, 211, 153, .3);
+  text-shadow: 0 0 14px rgba(16, 185, 129, .2);
 }
 .amounts-hidden .diff-pos,
 .amounts-hidden .diff-neg {
   color: transparent !important;
-  text-shadow: 0 0 12px rgba(52, 211, 153, .3);
+  text-shadow: 0 0 14px rgba(16, 185, 129, .2);
+}
+
+::selection {
+  background: rgba(16, 185, 129, .2);
+  color: var(--t1);
 }
