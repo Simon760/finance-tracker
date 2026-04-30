@@ -17,7 +17,7 @@ const STATUS_LABELS: Record<string, string> = { confirmed: 'Confirmé', pending:
 const STATUS_COLORS: Record<string, string> = { confirmed: 'text-accent bg-accent/10 border-accent/25', pending: 'text-warning bg-warning/10 border-warning/25', preview: 'text-info bg-info/10 border-info/25' };
 
 export default function RevenusPage() {
-  const { state, setState, save, liveRate } = useApp();
+  const { state, setState, save, liveRate, activeSpace } = useApp();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
 
   const [addOpen, setAddOpen] = useState(false);
@@ -133,7 +133,7 @@ export default function RevenusPage() {
 
   return (
     <div>
-      <PageHeader breadcrumb={[{ label: 'Dubai' }, { label: 'Revenus', current: true }]} title="Revenus" subtitle="Suivi des revenus par mois">
+      <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Revenus', current: true }]} title="Revenus" subtitle="Suivi des revenus par mois">
         <button onClick={() => openAdd()} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
           + Nouveau revenu
         </button>

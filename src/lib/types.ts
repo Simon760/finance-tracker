@@ -69,6 +69,23 @@ export interface EmmenagementItem {
   cat: string;
 }
 
+// Space = un chapitre de vie / pays
+export interface Space {
+  id: string;
+  name: string;
+  emoji: string;
+  localCurrency: string;
+  baseCurrency: string;
+  status: 'active' | 'archived' | 'draft';
+  dateFrom?: string;
+  dateTo?: string | null;
+  postes: Poste[];
+  months: Month[];
+  revenus: RevenuState;
+  emmenagement: EmmenagementItem[];
+}
+
+// Ce qui est stocké en Firebase (backward compatible)
 export interface AppState {
   rate: number;
   postes: Poste[];
@@ -76,4 +93,7 @@ export interface AppState {
   revenus: RevenuState;
   emmenagement: EmmenagementItem[];
   lastUpdate?: string;
+  // Multi-space: si undefined, on wrappe automatiquement dans spaces[0]
+  spaces?: Space[];
+  activeSpaceId?: string;
 }

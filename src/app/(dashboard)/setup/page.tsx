@@ -11,7 +11,7 @@ import { EmmenagementItem } from '@/lib/types';
 const CATS = ['Meubles', 'Électroménager', 'Décoration', 'Cuisine', 'Autre'];
 
 export default function SetupPage() {
-  const { state, setState, save, liveRate } = useApp();
+  const { state, setState, save, liveRate, activeSpace } = useApp();
   const items = state.emmenagement || [];
 
   const [addOpen, setAddOpen] = useState(false);
@@ -59,7 +59,7 @@ export default function SetupPage() {
 
   return (
     <div>
-      <PageHeader breadcrumb={[{ label: 'Dubai' }, { label: 'Setup', current: true }]} title="Setup" subtitle="Frais d'installation">
+      <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Setup', current: true }]} title="Setup" subtitle="Frais d'installation">
         <button onClick={openAdd} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
           + Ajouter
         </button>

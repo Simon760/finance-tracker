@@ -11,13 +11,13 @@ import {
 } from 'recharts';
 
 export default function DashboardPage() {
-  const { state, dashCur, setDashCur } = useApp();
+  const { state, dashCur, setDashCur, activeSpace } = useApp();
   const ms = state.months;
 
   if (ms.length === 0) {
     return (
       <div>
-        <PageHeader breadcrumb={[{ label: 'Dubai' }, { label: 'Dashboard', current: true }]} title="Dashboard" subtitle="Vue d'ensemble" />
+        <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Dashboard', current: true }]} title="Dashboard" subtitle="Vue d'ensemble" />
         <div className="bg-bg-3 border border-border rounded-md p-6 text-center text-t-3 text-sm">Aucune donnée</div>
       </div>
     );
@@ -87,7 +87,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageHeader breadcrumb={[{ label: 'Dubai' }, { label: 'Dashboard', current: true }]} title="Dashboard" subtitle="Vue d'ensemble">
+      <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Dashboard', current: true }]} title="Dashboard" subtitle="Vue d'ensemble">
         <div className="flex bg-bg-2 rounded-lg p-0.5 border border-border gap-0.5">
           {(['EUR', 'AED'] as const).map(c => (
             <button key={c} onClick={() => setDashCur(c)} className={`px-3.5 py-1 font-mono text-[11px] font-semibold rounded-md transition-all cursor-pointer ${dashCur === c ? 'bg-bg-4 text-t-1 shadow-sm' : 'text-t-3'}`}>

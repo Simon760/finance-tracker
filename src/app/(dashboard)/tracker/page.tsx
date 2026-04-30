@@ -9,11 +9,12 @@ import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumEurBudget, sumAedBudge
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import SlideOver from '@/components/ui/SlideOver';
 
 const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'];
 
 export default function TrackerPage() {
-  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState } = useApp();
+  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace } = useApp();
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [nmName, setNmName] = useState('');
   const [nmRate, setNmRate] = useState(liveRate);
@@ -24,6 +25,15 @@ export default function TrackerPage() {
   const [arCat, setArCat] = useState('vital');
   const [arAed, setArAed] = useState(0);
   const [arEur, setArEur] = useState(0);
+
+  // Slide-over
+  const [slidePoste, setSlidePoste] = useState<{ name: string; idx: number; section: 'budget' | 'actual' } | null>(null);
+
+  // Period filter
+  const [periodMode, setPeriodMode] = useState(false);
+  const [periodFrom, setPeriodFrom] = useState(0);
+  const [periodTo, setPeriodTo] = useState(0);
+  const [periodOpen, setPeriodOpen] = useState(false);
 
   const years = detectYears(state.months);
   const filtered = curYear === 'all' ? state.months : state.months.filter(m => m._year === parseInt(curYear));
@@ -111,6 +121,34 @@ export default function TrackerPage() {
     save();
   };
 
+  // Period aggregation
+  const periodMonths = periodMode ? filtered.slice(periodFrom, periodTo + 1) : [];
+  const periodAgg = periodMode ? {
+    totalBudgetEur: periodMonths.reduce((s, pm) => s + sumEurBudget(pm, state.postes, liveRate), 0),
+    totalActualEur: periodMonths.reduce((s, pm) => s + sumEur(pm, pm.actual, pm.extraActual), 0),
+    totalActualAed: periodMonths.reduce((s, pm) => s + sumAed(pm, pm.actual, pm.extraActual), 0),
+    avgBudgetEur: 0, avgActualEur: 0,
+  } : null;
+  if (periodAgg && periodMonths.length > 0) {
+    periodAgg.avgBudgetEur = periodAgg.totalBudgetEur / periodMonths.length;
+    periodAgg.avgActualEur = periodAgg.totalActualEur / periodMonths.length;
+  }
+
+  const applyPreset = (preset: string) => {
+    const ms = filtered;
+    if (ms.length === 0) return;
+    let from = 0, to = ms.length - 1;
+    if (preset === 'Q1') { from = 0; to = Math.min(2, ms.length - 1); }
+    else if (preset === 'Q2') { from = Math.min(3, ms.length - 1); to = Math.min(5, ms.length - 1); }
+    else if (preset === 'S1') { from = 0; to = Math.min(5, ms.length - 1); }
+    else if (preset === 'S2') { from = Math.min(6, ms.length - 1); to = ms.length - 1; }
+    else if (preset === 'YTD') { from = 0; to = ms.length - 1; }
+    setPeriodFrom(from);
+    setPeriodTo(to);
+    setPeriodMode(true);
+    setPeriodOpen(false);
+  };
+
   // Computed values
   const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
   const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
@@ -141,7 +179,7 @@ export default function TrackerPage() {
   if (state.months.length === 0) {
     return (
       <div>
-        <PageHeader breadcrumb={[{ label: 'Dubai' }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
+        <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
           <button onClick={() => { setNmRate(liveRate); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
             + Nouveau mois
           </button>
@@ -155,7 +193,7 @@ export default function TrackerPage() {
 
   return (
     <div>
-      <PageHeader breadcrumb={[{ label: 'Dubai' }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
+      <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
         <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
           + Nouveau mois
         </button>
@@ -192,8 +230,44 @@ export default function TrackerPage() {
           <button onClick={deleteMonth} className="px-2.5 py-1 text-[11px] bg-danger/10 text-danger border border-danger/25 rounded-md font-semibold ml-1.5 cursor-pointer hover:bg-danger/20 transition-all">
             Supprimer
           </button>
+          <button onClick={() => setPeriodOpen(true)} className={`px-2.5 py-1 text-[11px] rounded-md font-semibold ml-1.5 cursor-pointer transition-all ${periodMode ? 'bg-info/20 text-info border border-info/40' : 'bg-bg-3 text-t-2 border border-border hover:bg-bg-4'}`}>
+            📅 Période
+          </button>
+          {periodMode && (
+            <button onClick={() => setPeriodMode(false)} className="px-2 py-1 text-[11px] text-t-3 hover:text-t-1 cursor-pointer">✕ Reset</button>
+          )}
         </div>
       </div>
+
+      {/* Period aggregation summary */}
+      {periodMode && periodAgg && periodMonths.length > 0 && (
+        <div className="bg-info/5 border border-info/20 rounded-md p-4 mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[11px] font-semibold text-info uppercase tracking-wider">📅 Période : {periodMonths[0].id} → {periodMonths[periodMonths.length - 1].id}</span>
+            <span className="text-[10px] text-t-3">({periodMonths.length} mois)</span>
+          </div>
+          <div className="grid grid-cols-4 gap-3 max-md:grid-cols-2">
+            <div>
+              <div className="text-[9px] text-t-3 uppercase tracking-wider">Total dépensé</div>
+              <div className="font-mono text-lg font-semibold mono-value">{f$(periodAgg.totalActualEur)} €</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-t-3 uppercase tracking-wider">Total budget</div>
+              <div className="font-mono text-lg font-semibold mono-value">{f$(periodAgg.totalBudgetEur)} €</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-t-3 uppercase tracking-wider">Moy. dépenses/mois</div>
+              <div className="font-mono text-lg font-semibold mono-value">{f$(periodAgg.avgActualEur)} €</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-t-3 uppercase tracking-wider">Écart total</div>
+              <div className={`font-mono text-lg font-semibold mono-value ${periodAgg.totalBudgetEur - periodAgg.totalActualEur >= 0 ? 'text-accent' : 'text-danger'}`}>
+                {periodAgg.totalBudgetEur - periodAgg.totalActualEur >= 0 ? '+' : ''}{f$(periodAgg.totalBudgetEur - periodAgg.totalActualEur)} €
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {m && (
         <>
@@ -308,7 +382,9 @@ export default function TrackerPage() {
                 const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';
                 return (
                   <tr key={i} className="border-b border-border hover:bg-white/[.02]">
-                    <td className="px-4 py-2.5 text-[13px] font-semibold">{p.name}</td>
+                    <td className="px-4 py-2.5 text-[13px] font-semibold">
+                      <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="hover:text-accent transition-colors cursor-pointer text-left">{p.name}</button>
+                    </td>
                     <td className="px-4 py-2.5 text-right">
                       {p.isAed ? <CellInput value={row.aed} onChange={v => updateActual(i, v)} /> : <span className="font-mono text-xs text-t-3">—</span>}
                     </td>
@@ -449,6 +525,142 @@ export default function TrackerPage() {
           <div className="flex gap-2.5 mt-5">
             <button onClick={addCustomRow} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">Ajouter</button>
             <button onClick={() => setAddRowOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Slide-over detail */}
+      <SlideOver
+        open={!!slidePoste}
+        onClose={() => setSlidePoste(null)}
+        title={slidePoste?.name || ''}
+        subtitle={m ? `${m.id} — Détail du poste` : ''}
+      >
+        {slidePoste && m && (() => {
+          const row = m.actual[slidePoste.idx] || { aed: 0, eur: null };
+          const brow = m.budget[slidePoste.idx] || { aed: 0, eur: null };
+          const p = state.postes[slidePoste.idx];
+          const eur = rowEur(row, m.rate);
+          const beur = rowEur(brow, liveRate);
+          const txns = row.txns || [];
+          // Historical data across months
+          const history = state.months.map(mo => ({
+            month: mo.id.slice(0, 3),
+            actual: rowEur(mo.actual[slidePoste.idx] || { aed: 0, eur: null }, mo.rate),
+            budget: rowEur(mo.budget[slidePoste.idx] || { aed: 0, eur: null }, liveRate),
+          }));
+          const avg = history.length > 0 ? history.reduce((s, h) => s + h.actual, 0) / history.filter(h => h.actual > 0).length || 0 : 0;
+
+          return (
+            <div className="space-y-5">
+              {/* KPIs */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-bg-3 border border-border rounded-md p-3">
+                  <div className="text-[9px] text-t-3 uppercase tracking-wider">Réel ce mois</div>
+                  <div className="font-mono text-base font-semibold mt-1 mono-value">{f$(eur)} €</div>
+                  {p?.isAed && <div className="text-[10px] text-t-3 font-mono mono-value">{f0(row.aed)} AED</div>}
+                </div>
+                <div className="bg-bg-3 border border-border rounded-md p-3">
+                  <div className="text-[9px] text-t-3 uppercase tracking-wider">Budget</div>
+                  <div className="font-mono text-base font-semibold mt-1 mono-value">{f$(beur)} €</div>
+                </div>
+              </div>
+
+              {/* Ratio */}
+              <div className="bg-bg-3 border border-border rounded-md p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[9px] text-t-3 uppercase tracking-wider">Consommation</span>
+                  <span className={`font-mono text-sm font-semibold ${beur > 0 && eur / beur > 1.05 ? 'text-danger' : 'text-accent'}`}>
+                    {beur > 0 ? `${(eur / beur * 100).toFixed(0)}%` : '—'}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-border rounded overflow-hidden">
+                  <div className={`h-full rounded transition-all ${beur > 0 && eur / beur > 1 ? 'bg-danger' : 'bg-accent'}`} style={{ width: `${Math.min(beur > 0 ? (eur / beur) * 100 : 0, 100)}%` }} />
+                </div>
+              </div>
+
+              {/* Average */}
+              <div className="bg-bg-3 border border-border rounded-md p-3">
+                <div className="text-[9px] text-t-3 uppercase tracking-wider">Moyenne mensuelle</div>
+                <div className="font-mono text-base font-semibold mt-1 mono-value">{f$(avg)} €</div>
+                <div className="text-[10px] text-t-3 mt-0.5">Sur {history.filter(h => h.actual > 0).length} mois avec données</div>
+              </div>
+
+              {/* Transactions */}
+              {txns.length > 0 && (
+                <div>
+                  <div className="text-[10px] text-t-3 uppercase tracking-wider font-medium mb-2">Transactions ({txns.length})</div>
+                  <div className="space-y-1.5">
+                    {txns.map((t, ti) => (
+                      <div key={ti} className="flex justify-between items-center py-2 px-3 bg-bg-3 border border-border rounded-sm">
+                        <div>
+                          <div className="text-xs font-medium">{t.label || 'Transaction'}</div>
+                          {t.date && <div className="text-[10px] text-t-3">{t.date}</div>}
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono text-xs font-semibold mono-value">{f$(t.eur || t.amount / (t.rate || m.rate))} €</div>
+                          <div className="text-[10px] text-t-3 font-mono">{f0(t.amount)} {t.currency}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {txns.length === 0 && (
+                <div className="text-center py-4 text-t-3 text-xs">
+                  Pas de transactions détaillées pour ce poste.
+                </div>
+              )}
+
+              {/* Mini history */}
+              <div>
+                <div className="text-[10px] text-t-3 uppercase tracking-wider font-medium mb-2">Historique</div>
+                <div className="space-y-1">
+                  {history.filter(h => h.actual > 0 || h.budget > 0).map((h, i) => (
+                    <div key={i} className="flex justify-between items-center py-1.5 px-3 bg-bg-3 border border-border rounded-sm text-xs">
+                      <span className="text-t-2 font-medium">{h.month}</span>
+                      <div className="flex gap-4">
+                        <span className="font-mono text-t-3 mono-value">B: {f$(h.budget)}</span>
+                        <span className="font-mono font-semibold mono-value">R: {f$(h.actual)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </SlideOver>
+
+      {/* Period Filter Modal */}
+      <Modal open={periodOpen} onClose={() => setPeriodOpen(false)} title="Filtrer par période">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] text-t-3 uppercase tracking-wider font-medium mb-1.5">Du (index mois)</label>
+              <select className="fi" value={periodFrom} onChange={e => setPeriodFrom(parseInt(e.target.value))}>
+                {filtered.map((mo, i) => <option key={i} value={i}>{mo.id}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-t-3 uppercase tracking-wider font-medium mb-1.5">Au (index mois)</label>
+              <select className="fi" value={periodTo} onChange={e => setPeriodTo(parseInt(e.target.value))}>
+                {filtered.map((mo, i) => <option key={i} value={i}>{mo.id}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-medium mb-2">Presets</label>
+            <div className="flex gap-2 flex-wrap">
+              {['Q1', 'Q2', 'S1', 'S2', 'YTD'].map(p => (
+                <button key={p} onClick={() => applyPreset(p)} className="px-3 py-1.5 text-xs font-semibold bg-bg-4 border border-border rounded-md hover:bg-surface-hover hover:border-border-2 cursor-pointer transition-all">{p}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2.5 mt-5">
+            <button onClick={() => { setPeriodMode(true); setPeriodOpen(false); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">Appliquer</button>
+            <button onClick={() => setPeriodOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>
