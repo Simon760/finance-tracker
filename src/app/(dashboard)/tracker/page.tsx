@@ -7,7 +7,7 @@ import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
-import { Month } from '@/lib/types';
+import { Month, Transaction } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
 
@@ -28,6 +28,143 @@ export default function TrackerPage() {
 
   // Slide-over
   const [slidePoste, setSlidePoste] = useState<{ name: string; idx: number; section: 'budget' | 'actual' } | null>(null);
+
+  // Transaction modal
+  const [txnOpen, setTxnOpen] = useState(false);
+  const [txnTarget, setTxnTarget] = useState<{ posteIdx: number; editIdx?: number; isExtra?: boolean; extraIdx?: number } | null>(null);
+  const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR' });
+
+  const openTxnAdd = (posteIdx: number) => {
+    setTxnTarget({ posteIdx });
+    setTxnForm({ label: '', amount: 0, currency: 'AED' });
+    setTxnOpen(true);
+  };
+
+  const openTxnAddExtra = (extraIdx: number) => {
+    setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx });
+    setTxnForm({ label: '', amount: 0, currency: 'AED' });
+    setTxnOpen(true);
+  };
+
+  const openTxnEdit = (posteIdx: number, editIdx: number) => {
+    if (!m) return;
+    const txns = m.actual[posteIdx]?.txns || [];
+    const t = txns[editIdx];
+    if (!t) return;
+    setTxnTarget({ posteIdx, editIdx });
+    setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED' });
+    setTxnOpen(true);
+  };
+
+  const openTxnEditExtra = (extraIdx: number, editIdx: number) => {
+    if (!m) return;
+    const txns = m.extraActual?.[extraIdx]?.txns || [];
+    const t = txns[editIdx];
+    if (!t) return;
+    setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx, editIdx });
+    setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED' });
+    setTxnOpen(true);
+  };
+
+  const confirmTxn = () => {
+    if (!m || !txnTarget || txnForm.amount <= 0) return;
+    const rate = state.rate;
+    const amountAed = txnForm.currency === 'EUR' ? txnForm.amount * rate : txnForm.amount;
+    const eurVal = txnForm.currency === 'EUR' ? txnForm.amount : txnForm.amount / rate;
+    const txnEntry: Transaction = {
+      label: txnForm.label || '---',
+      amount: Math.round(amountAed * 100) / 100,
+      rate,
+      eur: Math.round(eurVal * 100) / 100,
+      date: new Date().toISOString().split('T')[0],
+      currency: txnForm.currency,
+    };
+    // @ts-expect-error: originalAmount for edit round-trip
+    txnEntry.originalAmount = Math.round(txnForm.amount * 100) / 100;
+
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
+        const extraActual = [...(mo.extraActual || [])];
+        const r = { ...extraActual[txnTarget.extraIdx] };
+        const txns = [...(r.txns || [])];
+        if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
+        else txns.push(txnEntry);
+        r.txns = txns;
+        r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+        extraActual[txnTarget.extraIdx] = r;
+        return { ...mo, extraActual };
+      } else {
+        const actual = [...mo.actual];
+        const row = { ...actual[txnTarget.posteIdx] };
+        const txns = [...(row.txns || [])];
+        if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
+        else txns.push(txnEntry);
+        row.txns = txns;
+        const p = state.postes[txnTarget.posteIdx];
+        if (p?.isAed) {
+          row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+        } else {
+          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+        }
+        actual[txnTarget.posteIdx] = row;
+        return { ...mo, actual };
+      }
+    });
+    setState({ ...state, months });
+    setTxnOpen(false);
+    save();
+  };
+
+  const deleteTxn = (posteIdx: number, txnIdx: number) => {
+    if (!m) return;
+    const rate = state.rate;
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const actual = [...mo.actual];
+      const row = { ...actual[posteIdx] };
+      const txns = (row.txns || []).filter((_, i) => i !== txnIdx);
+      row.txns = txns;
+      const p = state.postes[posteIdx];
+      if (txns.length === 0) {
+        if (p?.isAed) { row.aed = 0; row.eur = null; }
+        else { row.eur = 0; }
+      } else {
+        if (p?.isAed) {
+          row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+        } else {
+          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+        }
+      }
+      actual[posteIdx] = row;
+      return { ...mo, actual };
+    });
+    setState({ ...state, months });
+    save();
+  };
+
+  const deleteTxnExtra = (extraIdx: number, txnIdx: number) => {
+    if (!m) return;
+    const rate = state.rate;
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const extraActual = [...(mo.extraActual || [])];
+      const r = { ...extraActual[extraIdx] };
+      const txns = (r.txns || []).filter((_, i) => i !== txnIdx);
+      r.txns = txns;
+      r.aed = txns.length > 0 ? Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100 : 0;
+      r.eur = txns.length > 0 ? Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100 : 0;
+      extraActual[extraIdx] = r;
+      return { ...mo, extraActual };
+    });
+    setState({ ...state, months });
+    save();
+  };
 
   // Period filter
   const [periodMode, setPeriodMode] = useState(false);
@@ -384,6 +521,12 @@ export default function TrackerPage() {
                   <tr key={i} className="border-b border-border hover:bg-white/[.02]">
                     <td className="px-4 py-2.5 text-[13px] font-semibold">
                       <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="hover:text-accent transition-colors cursor-pointer text-left">{p.name}</button>
+                      <button onClick={() => openTxnAdd(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
+                      {(m.actual[i]?.txns || []).length > 0 && (
+                        <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20 ml-1">
+                          {(m.actual[i]?.txns || []).length}
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {p.isAed ? <CellInput value={row.aed} onChange={v => updateActual(i, v)} /> : <span className="font-mono text-xs text-t-3">—</span>}
@@ -406,7 +549,13 @@ export default function TrackerPage() {
                 const eur = r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
                 return (
                   <tr key={`ea${i}`} className="border-b border-border hover:bg-white/[.02]">
-                    <td className="px-4 py-2.5 text-[13px] font-semibold">{r.name}</td>
+                    <td className="px-4 py-2.5 text-[13px] font-semibold">
+                      {r.name}
+                      <button onClick={() => openTxnAddExtra(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
+                      {(r.txns || []).length > 0 && (
+                        <span className="text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded ml-1">{(r.txns || []).length}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value">{f0(r.aed)}</span></td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value">{f$(eur)}</span></td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-[11px] text-t-3">—</span></td>
@@ -587,31 +736,45 @@ export default function TrackerPage() {
               </div>
 
               {/* Transactions */}
-              {txns.length > 0 && (
-                <div>
-                  <div className="text-[10px] text-t-3 uppercase tracking-wider font-medium mb-2">Transactions ({txns.length})</div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <div className="text-[10px] text-t-3 uppercase tracking-wider font-medium">Transactions ({txns.length})</div>
+                  <button onClick={() => openTxnAdd(slidePoste.idx)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded cursor-pointer hover:bg-accent/20 font-bold">+ Ajouter</button>
+                </div>
+                {txns.length > 0 ? (
                   <div className="space-y-1.5">
                     {txns.map((t, ti) => (
-                      <div key={ti} className="flex justify-between items-center py-2 px-3 bg-bg-3 border border-border rounded-sm">
+                      <div key={ti} className="flex justify-between items-center py-2 px-3 bg-bg-3 border border-border rounded-sm group">
                         <div>
                           <div className="text-xs font-medium">{t.label || 'Transaction'}</div>
-                          {t.date && <div className="text-[10px] text-t-3">{t.date}</div>}
+                          <div className="flex items-center gap-2">
+                            {t.date && <span className="text-[10px] text-t-3">{t.date}</span>}
+                            {t.currency === 'EUR' && <span className="text-[8px] text-info bg-info/10 px-1 rounded">EUR</span>}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-mono text-xs font-semibold mono-value">{f$(t.eur || t.amount / (t.rate || m.rate))} €</div>
-                          <div className="text-[10px] text-t-3 font-mono">{f0(t.amount)} {t.currency}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div className="font-mono text-xs font-semibold mono-value">{f$(t.eur || t.amount / (t.rate || m.rate))} €</div>
+                            <div className="text-[10px] text-t-3 font-mono">{f0(t.amount)} AED</div>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => openTxnEdit(slidePoste.idx, ti)} className="text-[10px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20">✎</button>
+                            <button onClick={() => deleteTxn(slidePoste.idx, ti)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
+                          </div>
                         </div>
                       </div>
                     ))}
+                    <div className="flex justify-between items-center pt-2 px-3 border-t border-border">
+                      <span className="text-[10px] text-t-3 font-semibold uppercase">Total ({txns.length})</span>
+                      <span className="font-mono text-xs font-bold mono-value">{f$(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || m.rate)), 0))} €</span>
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {txns.length === 0 && (
-                <div className="text-center py-4 text-t-3 text-xs">
-                  Pas de transactions détaillées pour ce poste.
-                </div>
-              )}
+                ) : (
+                  <div className="text-center py-4 text-t-3 text-xs">
+                    Aucune transaction. Cliquez + pour en ajouter.
+                  </div>
+                )}
+              </div>
 
               {/* Mini history */}
               <div>
@@ -632,6 +795,35 @@ export default function TrackerPage() {
           );
         })()}
       </SlideOver>
+
+      {/* Transaction Modal */}
+      <Modal open={txnOpen} onClose={() => setTxnOpen(false)} title={txnTarget?.editIdx !== undefined ? 'Modifier la transaction' : 'Ajouter une transaction'}>
+        <div className="space-y-3.5">
+          <FormField label="Libellé">
+            <input className="fi" value={txnForm.label} onChange={e => setTxnForm({ ...txnForm, label: e.target.value })} placeholder="Ex: Carrefour, Uber..." autoFocus />
+          </FormField>
+          <FormField label="Devise">
+            <div className="flex gap-1">
+              {(['AED', 'EUR'] as const).map(c => (
+                <button key={c} onClick={() => setTxnForm({ ...txnForm, currency: c })} className={`flex-1 py-1.5 text-xs font-semibold rounded-sm cursor-pointer transition-all ${txnForm.currency === c ? 'bg-accent text-black' : 'bg-bg-4 text-t-2 border border-border hover:bg-surface-hover'}`}>{c}</button>
+              ))}
+            </div>
+          </FormField>
+          <FormField label={`Montant (${txnForm.currency})`}>
+            <input className="fi" type="number" value={txnForm.amount || ''} onChange={e => setTxnForm({ ...txnForm, amount: parseFloat(e.target.value) || 0 })} step="0.01" />
+          </FormField>
+          {txnForm.amount > 0 && (
+            <div className="text-[11px] text-t-3 font-mono px-1">
+              = {txnForm.currency === 'AED' ? `${f$(txnForm.amount / state.rate)} €` : `${f0(txnForm.amount * state.rate)} AED`}
+              <span className="text-t-4 ml-2">({state.rate.toFixed(4)})</span>
+            </div>
+          )}
+          <div className="flex gap-2.5 mt-5">
+            <button onClick={confirmTxn} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">{txnTarget?.editIdx !== undefined ? 'Modifier' : 'Ajouter'}</button>
+            <button onClick={() => setTxnOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Period Filter Modal */}
       <Modal open={periodOpen} onClose={() => setPeriodOpen(false)} title="Filtrer par période">
