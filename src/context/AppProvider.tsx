@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, useRef, useMemo, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
 import { AppState, Month, Space, Poste } from '@/lib/types';
 import { DEFAULT_POSTES } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
@@ -119,6 +119,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const spaces = useMemo(() => stateToSpaces(state), [state]);
   const activeSpace = useMemo(() => spaces.find(s => s.id === activeSpaceId) || spaces[0], [spaces, activeSpaceId]);
+
+  // Auto-restore from localStorage on mount
+  useEffect(() => {
+    const uid = localStorage.getItem('fdxb_uid');
+    const savedState = localStorage.getItem('fdxb_state');
+    if (uid && savedState) {
+      try {
+        const data: AppState = JSON.parse(savedState);
+        if (!data.postes) data.postes = JSON.parse(JSON.stringify(DEFAULT_POSTES));
+        if (!data.months) data.months = [];
+        if (!data.revenus) data.revenus = { objectif: 5000, categories: [], months: {} };
+        if (!data.emmenagement) data.emmenagement = [];
+        setStateRaw(data);
+        setLiveRate(data.rate);
+        setUserId(uid);
+        setSyncStatus('ok');
+        const sp = stateToSpaces(data);
+        const activeId = data.activeSpaceId || sp[0].id;
+        setActiveSpaceIdRaw(activeId);
+        const active = sp.find(s => s.id === activeId) || sp[0];
+        if (active.months.length > 0) setCurMonth(active.months[active.months.length - 1].id);
+      } catch {}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setState = useCallback((s: AppState) => {
     setStateRaw(s);
