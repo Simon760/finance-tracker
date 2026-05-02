@@ -807,7 +807,7 @@ export default function TrackerPage() {
           return `Transaction — ${posteName}`;
         })()
       }>
-        <div className="space-y-3.5">
+        <div className="space-y-4">
           <FormField label="Libellé">
             <input className="fi" value={txnForm.label} onChange={e => setTxnForm({ ...txnForm, label: e.target.value })} placeholder="Ex: Carrefour, Uber..." autoFocus />
           </FormField>
@@ -815,24 +815,32 @@ export default function TrackerPage() {
             <input className="fi" type="date" value={txnForm.date} onChange={e => setTxnForm({ ...txnForm, date: e.target.value })} />
           </FormField>
           <FormField label="Devise">
-            <div className="flex gap-1">
+            <div className="flex bg-bg-4 rounded-md p-0.5">
               {(['AED', 'EUR'] as const).map(c => (
-                <button key={c} onClick={() => setTxnForm({ ...txnForm, currency: c })} className={`flex-1 py-1.5 text-xs font-semibold rounded-sm cursor-pointer transition-all ${txnForm.currency === c ? 'bg-accent text-black' : 'bg-bg-4 text-t-2 border border-border hover:bg-surface-hover'}`}>{c}</button>
+                <button key={c} onClick={() => setTxnForm({ ...txnForm, currency: c })} className={`flex-1 py-1.5 text-xs font-semibold rounded cursor-pointer transition-all ${txnForm.currency === c ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3 hover:text-t-2'}`}>{c}</button>
               ))}
             </div>
           </FormField>
           <FormField label={`Montant (${txnForm.currency})`}>
             <input className="fi" type="number" value={txnForm.amount || ''} onChange={e => setTxnForm({ ...txnForm, amount: parseFloat(e.target.value) || 0 })} step="0.01" />
           </FormField>
-          {txnForm.amount > 0 && (
-            <div className="text-[11px] text-t-3 font-mono px-1 flex items-center gap-2">
-              <span>= {txnForm.currency === 'AED' ? `${f$(txnForm.amount / state.rate)} €` : `${f0(txnForm.amount * state.rate)} AED`}</span>
-              <span className="text-t-4">Taux: {state.rate.toFixed(4)}</span>
+          <div className="bg-bg-4 rounded-lg px-4 py-3 space-y-1.5">
+            <div className="flex justify-between items-center">
+              <span className="text-[12px] text-t-3">Taux live</span>
+              <span className="text-[13px] text-t-1 font-mono">{state.rate.toFixed(4)}</span>
             </div>
-          )}
+            <div className="flex justify-between items-center">
+              <span className="text-[12px] text-t-3">Équivalent {txnForm.currency === 'AED' ? 'EUR' : 'AED'}</span>
+              <span className="text-[13px] font-mono" style={{ color: '#10b981' }}>
+                {txnForm.amount > 0
+                  ? txnForm.currency === 'AED' ? f$(txnForm.amount / state.rate) : f0(txnForm.amount * state.rate)
+                  : '—'}
+              </span>
+            </div>
+          </div>
           <div className="flex gap-2.5 mt-5">
-            <button onClick={confirmTxn} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">{txnTarget?.editIdx !== undefined ? 'Modifier' : 'Ajouter'}</button>
-            <button onClick={() => setTxnOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+            <button onClick={confirmTxn} className="px-6 py-2 bg-accent text-black font-semibold text-sm rounded-full cursor-pointer hover:opacity-90">{txnTarget?.editIdx !== undefined ? 'Modifier' : 'Ajouter'}</button>
+            <button onClick={() => setTxnOpen(false)} className="px-5 py-2 bg-bg-4 text-t-2 text-sm font-medium rounded-full cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>
