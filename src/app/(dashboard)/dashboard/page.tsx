@@ -59,6 +59,9 @@ export default function DashboardPage() {
     const fin = m.soldeEnd > 0 ? m.soldeEnd : prevEnd;
     return { name: m.id.slice(0, 3), Début: debut, Fin: fin };
   });
+  const soldeAllVals = soldeData.flatMap(d => [d.Début, d.Fin]).filter(v => v > 0);
+  const soldeMin = soldeAllVals.length > 0 ? Math.floor(Math.min(...soldeAllVals) * 0.95 / 5000) * 5000 : 0;
+  const soldeMax = soldeAllVals.length > 0 ? Math.ceil(Math.max(...soldeAllVals) * 1.05 / 5000) * 5000 : 100000;
 
   // Avg expense pie
   const avgExp: Record<string, number> = {};
@@ -126,7 +129,7 @@ export default function DashboardPage() {
             <LineChart data={soldeData}>
               <CartesianGrid stroke="#1e1e2a" />
               <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-              <YAxis tick={{ fill: '#52525b', fontSize: 11 }} />
+              <YAxis domain={[soldeMin, soldeMax]} tick={{ fill: '#52525b', fontSize: 11 }} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${f0(Number(v))} AED`} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="Début" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} />
