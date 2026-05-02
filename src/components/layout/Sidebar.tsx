@@ -21,10 +21,6 @@ const globalNavItems = [
   { href: '/networth', label: 'Net Worth', icon: TrendingUp },
 ];
 
-const sysNavItems = [
-  { href: '/settings', label: 'Paramètres', icon: Settings },
-];
-
 const CURRENCY_SYMBOLS: Record<string, string> = {
   AED: 'د.إ', EUR: '€', USD: '$', GBP: '£', THB: '฿', MAD: 'DH', CHF: 'CHF', CAD: 'C$', SGD: 'S$',
 };
@@ -156,31 +152,22 @@ export default function Sidebar() {
       <div className="h-px bg-border my-2" />
 
       {/* Nav - Global */}
-      {spaces.length > 1 && (
-        <>
-          <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Global</div>
-          <nav className="flex flex-col gap-0.5 mb-2">
-            {globalNavItems.map(item => <NavButton key={item.href} {...item} />)}
-          </nav>
-          <div className="h-px bg-border my-2" />
-        </>
-      )}
-
-      {/* Nav - Système */}
-      <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Système</div>
-      <nav className="flex flex-col gap-0.5">
-        {sysNavItems.map(item => <NavButton key={item.href} {...item} />)}
-        <button
-          onClick={toggleHidden}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] font-medium w-full text-left text-t-2 border border-transparent hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
-        >
-          {hiddenMode ? <EyeOff size={16} className="opacity-50" /> : <Eye size={16} className="opacity-50" />}
-          {hiddenMode ? 'Afficher' : 'Masquer'}
-        </button>
+      <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Global</div>
+      <nav className="flex flex-col gap-0.5 mb-2">
+        {globalNavItems.map(item => <NavButton key={item.href} {...item} />)}
       </nav>
 
       {/* Footer - Rate */}
-      <div className="mt-auto p-3.5 bg-bg-3 border border-border rounded-sm">
+      <div className="mt-auto">
+        <div className="flex justify-end gap-1.5 mb-1.5">
+          <button onClick={() => router.push('/settings')} className={`w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all cursor-pointer ${isActive('/settings') ? 'bg-bg-4 border border-border' : 'text-t-3 hover:bg-bg-3 hover:text-t-1'}`} title="Paramètres">
+            <Settings size={14} />
+          </button>
+          <button onClick={toggleHidden} className="w-7 h-7 flex items-center justify-center rounded-md text-t-3 hover:bg-bg-3 hover:text-t-1 transition-all cursor-pointer" title={hiddenMode ? 'Afficher' : 'Masquer'}>
+            {hiddenMode ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+        <div className="p-3.5 bg-bg-3 border border-border rounded-sm">
         <div className="flex justify-between items-center">
           <span className="text-[9px] text-t-3 uppercase tracking-wider">EUR / {activeSpace.localCurrency}</span>
           <button onClick={refreshRate} className="text-t-3 hover:text-t-1 transition-colors cursor-pointer" title="Rafraîchir">
@@ -199,6 +186,7 @@ export default function Sidebar() {
             {syncStatus === 'ok' ? 'SYNCED' : 'SYNCING...'}
           </div>
         )}
+        </div>
       </div>
 
       {/* New Space Modal */}

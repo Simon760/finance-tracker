@@ -25,7 +25,7 @@ export default function RevenusPage() {
   const [page, setPage] = useState<'tracker' | 'global'>('tracker');
   const [addOpen, setAddOpen] = useState(false);
   const [editIdx, setEditIdx] = useState<{ month: string; idx: number } | null>(null);
-  const [curTab, setCurTab] = useState<string>('all');
+  const [curTab, setCurTab] = useState<string>('');
   const [form, setForm] = useState<RevenuEntry>({ date: '', client: '', cat: '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
   const [formMonth, setFormMonth] = useState('');
 
@@ -35,7 +35,8 @@ export default function RevenusPage() {
     return MOIS_LIST.filter(m => existing.includes(m));
   }, [rev.months]);
 
-  const visibleMonths = curTab === 'all' ? orderedMonths : [curTab];
+  const effectiveTab = curTab || orderedMonths[orderedMonths.length - 1] || '';
+  const visibleMonths = effectiveTab ? [effectiveTab] : [];
 
   // KPI totals
   const totalConfirmed = useMemo(() => {
@@ -141,7 +142,7 @@ export default function RevenusPage() {
 
   // ─── TRACKER VIEW ───
   const renderTracker = () => {
-    const curMonthName = curTab !== 'all' ? curTab : orderedMonths[orderedMonths.length - 1] || '';
+    const curMonthName = effectiveTab;
     const curEntries = rev.months[curMonthName] || [];
     const monthCashed = curEntries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
     const monthPreview = curEntries.filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0);
@@ -174,13 +175,10 @@ export default function RevenusPage() {
 
         {/* Month tabs */}
         <div className="flex gap-1 flex-wrap mb-5">
-          <button onClick={() => setCurTab('all')} className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${curTab === 'all' ? 'bg-bg-4 text-t-1 border border-border-2' : 'text-t-3 border border-transparent hover:text-t-2'}`}>
-            Tous
-          </button>
           {(MOIS_LIST as readonly string[]).map(m => {
             const hasData = rev.months[m] && rev.months[m].length > 0;
             return (
-              <button key={m} onClick={() => setCurTab(m)} className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${curTab === m ? 'bg-bg-4 text-t-1 border border-border-2' : `${hasData ? 'text-t-2' : 'text-t-4'} border border-transparent hover:text-t-2`}`}>
+              <button key={m} onClick={() => setCurTab(m)} className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${effectiveTab === m ? 'bg-bg-4 text-t-1 border border-border-2' : `${hasData ? 'text-t-2' : 'text-t-4'} border border-transparent hover:text-t-2`}`}>
                 {m.slice(0, 3)}
               </button>
             );
@@ -392,8 +390,8 @@ export default function RevenusPage() {
             </thead>
             <tbody>
               {monthData.filter(m => m.hasData).map(m => (
-                <tr key={m.name} className="border-b border-border hover:bg-white/[.02]">
-                  <td className="px-4 py-2.5 text-[13px] font-semibold">{m.name}</td>
+                <tr key={m.name} className="border-b border-border hover:bg-white/[.02] cursor-pointer" onClick={() => { setCurTab(m.name); setPage('tracker'); }}>
+                  <td className="px-4 py-2.5 text-[13px] font-semibold text-accent">{m.name}</td>
                   <td className="px-4 py-2.5 text-right font-mono text-xs mono-value">{f$(obj)} €</td>
                   <td className="px-4 py-2.5 text-right font-mono text-xs mono-value">{f$(m.contracted)} €</td>
                   <td className="px-4 py-2.5 text-right font-mono text-xs mono-value">{f$(m.cashed)} €</td>

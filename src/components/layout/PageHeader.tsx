@@ -1,7 +1,6 @@
 'use client';
 
 import { useApp } from '@/context/AppProvider';
-import { useEffect, useState } from 'react';
 
 interface PageHeaderProps {
   breadcrumb: { label: string; current?: boolean }[];
@@ -12,30 +11,15 @@ interface PageHeaderProps {
 
 function LastUpdateBadge() {
   const { state } = useApp();
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const iv = setInterval(() => setTick(t => t + 1), 60000);
-    return () => clearInterval(iv);
-  }, []);
-
   if (!state.lastUpdate) return null;
 
   const d = new Date(state.lastUpdate);
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffH = Math.floor(diffMin / 60);
-
-  let ago: string;
-  if (diffMin < 1) ago = "à l'instant";
-  else if (diffMin < 60) ago = `il y a ${diffMin} min`;
-  else if (diffH < 24) ago = `il y a ${diffH}h${diffMin % 60 > 0 ? String(diffMin % 60).padStart(2, '0') : ''}`;
-  else ago = d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timeStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <span className="text-[10px] text-t-4 font-mono ml-auto">
-      Maj: {ago}
+      Maj: {dateStr} à {timeStr}
     </span>
   );
 }
