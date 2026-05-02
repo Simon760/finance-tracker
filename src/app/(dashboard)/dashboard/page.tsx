@@ -51,13 +51,14 @@ export default function DashboardPage() {
     Revenus: dashCur === 'EUR' ? monthEarnEur(m) : monthEarnAed(m),
   }));
 
-  // Solde data
+  // Solde data — if soldeEnd is 0, carry forward previous month's soldeEnd
   const soldeMonths = ms.filter(m => m.soldeStart > 0 || m.soldeEnd > 0);
-  const soldeData = soldeMonths.map(m => ({
-    name: m.id.slice(0, 3),
-    Début: m.soldeStart || 0,
-    Fin: m.soldeEnd || 0,
-  }));
+  const soldeData = soldeMonths.map((m, i) => {
+    const prevEnd = i > 0 ? soldeMonths[i - 1].soldeEnd || 0 : 0;
+    const debut = m.soldeStart > 0 ? m.soldeStart : prevEnd;
+    const fin = m.soldeEnd > 0 ? m.soldeEnd : prevEnd;
+    return { name: m.id.slice(0, 3), Début: debut, Fin: fin };
+  });
 
   // Avg expense pie
   const avgExp: Record<string, number> = {};

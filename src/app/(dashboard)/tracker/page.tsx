@@ -32,17 +32,17 @@ export default function TrackerPage() {
   // Transaction modal
   const [txnOpen, setTxnOpen] = useState(false);
   const [txnTarget, setTxnTarget] = useState<{ posteIdx: number; editIdx?: number; isExtra?: boolean; extraIdx?: number } | null>(null);
-  const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR' });
+  const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: new Date().toISOString().split('T')[0] });
 
   const openTxnAdd = (posteIdx: number) => {
     setTxnTarget({ posteIdx });
-    setTxnForm({ label: '', amount: 0, currency: 'AED' });
+    setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
     setTxnOpen(true);
   };
 
   const openTxnAddExtra = (extraIdx: number) => {
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx });
-    setTxnForm({ label: '', amount: 0, currency: 'AED' });
+    setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
     setTxnOpen(true);
   };
 
@@ -53,7 +53,7 @@ export default function TrackerPage() {
     if (!t) return;
     setTxnTarget({ posteIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED' });
+    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
     setTxnOpen(true);
   };
 
@@ -64,7 +64,7 @@ export default function TrackerPage() {
     if (!t) return;
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED' });
+    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
     setTxnOpen(true);
   };
 
@@ -78,7 +78,7 @@ export default function TrackerPage() {
       amount: Math.round(amountAed * 100) / 100,
       rate,
       eur: Math.round(eurVal * 100) / 100,
-      date: new Date().toISOString().split('T')[0],
+      date: txnForm.date || new Date().toISOString().split('T')[0],
       currency: txnForm.currency,
     };
     // @ts-expect-error: originalAmount for edit round-trip
@@ -797,10 +797,22 @@ export default function TrackerPage() {
       </SlideOver>
 
       {/* Transaction Modal */}
-      <Modal open={txnOpen} onClose={() => setTxnOpen(false)} title={txnTarget?.editIdx !== undefined ? 'Modifier la transaction' : 'Ajouter une transaction'}>
+      <Modal open={txnOpen} onClose={() => setTxnOpen(false)} title={
+        (() => {
+          const posteName = txnTarget
+            ? txnTarget.isExtra && txnTarget.extraIdx !== undefined
+              ? m?.extraActual?.[txnTarget.extraIdx]?.name || 'Extra'
+              : state.postes[txnTarget.posteIdx]?.name || 'Poste'
+            : 'Poste';
+          return `Transaction — ${posteName}`;
+        })()
+      }>
         <div className="space-y-3.5">
           <FormField label="Libellé">
             <input className="fi" value={txnForm.label} onChange={e => setTxnForm({ ...txnForm, label: e.target.value })} placeholder="Ex: Carrefour, Uber..." autoFocus />
+          </FormField>
+          <FormField label="Date">
+            <input className="fi" type="date" value={txnForm.date} onChange={e => setTxnForm({ ...txnForm, date: e.target.value })} />
           </FormField>
           <FormField label="Devise">
             <div className="flex gap-1">
@@ -813,9 +825,9 @@ export default function TrackerPage() {
             <input className="fi" type="number" value={txnForm.amount || ''} onChange={e => setTxnForm({ ...txnForm, amount: parseFloat(e.target.value) || 0 })} step="0.01" />
           </FormField>
           {txnForm.amount > 0 && (
-            <div className="text-[11px] text-t-3 font-mono px-1">
-              = {txnForm.currency === 'AED' ? `${f$(txnForm.amount / state.rate)} €` : `${f0(txnForm.amount * state.rate)} AED`}
-              <span className="text-t-4 ml-2">({state.rate.toFixed(4)})</span>
+            <div className="text-[11px] text-t-3 font-mono px-1 flex items-center gap-2">
+              <span>= {txnForm.currency === 'AED' ? `${f$(txnForm.amount / state.rate)} €` : `${f0(txnForm.amount * state.rate)} AED`}</span>
+              <span className="text-t-4">Taux: {state.rate.toFixed(4)}</span>
             </div>
           )}
           <div className="flex gap-2.5 mt-5">
