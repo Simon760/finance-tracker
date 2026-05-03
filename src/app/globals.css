@@ -64,17 +64,26 @@ select.fi { @apply cursor-pointer; }
   font-family: 'Inter', sans-serif;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1, 'cv11' 1, 'ss01' 1, 'ss03' 1;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
 /* Hero KPI numerics — large display values, Revolut/Qonto-style */
 .hero-num {
   font-family: 'Inter', sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.035em;
+  font-weight: 800;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1, 'cv11' 1, 'ss01' 1, 'ss03' 1;
+}
+
+/* Any element using the font-mono utility (table number cells) — keep bold */
+.font-mono {
+  font-family: 'Inter', sans-serif !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv11' 1, 'ss01' 1, 'ss03' 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 /* ─── Privacy mode ─── replace digits with fixed 6-dot mask */
