@@ -159,6 +159,18 @@ export default function RevenusPage() {
 
     return (
       <>
+        {/* Month tabs */}
+        <div className="flex gap-1 flex-wrap mb-5">
+          {(MOIS_LIST as readonly string[]).map(m => {
+            const hasData = rev.months[m] && rev.months[m].length > 0;
+            return (
+              <button key={m} onClick={() => setCurTab(m)} className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${effectiveTab === m ? 'bg-bg-4 text-t-1 border border-border-2' : `${hasData ? 'text-t-2' : 'text-t-4'} border border-transparent hover:text-t-2`}`}>
+                {m.slice(0, 3)}
+              </button>
+            );
+          })}
+        </div>
+
         {/* KPIs for current month */}
         <div className="grid grid-cols-5 gap-3 mb-5 max-lg:grid-cols-3 max-md:grid-cols-1">
           <KpiCard label="Objectif" value={`${f$(obj)} €`} accentColor="#ef4444" />
@@ -171,18 +183,6 @@ export default function RevenusPage() {
             <div className="font-mono text-[22px] font-bold tracking-tight" style={{ color: pctMonth >= 100 ? '#10b981' : '#f59e0b' }}>{pctMonth.toFixed(0)}%</div>
             <div className={`text-[11px] font-mono mt-1 ${delta >= 0 ? 'text-accent' : 'text-danger'}`}>{delta >= 0 ? '+' : ''}{f$(delta)} €</div>
           </div>
-        </div>
-
-        {/* Month tabs */}
-        <div className="flex gap-1 flex-wrap mb-5">
-          {(MOIS_LIST as readonly string[]).map(m => {
-            const hasData = rev.months[m] && rev.months[m].length > 0;
-            return (
-              <button key={m} onClick={() => setCurTab(m)} className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${effectiveTab === m ? 'bg-bg-4 text-t-1 border border-border-2' : `${hasData ? 'text-t-2' : 'text-t-4'} border border-transparent hover:text-t-2`}`}>
-                {m.slice(0, 3)}
-              </button>
-            );
-          })}
         </div>
 
         {/* Revenue tables by month */}

@@ -91,7 +91,7 @@ export default function Sidebar() {
 
       {/* User */}
       {userId && (
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-bg-3 border border-border rounded-sm mb-4">
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-bg-3 border border-border rounded-sm mb-3">
           <span className="text-sm">👤</span>
           <span className="text-xs font-semibold flex-1 truncate">{userId}</span>
           <button onClick={logout} className="text-t-3 hover:text-danger p-1 rounded transition-colors" title="Déconnexion">
@@ -100,8 +100,16 @@ export default function Sidebar() {
         </div>
       )}
 
+      {/* Nav - Global (above space) */}
+      <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Global</div>
+      <nav className="flex flex-col gap-0.5 mb-3">
+        {globalNavItems.map(item => <NavButton key={item.href} {...item} />)}
+      </nav>
+
+      <div className="h-px bg-border my-2" />
+
       {/* Space Switcher */}
-      <div className="relative mb-5">
+      <div className="relative mb-3">
         <button
           onClick={() => setSwitcherOpen(!switcherOpen)}
           className="flex items-center gap-2.5 px-3 py-2.5 w-full bg-bg-3 border border-border rounded-sm cursor-pointer hover:border-border-2 hover:bg-surface-hover transition-all"
@@ -147,14 +155,6 @@ export default function Sidebar() {
       <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Espace</div>
       <nav className="flex flex-col gap-0.5 mb-2">
         {spaceNavItems.map(item => <NavButton key={item.href} {...item} />)}
-      </nav>
-
-      <div className="h-px bg-border my-2" />
-
-      {/* Nav - Global */}
-      <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Global</div>
-      <nav className="flex flex-col gap-0.5 mb-2">
-        {globalNavItems.map(item => <NavButton key={item.href} {...item} />)}
       </nav>
 
       {/* Footer - Rate */}
