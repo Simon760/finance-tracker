@@ -98,40 +98,40 @@ export default function GlobalPage() {
       <PageHeader breadcrumb={[{ label: 'Vue Globale', current: true }]} title="Vue Globale" subtitle="Dashboard consolidé — tous les spaces" />
 
       {/* Grand Total KPIs */}
-      <div className="grid grid-cols-4 gap-3 mb-5 max-lg:grid-cols-2 max-md:grid-cols-1">
-        <KpiCard label="Total dépensé" value={`${f$(grandTotalSpent)} €`} accentColor="#ef4444" />
-        <KpiCard label="Total revenus" value={`${f$(grandTotalRev)} €`} accentColor="#10b981" />
-        <KpiCard label="Balance nette" value={`${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`} accentColor={grandBalance >= 0 ? '#10b981' : '#ef4444'} />
-        <KpiCard label="Patrimoine net" value={`${f$(netWorth)} €`} sub={`Banques: ${f$(totalBankEur)} € · Actifs: ${f$(totalAssetsEur)} €`} accentColor="#8b5cf6" />
+      <div className="grid grid-cols-4 gap-3 mb-6 max-lg:grid-cols-2 max-md:grid-cols-1">
+        <KpiCard label="Total dépensé" value={`${f$(grandTotalSpent)} €`} accentColor="#ef4444" hero />
+        <KpiCard label="Total revenus" value={`${f$(grandTotalRev)} €`} accentColor="#10b981" hero />
+        <KpiCard label="Balance nette" value={`${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`} accentColor={grandBalance >= 0 ? '#10b981' : '#ef4444'} hero />
+        <KpiCard label="Patrimoine net" value={`${f$(netWorth)} €`} sub={`Banques: ${f$(totalBankEur)} € · Actifs: ${f$(totalAssetsEur)} €`} accentColor="#8b5cf6" hero />
       </div>
 
       {/* Space cards */}
       <div className="text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-2 px-1">Mes Spaces</div>
       <div className="grid grid-cols-2 gap-3 mb-5 max-md:grid-cols-1">
         {spaceStats.map(sp => (
-          <div key={sp.id} onClick={() => goToSpace(sp.id)} className="bg-bg-3 border border-border rounded-md p-4 hover:border-accent/40 transition-all cursor-pointer group">
-            <div className="flex items-center gap-2.5 mb-3">
-              <span className="text-2xl">{sp.emoji}</span>
+          <div key={sp.id} onClick={() => goToSpace(sp.id)} className="bg-bg-3 border border-border rounded-lg p-5 hover:border-border-2 hover:bg-bg-3/80 transition-all cursor-pointer group shadow-inset-border animate-fade-up">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl leading-none">{sp.emoji}</span>
               <div>
-                <div className="text-sm font-semibold group-hover:text-accent transition-colors">{sp.name}</div>
-                <div className="text-[10px] text-t-3 font-mono">{sp.currency} · {sp.monthCount} mois</div>
+                <div className="text-[14px] font-semibold tracking-tight group-hover:text-accent transition-colors">{sp.name}</div>
+                <div className="text-[10px] text-t-3 font-mono mt-0.5">{sp.currency} · {sp.monthCount} mois</div>
               </div>
-              <span className={`ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full border ${sp.status === 'active' ? 'text-accent bg-accent/10 border-accent/25' : sp.status === 'archived' ? 'text-t-3 bg-bg-4 border-border' : 'text-info bg-info/10 border-info/25'}`}>
+              <span className={`ml-auto pill ${sp.status === 'active' ? 'pill-active' : sp.status === 'archived' ? 'pill-archived' : 'pill-draft'}`}>
                 {sp.status === 'active' ? 'Actif' : sp.status === 'archived' ? 'Archivé' : 'Brouillon'}
               </span>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <div className="text-[9px] text-t-3 uppercase tracking-wider">Dépenses</div>
-                <div className="font-mono text-sm font-semibold mt-0.5 mono-value text-danger">{f$(sp.totalSpent)} €</div>
+                <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Dépenses</div>
+                <div className="hero-num text-[15px] mt-1 mono-value text-danger" style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>{f$(sp.totalSpent)} €</div>
               </div>
               <div>
-                <div className="text-[9px] text-t-3 uppercase tracking-wider">Revenus</div>
-                <div className="font-mono text-sm font-semibold mt-0.5 mono-value text-accent">{f$(sp.totalRevenue)} €</div>
+                <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Revenus</div>
+                <div className="hero-num text-[15px] mt-1 mono-value text-accent" style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>{f$(sp.totalRevenue)} €</div>
               </div>
               <div>
-                <div className="text-[9px] text-t-3 uppercase tracking-wider">Balance</div>
-                <div className={`font-mono text-sm font-semibold mt-0.5 mono-value ${sp.balance >= 0 ? 'text-accent' : 'text-danger'}`}>
+                <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Balance</div>
+                <div className={`hero-num text-[15px] mt-1 mono-value ${sp.balance >= 0 ? 'text-accent' : 'text-danger'}`} style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>
                   {sp.balance >= 0 ? '+' : ''}{f$(sp.balance)} €
                 </div>
               </div>

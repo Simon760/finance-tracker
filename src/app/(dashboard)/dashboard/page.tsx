@@ -101,8 +101,8 @@ export default function DashboardPage() {
         </div>
       </PageHeader>
 
-      <div className="max-w-[400px] mb-5">
-        <KpiCard label="Total dépensé" value={dcFmt(totalSpent, avgRate)} sub={`Moy: ${dcFmt(avg, avgRate)}/mois`} accentColor="#3b82f6" />
+      <div className="max-w-[400px] mb-6">
+        <KpiCard label="Total dépensé" value={dcFmt(totalSpent, avgRate)} sub={`Moy: ${dcFmt(avg, avgRate)}/mois`} accentColor="#3b82f6" hero />
       </div>
 
       {/* Evo Chart */}

@@ -67,12 +67,17 @@ export default function Sidebar() {
   const NavButton = ({ href, label, icon: Icon }: { href: string; label: string; icon: any }) => (
     <button
       onClick={() => router.push(href)}
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] font-medium w-full text-left transition-all cursor-pointer ${
-        isActive(href) ? 'text-t-1 bg-bg-3 border border-border' : 'text-t-2 border border-transparent hover:text-t-1 hover:bg-bg-3'
+      className={`group flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium w-full text-left transition-all cursor-pointer relative ${
+        isActive(href)
+          ? 'text-t-1 bg-bg-3 border border-border-2 shadow-inset-border'
+          : 'text-t-2 border border-transparent hover:text-t-1 hover:bg-bg-3/60'
       }`}
     >
-      <Icon size={16} className={isActive(href) ? 'opacity-90' : 'opacity-50'} />
-      {label}
+      {isActive(href) && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 bg-accent rounded-r-full shadow-glow-sm" />
+      )}
+      <Icon size={15} className={isActive(href) ? 'text-accent' : 'opacity-50 group-hover:opacity-80 transition-opacity'} />
+      <span className="tracking-tight">{label}</span>
     </button>
   );
 
@@ -80,20 +85,20 @@ export default function Sidebar() {
     <aside className="w-[260px] bg-bg-2 border-r border-border fixed top-0 left-0 bottom-0 z-50 flex flex-col p-5 px-3.5 max-md:hidden">
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-2 mb-6">
-        <div className="w-[30px] h-[30px] rounded-lg bg-accent flex items-center justify-center text-black text-[11px] font-extrabold shadow-glow">
+        <div className="w-[32px] h-[32px] rounded-lg bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-black text-[11px] font-extrabold shadow-glow ring-1 ring-accent/30">
           FH
         </div>
         <div>
-          <div className="font-bold text-[15px] tracking-tight">FinanceHQ</div>
-          <div className="text-[9px] text-t-3 uppercase tracking-wider">Cockpit</div>
+          <div className="font-bold text-[15px] tracking-tight leading-none">FinanceHQ</div>
+          <div className="text-[9px] text-t-3 uppercase tracking-[0.18em] mt-1 font-semibold">Cockpit</div>
         </div>
       </div>
 
       {/* User */}
       {userId && (
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-bg-3 border border-border rounded-sm mb-3">
-          <span className="text-sm">👤</span>
-          <span className="text-xs font-semibold flex-1 truncate">{userId}</span>
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-bg-3 border border-border rounded-md mb-3 shadow-inset-border">
+          <span className="w-6 h-6 rounded-full bg-bg-4 border border-border flex items-center justify-center text-[11px]">👤</span>
+          <span className="text-[12px] font-semibold flex-1 truncate tracking-tight">{userId}</span>
           <button onClick={logout} className="text-t-3 hover:text-danger p-1 rounded transition-colors" title="Déconnexion">
             <LogOut size={12} />
           </button>
@@ -101,7 +106,7 @@ export default function Sidebar() {
       )}
 
       {/* Nav - Global (above space) */}
-      <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Global</div>
+      <div className="text-[9px] text-t-4 uppercase tracking-[0.18em] font-semibold px-3 pb-1.5 pt-1">Global</div>
       <nav className="flex flex-col gap-0.5 mb-3">
         {globalNavItems.map(item => <NavButton key={item.href} {...item} />)}
       </nav>
@@ -112,7 +117,7 @@ export default function Sidebar() {
       <div className="relative mb-3">
         <button
           onClick={() => setSwitcherOpen(!switcherOpen)}
-          className="flex items-center gap-2.5 px-3 py-2.5 w-full bg-bg-3 border border-border rounded-sm cursor-pointer hover:border-border-2 hover:bg-surface-hover transition-all"
+          className="flex items-center gap-2.5 px-3 py-2.5 w-full bg-bg-3 border border-border rounded-md cursor-pointer hover:border-border-2 hover:bg-surface-hover transition-all shadow-inset-border"
         >
           <span className="text-xl leading-none">{activeSpace.emoji}</span>
           <div className="flex-1 min-w-0 text-left">
@@ -124,7 +129,7 @@ export default function Sidebar() {
 
         {/* Dropdown */}
         {switcherOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-bg-3 border border-border-2 rounded-sm shadow-lg z-50 overflow-hidden">
+          <div className="absolute top-full left-0 right-0 mt-1.5 bg-bg-3 border border-border-2 rounded-md shadow-xl z-50 overflow-hidden animate-fade-up">
             {spaces.map(s => (
               <button
                 key={s.id}
@@ -133,7 +138,7 @@ export default function Sidebar() {
               >
                 <span className="text-lg">{s.emoji}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold truncate">{s.name}</div>
+                  <div className="text-[12px] font-semibold truncate tracking-tight">{s.name}</div>
                   <div className="text-[9px] text-t-3 font-mono">{s.localCurrency}</div>
                 </div>
                 {s.id === activeSpaceId && <span className="text-accent text-xs">✓</span>}
@@ -142,9 +147,9 @@ export default function Sidebar() {
             <div className="border-t border-border">
               <button
                 onClick={() => { setSwitcherOpen(false); setNewSpaceOpen(true); }}
-                className="flex items-center gap-2 px-3 py-2.5 w-full text-left text-[12px] text-t-2 hover:bg-surface-hover transition-all cursor-pointer"
+                className="flex items-center gap-2 px-3 py-2.5 w-full text-left text-[12px] text-t-2 hover:bg-surface-hover hover:text-accent transition-all cursor-pointer"
               >
-                <span className="text-t-3">+</span> Nouveau space
+                <span className="text-accent text-base leading-none">+</span> Nouveau space
               </button>
             </div>
           </div>
@@ -152,40 +157,43 @@ export default function Sidebar() {
       </div>
 
       {/* Nav - Espace */}
-      <div className="text-[9px] text-t-4 uppercase tracking-widest font-semibold px-3 pb-1 pt-1">Espace</div>
+      <div className="text-[9px] text-t-4 uppercase tracking-[0.18em] font-semibold px-3 pb-1.5 pt-1">Espace</div>
       <nav className="flex flex-col gap-0.5 mb-2">
         {spaceNavItems.map(item => <NavButton key={item.href} {...item} />)}
       </nav>
 
       {/* Footer - Rate */}
       <div className="mt-auto">
-        <div className="flex justify-end gap-1.5 mb-1.5">
-          <button onClick={() => router.push('/settings')} className={`w-7 h-7 flex items-center justify-center rounded-md text-sm transition-all cursor-pointer ${isActive('/settings') ? 'bg-bg-4 border border-border' : 'text-t-3 hover:bg-bg-3 hover:text-t-1'}`} title="Paramètres">
-            <Settings size={14} />
+        <div className="flex justify-end gap-1.5 mb-2">
+          <button onClick={() => router.push('/settings')} className={`w-7 h-7 flex items-center justify-center rounded-md transition-all cursor-pointer ${isActive('/settings') ? 'bg-bg-4 border border-border-2 text-t-1' : 'text-t-3 hover:bg-bg-3 hover:text-t-1'}`} title="Paramètres">
+            <Settings size={13} />
           </button>
           <button onClick={toggleHidden} className="w-7 h-7 flex items-center justify-center rounded-md text-t-3 hover:bg-bg-3 hover:text-t-1 transition-all cursor-pointer" title={hiddenMode ? 'Afficher' : 'Masquer'}>
-            {hiddenMode ? <EyeOff size={14} /> : <Eye size={14} />}
+            {hiddenMode ? <EyeOff size={13} /> : <Eye size={13} />}
           </button>
         </div>
-        <div className="p-3.5 bg-bg-3 border border-border rounded-sm">
+        <div className="p-3.5 bg-bg-3 border border-border rounded-md shadow-inset-border relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-accent/[0.03] to-transparent pointer-events-none" />
+        <div className="relative">
         <div className="flex justify-between items-center">
-          <span className="text-[9px] text-t-3 uppercase tracking-wider">EUR / {activeSpace.localCurrency}</span>
-          <button onClick={refreshRate} className="text-t-3 hover:text-t-1 transition-colors cursor-pointer" title="Rafraîchir">
-            <RefreshCw size={12} />
+          <span className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">EUR / {activeSpace.localCurrency}</span>
+          <button onClick={refreshRate} className="text-t-3 hover:text-accent transition-colors cursor-pointer" title="Rafraîchir">
+            <RefreshCw size={11} />
           </button>
         </div>
-        <div className="font-mono text-lg font-semibold mt-1 mono-value">{liveRate.toFixed(4)}</div>
-        <div className="text-[10px] text-t-3 mt-0.5">Taux de conversion</div>
-        <div className="flex items-center gap-1 mt-1 text-[9px] text-accent font-semibold tracking-wider">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow" />
+        <div className="hero-num text-[22px] mt-1 mono-value text-t-1" style={{ fontWeight: 400, letterSpacing: '-0.5px' }}>{liveRate.toFixed(4)}</div>
+        <div className="text-[10px] text-t-3 mt-0.5 tracking-tight">Taux de conversion</div>
+        <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-accent font-bold tracking-[0.14em]">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow shadow-glow-sm" />
           LIVE
         </div>
         {syncStatus !== 'off' && (
-          <div className={`flex items-center gap-1 mt-1 text-[9px] font-semibold tracking-wider ${syncStatus === 'ok' ? 'text-accent' : 'text-warning'}`}>
+          <div className={`flex items-center gap-1.5 mt-1 text-[9px] font-bold tracking-[0.14em] ${syncStatus === 'ok' ? 'text-accent' : 'text-warning'}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'ok' ? 'bg-accent animate-pulse-slow' : 'bg-warning animate-pulse'}`} />
             {syncStatus === 'ok' ? 'SYNCED' : 'SYNCING...'}
           </div>
         )}
+        </div>
         </div>
       </div>
 
