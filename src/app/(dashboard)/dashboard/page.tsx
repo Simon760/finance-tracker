@@ -129,7 +129,7 @@ export default function DashboardPage() {
             <LineChart data={soldeData}>
               <CartesianGrid stroke="#1e1e2a" />
               <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-              <YAxis domain={[soldeMin, soldeMax]} tick={{ fill: '#52525b', fontSize: 11 }} />
+              <YAxis domain={[soldeMin, soldeMax]} allowDataOverflow tick={{ fill: '#52525b', fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${f0(Number(v))} AED`} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="Début" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} />
