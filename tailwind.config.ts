@@ -20,8 +20,8 @@ const config: Config = {
         pink: { DEFAULT: '#ec4899', light: 'rgba(236,72,153,0.1)' },
       },
       fontFamily: {
-        sans: ['DM Sans', 'system-ui', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['Inter', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         sm: '8px',

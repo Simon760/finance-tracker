@@ -2,15 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
+/* Inter — the neo-bank standard (Qonto, Linear, Stripe, Vercel, Notion) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 html, body {
   background: #09090b;
   color: #fafafa;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "ss01", "cv11";
-  letter-spacing: -0.01em;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.011em;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -28,8 +30,9 @@ html, body {
   border: 1px solid #2a2a3a !important;
   border-radius: 10px !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
-  font-family: 'IBM Plex Mono', monospace !important;
+  font-family: 'Inter', sans-serif !important;
   font-size: 11px !important;
+  font-feature-settings: 'tnum' !important;
 }
 
 /* Premium form input */
@@ -56,25 +59,52 @@ select.fi { @apply cursor-pointer; }
   @apply bg-danger/10 text-danger border border-danger/25 hover:bg-danger/15 active:scale-[0.98];
 }
 
-/* Numerics — premium tabular feel */
+/* Numerics — neo-bank tabular feel using Inter (NOT monospace) */
 .mono-value {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Inter', sans-serif;
   font-variant-numeric: tabular-nums;
-  font-feature-settings: "ss01", "zero";
+  font-feature-settings: 'tnum' 1, 'cv11' 1, 'ss01' 1, 'ss03' 1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
-/* Hero KPI numerics — Revolut-style */
+/* Hero KPI numerics — large display values, Revolut/Qonto-style */
 .hero-num {
-  font-family: 'IBM Plex Mono', monospace;
-  font-weight: 300;
-  letter-spacing: -1px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv11' 1, 'ss01' 1, 'ss03' 1;
 }
 
+/* ─── Privacy mode ─── replace digits with fixed 6-dot mask */
 .amounts-hidden .mono-value,
 .amounts-hidden .hero-num {
   color: transparent !important;
-  text-shadow: 0 0 14px rgba(16, 185, 129, 0.2);
+  text-shadow: none !important;
+  user-select: none;
+  position: relative;
+}
+.amounts-hidden span.mono-value::after,
+.amounts-hidden div.mono-value::after,
+.amounts-hidden td.mono-value::after,
+.amounts-hidden span.hero-num::after,
+.amounts-hidden div.hero-num::after {
+  content: '••••••';
+  position: absolute;
+  inset: 0;
+  color: #52525b;
+  letter-spacing: 0.12em;
+  text-align: inherit;
+  font-weight: inherit;
+  pointer-events: none;
+  display: block;
+}
+/* Inputs: can't use ::after — heavy blur + lock interaction */
+.amounts-hidden input.mono-value,
+.amounts-hidden input.hero-num {
+  filter: blur(10px) saturate(0);
+  pointer-events: none;
   user-select: none;
 }
 

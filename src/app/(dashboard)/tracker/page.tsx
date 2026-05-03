@@ -298,6 +298,13 @@ export default function TrackerPage() {
   const diff = earnEur - aE;
   const prevCompte = m ? ((m.soldeStart || 0) + earnAed - aA) : 0;
 
+  // Prévisionnel (optimiste) — adds preview/non-confirmed revenues to confirmed forecast
+  const previewEur = m && synced
+    ? ((state.revenus?.months?.[m.id] || []).filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0))
+    : 0;
+  const previewAed = previewEur * (state.rate || liveRate);
+  const prevOpti = prevCompte + previewAed;
+
   // Chart data
   const budgetPieData = m ? state.postes.map((p, i) => ({
     name: p.name, value: rowEur(m.budget[i] || { aed: 0, eur: null }, liveRate),
@@ -412,9 +419,22 @@ export default function TrackerPage() {
           <div className="flex gap-2.5 mb-5 flex-wrap">
             <SoldeCard icon="🏦" label="Solde début (AED)" value={m.soldeStart} onChange={v => updateMonth(m.id, 'soldeStart', v)} />
             <SoldeCard icon="🏦" label="Solde fin (AED)" value={m.soldeEnd} onChange={v => updateMonth(m.id, 'soldeEnd', v)} />
-            <SoldeDisplay icon="📊" label="Prévisionnel (AED)" value={f0(prevCompte)} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} />
+            {synced && previewEur > 0 ? (
+              <>
+                <SoldeDisplay icon="📊" label="Prévisionnel (Confirmé)" value={`${f0(prevCompte)} AED`} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} />
+                <SoldeDisplay icon="🔮" label="Prévisionnel (Optimiste)" value={`${f0(prevOpti)} AED`} color="text-info" sub={`si ${f$(previewEur)} € confirmés`} tone="info" />
+              </>
+            ) : (
+              <SoldeDisplay icon="📊" label="Prévisionnel compte (AED)" value={`${f0(prevCompte)} AED`} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} />
+            )}
             {synced ? (
-              <SoldeDisplay icon="💵" label="Revenus confirmés" value={`${f$(earnEur)} €`} sub={`${f0(earnAed)} AED`} color="text-t-1" />
+              <SoldeDisplay
+                icon="💵"
+                label="Revenus confirmés"
+                value={`${f$(earnEur)} €`}
+                sub={previewEur > 0 ? `${f0(earnAed)} AED · + ${f$(previewEur)} € en prévision` : `${f0(earnAed)} AED`}
+                color="text-t-1"
+              />
             ) : (
               <SoldeCard icon="💵" label="Revenus (EUR)" value={m.earn} onChange={v => updateMonth(m.id, 'earn', v)} />
             )}
@@ -883,13 +903,13 @@ export default function TrackerPage() {
 // Sub-components
 function SoldeCard({ icon, label, value, onChange }: { icon: string; label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex-1 min-w-[170px] bg-bg-3 border border-border rounded-md px-4 py-3.5 flex items-center gap-3 transition-all hover:border-border-2">
-      <span className="text-xl">{icon}</span>
-      <div>
-        <div className="text-[9px] text-t-3 uppercase tracking-wider font-medium">{label}</div>
+    <div className="flex-1 min-w-[180px] bg-bg-3 border border-border rounded-lg px-4 py-3.5 flex items-center gap-3 transition-all hover:border-border-2 shadow-inset-border">
+      <span className="text-xl leading-none">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
         <input
           type="number"
-          className="bg-transparent border border-transparent font-mono text-base font-semibold w-[130px] outline-none hover:border-border-2 hover:bg-bg-2 focus:border-accent focus:bg-bg-2 rounded-md px-1.5 py-0.5 mt-0.5 transition-all mono-value"
+          className="bg-transparent border border-transparent text-[17px] w-full max-w-[140px] outline-none hover:border-border-2 hover:bg-bg-2 focus:border-accent focus:bg-bg-2 rounded-md px-1.5 py-0.5 mt-1 transition-all mono-value"
           value={value}
           onChange={e => onChange(parseFloat(e.target.value) || 0)}
           step="0.01"
@@ -899,14 +919,26 @@ function SoldeCard({ icon, label, value, onChange }: { icon: string; label: stri
   );
 }
 
-function SoldeDisplay({ icon, label, value, color = 'text-t-1', sub }: { icon: string; label: string; value: string; color?: string; sub?: string }) {
+function SoldeDisplay({
+  icon, label, value, color = 'text-t-1', sub, tone,
+}: {
+  icon: string; label: string; value: string; color?: string;
+  sub?: string; tone?: 'info' | 'accent' | 'warning';
+}) {
+  const toneClass = tone === 'info'
+    ? 'border-info/40 bg-info/5'
+    : tone === 'accent'
+    ? 'border-accent/40 bg-accent/5'
+    : tone === 'warning'
+    ? 'border-warning/40 bg-warning/5'
+    : 'border-border';
   return (
-    <div className="flex-1 min-w-[170px] bg-bg-3 border border-border rounded-md px-4 py-3.5 flex items-center gap-3">
-      <span className="text-xl">{icon}</span>
-      <div>
-        <div className="text-[9px] text-t-3 uppercase tracking-wider font-medium">{label}</div>
-        <div className={`font-mono text-base font-semibold mt-0.5 mono-value ${color}`}>{value}</div>
-        {sub && <div className="text-[11px] text-t-3 font-mono mono-value">{sub}</div>}
+    <div className={`flex-1 min-w-[180px] bg-bg-3 border ${toneClass} rounded-lg px-4 py-3.5 flex items-center gap-3 transition-all hover:border-border-2 shadow-inset-border relative overflow-hidden`}>
+      <span className="text-xl leading-none flex-shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
+        <div className={`text-[17px] mt-1 mono-value ${color}`}>{value}</div>
+        {sub && <div className="text-[10px] text-t-3 mt-1 mono-value font-medium">{sub}</div>}
       </div>
     </div>
   );

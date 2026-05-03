@@ -33,10 +33,10 @@ function RevKpi({
       <div className="min-w-0 flex-1">
         <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
         <div
-          className="hero-num text-[18px] mt-1 mono-value leading-none"
-          style={{ fontWeight: 500, letterSpacing: '-0.4px', color: valueColor || '#fafafa' }}
+          className="text-[18px] mt-1 mono-value leading-none"
+          style={{ color: valueColor || '#fafafa' }}
         >{value}</div>
-        {sub && <div className="text-[10px] mt-1 font-mono mono-value">{sub}</div>}
+        {sub && <div className="text-[10px] mt-1 mono-value font-medium">{sub}</div>}
       </div>
     </div>
   );
@@ -228,18 +228,18 @@ export default function RevenusPage() {
           />
           <RevKpi icon="📝" label="Contracté" value={`${f$(monthContracted)} €`} />
           <RevKpi
-            icon={delta >= 0 ? '✅' : '⚠️'}
-            label="Delta"
-            value={`${delta >= 0 ? '+' : ''}${f$(delta)} €`}
-            valueColor={delta >= 0 ? '#10b981' : '#ef4444'}
-            accentColor={delta >= 0 ? '#10b981' : '#ef4444'}
-          />
-          <RevKpi
             icon="📊"
             label="Atteinte"
             value={`${pctMonth.toFixed(0)}%`}
             valueColor={pctMonth >= 100 ? '#10b981' : '#f59e0b'}
             accentColor={pctMonth >= 100 ? '#10b981' : '#f59e0b'}
+          />
+          <RevKpi
+            icon={delta >= 0 ? '✅' : '⚠️'}
+            label="Delta"
+            value={`${delta >= 0 ? '+' : ''}${f$(delta)} €`}
+            valueColor={delta >= 0 ? '#10b981' : '#ef4444'}
+            accentColor={delta >= 0 ? '#10b981' : '#ef4444'}
           />
         </div>
 
