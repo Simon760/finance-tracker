@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
-import { f$, f0, sumEur } from '@/lib/utils';
+import { f$, f0, sumEur, sumAed } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -46,11 +46,18 @@ export default function GlobalPage() {
   const grandTotalRev = spaceStats.reduce((s, sp) => s + sp.totalRevenue, 0);
   const grandBalance = grandTotalRev - grandTotalSpent;
 
-  // Net worth - bank balances from spaces
+  // Net worth - bank balances from spaces (confirmed prévisionnel)
   const bankBalances = useMemo(() => {
     return spaces.map(s => {
       const lastMonth = s.months[s.months.length - 1];
-      const balance = lastMonth?.soldeEnd || lastMonth?.soldeStart || 0;
+      if (!lastMonth) return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance: 0, eurBalance: 0 };
+      const synced = !LEGACY_EARN_MONTHS.includes(lastMonth.id);
+      const revEntries = s.revenus?.months?.[lastMonth.id] || [];
+      const earnLocal = synced
+        ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((sum, e) => sum + ((e.cashed || 0) * (e.rate || lastMonth.rate)), 0)
+        : (lastMonth.earn || 0) * lastMonth.rate;
+      const spentLocal = sumAed(lastMonth, lastMonth.actual, lastMonth.extraActual);
+      const balance = (lastMonth.soldeStart || 0) + earnLocal - spentLocal;
       const eurBalance = s.localCurrency === 'EUR' ? balance : balance / liveRate;
       return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance, eurBalance };
     }).filter(b => b.balance > 0);
@@ -123,15 +130,15 @@ export default function GlobalPage() {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Dépenses</div>
-                <div className="hero-num text-[15px] mt-1 mono-value text-danger" style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>{f$(sp.totalSpent)} €</div>
+                <div className="hero-num text-[15px] mt-1 mono-value text-danger">{f$(sp.totalSpent)} €</div>
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Revenus</div>
-                <div className="hero-num text-[15px] mt-1 mono-value text-accent" style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>{f$(sp.totalRevenue)} €</div>
+                <div className="hero-num text-[15px] mt-1 mono-value text-accent">{f$(sp.totalRevenue)} €</div>
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Balance</div>
-                <div className={`hero-num text-[15px] mt-1 mono-value ${sp.balance >= 0 ? 'text-accent' : 'text-danger'}`} style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>
+                <div className={`hero-num text-[15px] mt-1 mono-value ${sp.balance >= 0 ? 'text-accent' : 'text-danger'}`}>
                   {sp.balance >= 0 ? '+' : ''}{f$(sp.balance)} €
                 </div>
               </div>

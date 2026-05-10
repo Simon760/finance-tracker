@@ -5,7 +5,8 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0 } from '@/lib/utils';
+import { f$, f0, sumAed } from '@/lib/utils';
+import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -58,11 +59,18 @@ export default function NetWorthPage() {
     saveAssets(assets.filter((_, i) => i !== idx));
   };
 
-  // Bank balances from spaces
+  // Bank balances from spaces — based on confirmed prévisionnel of last month
   const bankBalances = useMemo(() => {
     return spaces.map(s => {
       const lastMonth = s.months[s.months.length - 1];
-      const balance = lastMonth?.soldeEnd || lastMonth?.soldeStart || 0;
+      if (!lastMonth) return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance: 0, eurBalance: 0 };
+      const synced = !LEGACY_EARN_MONTHS.includes(lastMonth.id);
+      const revEntries = s.revenus?.months?.[lastMonth.id] || [];
+      const earnLocal = synced
+        ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((sum, e) => sum + ((e.cashed || 0) * (e.rate || lastMonth.rate)), 0)
+        : (lastMonth.earn || 0) * lastMonth.rate;
+      const spentLocal = sumAed(lastMonth, lastMonth.actual, lastMonth.extraActual);
+      const balance = (lastMonth.soldeStart || 0) + earnLocal - spentLocal;
       const eurBalance = s.localCurrency === 'EUR' ? balance : balance / liveRate;
       return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance, eurBalance };
     }).filter(b => b.balance > 0);

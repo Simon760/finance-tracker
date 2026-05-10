@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import Modal from '@/components/ui/Modal';
 import {
   LayoutGrid, BarChart3, DollarSign, Home, Settings, Eye, EyeOff,
-  RefreshCw, LogOut, Globe, TrendingUp,
+  RefreshCw, LogOut, Globe, TrendingUp, Menu, X,
 } from 'lucide-react';
 
 const spaceNavItems = [
@@ -39,6 +39,19 @@ export default function Sidebar() {
   const [nsEmoji, setNsEmoji] = useState('🌍');
   const [nsCurrency, setNsCurrency] = useState('EUR');
   const [nsStatus, setNsStatus] = useState<'active' | 'draft'>('active');
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auto-close drawer on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  // Lock body scroll when drawer open
+  useEffect(() => {
+    if (mobileOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [mobileOpen]);
 
   const isActive = (href: string) => pathname.includes(href);
 
@@ -82,7 +95,53 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="w-[260px] bg-bg-2 border-r border-border fixed top-0 left-0 bottom-0 z-50 flex flex-col p-5 px-3.5 max-md:hidden">
+    <>
+      {/* Mobile top bar — visible < md */}
+      <header className="md:hidden fixed top-0 left-0 right-0 h-12 bg-bg-2/95 backdrop-blur border-b border-border z-40 flex items-center px-3 gap-3">
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="w-9 h-9 flex items-center justify-center rounded-md text-t-2 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
+          aria-label="Ouvrir le menu"
+        >
+          <Menu size={18} />
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-[26px] h-[26px] rounded-md bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-black text-[10px] font-extrabold shadow-glow-sm ring-1 ring-accent/30 flex-shrink-0">
+            FH
+          </div>
+          <span className="text-lg leading-none flex-shrink-0">{activeSpace.emoji}</span>
+          <span className="text-[13px] font-semibold tracking-tight truncate">{activeSpace.name}</span>
+        </div>
+        <button
+          onClick={toggleHidden}
+          className="ml-auto w-8 h-8 flex items-center justify-center rounded-md text-t-3 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
+          title={hiddenMode ? 'Afficher' : 'Masquer'}
+        >
+          {hiddenMode ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </header>
+
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-fade-in"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+    <aside
+      className={`w-[260px] bg-bg-2 border-r border-border fixed top-0 left-0 bottom-0 z-50 flex flex-col p-5 px-3.5
+      max-md:transition-transform max-md:duration-300 max-md:ease-[cubic-bezier(0.16,1,0.3,1)] max-md:shadow-2xl
+      ${mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}`}
+    >
+      {/* Mobile close */}
+      <button
+        onClick={() => setMobileOpen(false)}
+        className="md:hidden absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-md text-t-3 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
+        aria-label="Fermer le menu"
+      >
+        <X size={16} />
+      </button>
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-2 mb-6">
         <div className="w-[32px] h-[32px] rounded-lg bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-black text-[11px] font-extrabold shadow-glow ring-1 ring-accent/30">
@@ -181,7 +240,7 @@ export default function Sidebar() {
             <RefreshCw size={11} />
           </button>
         </div>
-        <div className="hero-num text-[22px] mt-1 mono-value text-t-1" style={{ fontWeight: 400, letterSpacing: '-0.5px' }}>{liveRate.toFixed(4)}</div>
+        <div className="hero-num text-[22px] mt-1 mono-value text-t-1">{liveRate.toFixed(4)}</div>
         <div className="text-[10px] text-t-3 mt-0.5 tracking-tight">Taux de conversion</div>
         <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-accent font-bold tracking-[0.14em]">
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow shadow-glow-sm" />
@@ -230,5 +289,6 @@ export default function Sidebar() {
         </div>
       </Modal>
     </aside>
+    </>
   );
 }

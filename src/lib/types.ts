@@ -85,6 +85,15 @@ export interface Space {
   emmenagement: EmmenagementItem[];
 }
 
+// Historique des modifications — visible uniquement dans Settings
+export interface HistoryEntry {
+  ts: string;            // ISO timestamp
+  spaceId?: string;      // space concerné si applicable
+  spaceName?: string;    // libellé pour affichage
+  action: string;        // ex: "revenu.add", "month.create", "poste.update"
+  detail: string;        // résumé humain
+}
+
 // Ce qui est stocké en Firebase (backward compatible)
 export interface AppState {
   rate: number;
@@ -96,4 +105,6 @@ export interface AppState {
   // Multi-space: si undefined, on wrappe automatiquement dans spaces[0]
   spaces?: Space[];
   activeSpaceId?: string;
+  // Historique de modifs — capé à N entrées
+  history?: HistoryEntry[];
 }

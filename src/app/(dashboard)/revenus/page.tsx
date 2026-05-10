@@ -80,7 +80,7 @@ const STATUS_ROW_BORDER: Record<string, string> = {
 };
 
 export default function RevenusPage() {
-  const { state, setState, save, liveRate, activeSpace } = useApp();
+  const { state, setState, save, liveRate, activeSpace, logChange } = useApp();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
 
   const [page, setPage] = useState<'tracker' | 'global'>('tracker');
@@ -129,23 +129,30 @@ export default function RevenusPage() {
     setState({ ...state, revenus: { ...rev, months } });
     setAddOpen(false);
     save();
+    const action = editIdx ? 'revenu.update' : 'revenu.add';
+    const verb = editIdx ? 'Modif' : 'Ajout';
+    logChange?.(action, `${verb} revenu ${form.client || '—'} · ${f$(form.cashed || 0)} € (${editIdx ? editIdx.month : monthKey})`);
   };
 
   const deleteEntry = (month: string, idx: number) => {
     if (!confirm('Supprimer cette entrée ?')) return;
     const months = { ...(rev.months || {}) };
+    const removed = months[month][idx];
     months[month] = months[month].filter((_, i) => i !== idx);
     if (months[month].length === 0) delete months[month];
     setState({ ...state, revenus: { ...rev, months } });
     save();
+    logChange?.('revenu.delete', `Suppr revenu ${removed?.client || '—'} · ${f$(removed?.cashed || 0)} € (${month})`);
   };
 
   const confirmEntry = (month: string, idx: number) => {
     const months = { ...(rev.months || {}) };
     months[month] = [...months[month]];
+    const before = months[month][idx];
     months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: liveRate };
     setState({ ...state, revenus: { ...rev, months } });
     save();
+    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(before?.cashed || 0)} € (${month})`);
   };
 
   const updateObjectif = (val: number) => {
@@ -249,7 +256,7 @@ export default function RevenusPage() {
             <div className="flex justify-between items-center px-4 py-3 border-b border-border">
               <span className="text-[13px] font-semibold tracking-tight">💰 Transactions du mois</span>
               <div className="flex items-center gap-3">
-                <span className="hero-num text-[14px] font-mono text-accent mono-value" style={{ fontWeight: 500, letterSpacing: '-0.3px' }}>{f$(monthCashed)} €</span>
+                <span className="hero-num text-[14px] font-mono text-accent mono-value">{f$(monthCashed)} €</span>
                 <button onClick={() => openAdd(curMonthName)} className="btn btn-ghost !py-1 !px-2.5 !text-[11px]">+</button>
               </div>
             </div>
@@ -400,6 +407,65 @@ export default function RevenusPage() {
     });
     const qObj = obj * 3;
 
+    // ─── Vue par client ── agrégat sur tous les mois (confirmés uniquement)
+    type ClientStat = {
+      client: string;
+      total: number;
+      contracted: number;
+      count: number;
+      monthsActive: number;
+      avgPerActiveMonth: number;
+      pctOfYear: number;
+      lastDate: string;
+      lastMonth: string;
+      topCat: string;
+    };
+    const clientMap = new Map<string, {
+      total: number; contracted: number; count: number;
+      months: Set<string>; lastDate: string; lastMonth: string;
+      catCounts: Record<string, number>;
+    }>();
+    Object.entries(rm).forEach(([monthName, entries]) => {
+      (entries || []).forEach(e => {
+        const isConfirmed = !e.status || e.status === 'confirmed';
+        if (!isConfirmed) return;
+        const key = (e.client || '').trim() || 'Sans nom';
+        let cur = clientMap.get(key);
+        if (!cur) {
+          cur = { total: 0, contracted: 0, count: 0, months: new Set(), lastDate: '', lastMonth: '', catCounts: {} };
+          clientMap.set(key, cur);
+        }
+        cur.total += e.cashed || 0;
+        cur.contracted += e.contracted || 0;
+        cur.count += 1;
+        cur.months.add(monthName);
+        if (e.date && e.date > cur.lastDate) {
+          cur.lastDate = e.date;
+          cur.lastMonth = monthName;
+        } else if (!cur.lastDate) {
+          cur.lastMonth = monthName;
+        }
+        const cat = e.cat || 'Autre';
+        cur.catCounts[cat] = (cur.catCounts[cat] || 0) + (e.cashed || 0);
+      });
+    });
+    const clientStats: ClientStat[] = Array.from(clientMap.entries()).map(([client, c]) => {
+      const topCat = Object.entries(c.catCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+      return {
+        client,
+        total: c.total,
+        contracted: c.contracted,
+        count: c.count,
+        monthsActive: c.months.size,
+        avgPerActiveMonth: c.months.size > 0 ? c.total / c.months.size : 0,
+        pctOfYear: yearCashed > 0 ? (c.total / yearCashed) * 100 : 0,
+        lastDate: c.lastDate,
+        lastMonth: c.lastMonth,
+        topCat,
+      };
+    }).sort((a, b) => b.total - a.total);
+    const topClient = clientStats[0];
+
     return (
       <>
         {/* Settings + Annual Summary side by side (matches old HTML) */}
@@ -447,27 +513,27 @@ export default function RevenusPage() {
             <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Total encaissé</div>
-                <div className="hero-num text-[18px] mt-1 mono-value text-accent" style={{ fontWeight: 500, letterSpacing: '-0.4px' }}>{f$(yearCashed)} €</div>
+                <div className="hero-num text-[18px] mt-1 mono-value text-accent">{f$(yearCashed)} €</div>
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Objectif annuel</div>
-                <div className="hero-num text-[18px] mt-1 mono-value text-t-1" style={{ fontWeight: 500, letterSpacing: '-0.4px' }}>{f$(yearObj)} €</div>
+                <div className="hero-num text-[18px] mt-1 mono-value text-t-1">{f$(yearObj)} €</div>
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">{yearPL >= 0 ? 'Surplus' : 'Reste à atteindre'}</div>
-                <div className={`hero-num text-[18px] mt-1 mono-value ${yearPL >= 0 ? 'text-accent' : 'text-danger'}`} style={{ fontWeight: 500, letterSpacing: '-0.4px' }}>
+                <div className={`hero-num text-[18px] mt-1 mono-value ${yearPL >= 0 ? 'text-accent' : 'text-danger'}`}>
                   {yearPL >= 0 ? '+' : ''}{f$(yearPL)} €
                 </div>
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Atteinte</div>
-                <div className="hero-num text-[18px] mt-1 mono-value" style={{ fontWeight: 500, letterSpacing: '-0.4px', color: yearPct >= 100 ? '#10b981' : '#f59e0b' }}>
+                <div className="hero-num text-[18px] mt-1 mono-value" style={{ color: yearPct >= 100 ? '#10b981' : '#f59e0b' }}>
                   {yearPct.toFixed(0)}%
                 </div>
               </div>
               <div className="col-span-2">
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Moyenne / mois actif</div>
-                <div className="hero-num text-[18px] mt-1 mono-value text-purple" style={{ fontWeight: 500, letterSpacing: '-0.4px' }}>{f$(avg)} €</div>
+                <div className="hero-num text-[18px] mt-1 mono-value text-purple">{f$(avg)} €</div>
               </div>
             </div>
 
@@ -586,6 +652,72 @@ export default function RevenusPage() {
             ) : <div className="text-center text-t-4 text-sm pt-12">Aucune source</div>}
           </div>
         </div>
+
+        {/* Vue par client */}
+        {clientStats.length > 0 && (
+          <div className="bg-bg-3 border border-border rounded-lg overflow-hidden mb-5 shadow-inset-border">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-[13px] font-semibold tracking-tight">👥 Vue par client</span>
+              <span className="text-[10px] text-t-3 font-mono mono-value">
+                {clientStats.length} client{clientStats.length > 1 ? 's' : ''} · top : <span className="text-accent">{topClient?.client}</span>
+              </span>
+            </div>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-bg-2">
+                  <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Client</th>
+                  <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Cat. princ.</th>
+                  <th className="text-right px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Total YTD</th>
+                  <th className="text-right px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">% du CA</th>
+                  <th className="text-right px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Moy. / mois actif</th>
+                  <th className="text-center px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Mois actifs</th>
+                  <th className="text-right px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Dernière TX</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientStats.map((c, i) => {
+                  const isTop = i === 0;
+                  return (
+                    <tr key={c.client} className="border-b border-border last:border-0 hover:bg-white/[.02] transition-colors">
+                      <td className="px-4 py-2.5 text-[13px]">
+                        <span className="font-semibold tracking-tight">{c.client}</span>
+                        {isTop && <span className="ml-2 text-[9px] font-bold text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded uppercase tracking-wider">Top</span>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {c.topCat ? <CatPill cat={c.topCat} categories={categories} /> : <span className="text-t-4 text-[11px]">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-[12px] mono-value text-accent">{f$(c.total)} €</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="inline-flex items-center gap-2 justify-end">
+                          <div className="w-14 h-1 bg-bg-2 rounded-full overflow-hidden">
+                            <div className="h-full bg-accent" style={{ width: `${Math.min(100, c.pctOfYear)}%` }} />
+                          </div>
+                          <span className="font-mono text-[11px] mono-value text-t-2 w-9 text-right">{c.pctOfYear.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-[12px] mono-value text-t-2">{f$(c.avgPerActiveMonth)} €</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className="text-[11px] font-mono mono-value text-t-2">{c.monthsActive}</span>
+                        <span className="text-[10px] text-t-4 ml-1">({c.count} tx)</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-[11px] text-t-3">
+                        {c.lastDate || c.lastMonth || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-bg-2">
+                  <td className="px-4 py-2.5 font-bold text-[12px]" colSpan={2}>Total</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[12px] mono-value font-bold text-accent">{f$(yearCashed)} €</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-[12px] mono-value font-bold text-t-2">100%</td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
 
         {/* Quarterly chart */}
         <div className="bg-bg-3 border border-border rounded-lg p-4 mb-5 shadow-inset-border" style={{ height: 280 }}>

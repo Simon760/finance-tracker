@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
-import { AppState, Month, Space, Poste } from '@/lib/types';
+import { AppState, Month, Space, Poste, HistoryEntry } from '@/lib/types';
 import { DEFAULT_POSTES } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate } from '@/lib/utils';
@@ -43,7 +43,14 @@ interface AppContextType {
   dashCur: 'EUR' | 'AED';
   setDashCur: (c: 'EUR' | 'AED') => void;
   updateMonth: (id: string, field: keyof Month, val: number) => void;
+
+  // Historique
+  history: HistoryEntry[];
+  logChange: (action: string, detail: string) => void;
+  clearHistory: () => void;
 }
+
+const HISTORY_CAP = 200;
 
 const DEFAULT_SPACE: Space = {
   id: 'dubai',
@@ -199,7 +206,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         revenus: { objectif: 5000, categories: [], months: {} },
         emmenagement: [],
       };
-      const updated = spacesToState([...allSpaces, newSpace], activeSpaceId, prev.rate, new Date().toISOString());
+      const next = spacesToState([...allSpaces, newSpace], activeSpaceId, prev.rate, new Date().toISOString());
+      const entry: HistoryEntry = {
+        ts: new Date().toISOString(), spaceId: s.id, spaceName: s.name,
+        action: 'space.create', detail: `Création du space « ${s.name} »`,
+      };
+      const updated = { ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
@@ -208,8 +220,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateSpace = useCallback((id: string, updates: Partial<Space>) => {
     setStateRaw(prev => {
+      const before = stateToSpaces(prev).find(s => s.id === id);
       const allSpaces = stateToSpaces(prev).map(s => s.id === id ? { ...s, ...updates } : s);
-      const updated = spacesToState(allSpaces, activeSpaceId, prev.rate, new Date().toISOString());
+      const next = spacesToState(allSpaces, activeSpaceId, prev.rate, new Date().toISOString());
+      const fields = Object.keys(updates).filter(k => k !== 'postes' && k !== 'months' && k !== 'revenus' && k !== 'emmenagement');
+      const entry: HistoryEntry = {
+        ts: new Date().toISOString(), spaceId: id, spaceName: before?.name,
+        action: 'space.update',
+        detail: fields.length ? `Modif space (${fields.join(', ')})` : 'Modif space',
+      };
+      const updated = { ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
@@ -218,11 +238,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteSpace = useCallback((id: string) => {
     setStateRaw(prev => {
+      const before = stateToSpaces(prev).find(s => s.id === id);
       const allSpaces = stateToSpaces(prev).filter(s => s.id !== id);
       if (allSpaces.length === 0) return prev;
       const newActiveId = id === activeSpaceId ? allSpaces[0].id : activeSpaceId;
       if (id === activeSpaceId) setActiveSpaceIdRaw(newActiveId);
-      const updated = spacesToState(allSpaces, newActiveId, prev.rate, new Date().toISOString());
+      const next = spacesToState(allSpaces, newActiveId, prev.rate, new Date().toISOString());
+      const entry: HistoryEntry = {
+        ts: new Date().toISOString(), spaceId: id, spaceName: before?.name,
+        action: 'space.delete', detail: `Suppression du space « ${before?.name || id} »`,
+      };
+      const updated = { ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
@@ -289,6 +315,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleHidden = useCallback(() => setHiddenMode(prev => !prev), []);
 
+  const logChange = useCallback((action: string, detail: string) => {
+    setStateRaw(prev => {
+      const allSpaces = stateToSpaces(prev);
+      const space = allSpaces.find(s => s.id === activeSpaceId);
+      const entry: HistoryEntry = {
+        ts: new Date().toISOString(),
+        spaceId: activeSpaceId,
+        spaceName: space?.name,
+        action,
+        detail,
+      };
+      const history = [entry, ...(prev.history || [])].slice(0, HISTORY_CAP);
+      const updated = { ...prev, history, lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [activeSpaceId, userId, persistToFirebase]);
+
+  const clearHistory = useCallback(() => {
+    setStateRaw(prev => {
+      const updated = { ...prev, history: [], lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
   const updateMonth = useCallback((id: string, field: keyof Month, val: number) => {
     setStateRaw(prev => {
       const months = prev.months.map(m => m.id === id ? { ...m, [field]: val } : m);
@@ -317,6 +371,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       curYear, setCurYear,
       dashCur, setDashCur,
       updateMonth,
+      history: state.history || [],
+      logChange, clearHistory,
     }}>
       <div className={hiddenMode ? 'amounts-hidden' : ''}>
         {children}

@@ -73,8 +73,34 @@ export function sumEur(m: Month, actual: ActualRow[], extra: ExtraRow[]): number
 
 export function sumAed(m: Month, actual: ActualRow[], extra: ExtraRow[]): number {
   let total = 0;
-  actual.forEach(row => { total += row.aed || 0; });
-  (extra || []).forEach(r => { total += r.aed || 0; });
+  actual.forEach(row => {
+    const txns = row.txns || [];
+    if (txns.length > 0) {
+      // Si on a des transactions, on les somme en AED (conversion si EUR)
+      total += txns.reduce((s, t) => {
+        if (t.currency === 'AED') return s + (t.amount || 0);
+        return s + (t.amount || 0) * (t.rate || m.rate);
+      }, 0);
+    } else if (row.aed && row.aed > 0) {
+      total += row.aed;
+    } else if (row.eur && row.eur > 0) {
+      // Poste EUR : on convertit au rate du mois
+      total += toAed(row.eur, m.rate);
+    }
+  });
+  (extra || []).forEach(r => {
+    const txns = r.txns || [];
+    if (txns.length > 0) {
+      total += txns.reduce((s, t) => {
+        if (t.currency === 'AED') return s + (t.amount || 0);
+        return s + (t.amount || 0) * (t.rate || m.rate);
+      }, 0);
+    } else if (r.aed && r.aed > 0) {
+      total += r.aed;
+    } else if (r.eur && r.eur > 0) {
+      total += toAed(r.eur, m.rate);
+    }
+  });
   return total;
 }
 

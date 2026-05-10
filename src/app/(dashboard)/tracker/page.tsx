@@ -7,18 +7,19 @@ import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
-import { Month, Transaction } from '@/lib/types';
+import { Month, Transaction, ActualRow } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
 
 const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'];
 
 export default function TrackerPage() {
-  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace } = useApp();
+  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange } = useApp();
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [nmName, setNmName] = useState('');
   const [nmRate, setNmRate] = useState(liveRate);
   const [nmSolde, setNmSolde] = useState(0);
+  const [nmFillMode, setNmFillMode] = useState<'copy' | 'avg3' | 'empty'>('copy');
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [arSection, setArSection] = useState<'budget' | 'actual'>('budget');
   const [arName, setArName] = useState('');
@@ -27,7 +28,7 @@ export default function TrackerPage() {
   const [arEur, setArEur] = useState(0);
 
   // Slide-over
-  const [slidePoste, setSlidePoste] = useState<{ name: string; idx: number; section: 'budget' | 'actual' } | null>(null);
+  const [slidePoste, setSlidePoste] = useState<{ name: string; idx: number; section: 'budget' | 'actual'; isExtra?: boolean } | null>(null);
 
   // Transaction modal
   const [txnOpen, setTxnOpen] = useState(false);
@@ -175,6 +176,9 @@ export default function TrackerPage() {
   const years = detectYears(state.months);
   const filtered = curYear === 'all' ? state.months : state.months.filter(m => m._year === parseInt(curYear));
   const m = state.months.find(mo => mo.id === curMonth);
+  // Mois précédent (M-1) — sert pour les comparaisons inline dans le tableau
+  const mIdx = m ? state.months.findIndex(mo => mo.id === m.id) : -1;
+  const prevM = mIdx > 0 ? state.months[mIdx - 1] : null;
 
   // Revenue helpers
   const isRevSynced = (id: string) => !LEGACY_EARN_MONTHS.includes(id);
@@ -194,10 +198,24 @@ export default function TrackerPage() {
       id: name, rate: nmRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
       budget: [], actual: [], extraBudget: [], extraActual: [],
     };
-    if (state.months.length > 0) {
+    const hasHistory = state.months.length > 0;
+    if (hasHistory && nmFillMode === 'copy') {
       const last = state.months[state.months.length - 1];
       state.postes.forEach((_, i) => {
-        newMonth.budget.push({ aed: last.budget[i]?.aed || 0, eur: last.budget[i]?.eur || null });
+        newMonth.budget.push({ aed: last.budget[i]?.aed || 0, eur: last.budget[i]?.eur ?? null });
+        newMonth.actual.push({ aed: 0, eur: null });
+      });
+      if (last.soldeEnd > 0) newMonth.soldeStart = last.soldeEnd;
+    } else if (hasHistory && nmFillMode === 'avg3') {
+      const window = state.months.slice(-3);
+      const last = state.months[state.months.length - 1];
+      state.postes.forEach((_, i) => {
+        // Moyenne sur les ACTUALS des 3 derniers mois (réalité, pas plan)
+        const aedVals = window.map(mo => mo.actual?.[i]?.aed || 0).filter(v => v > 0);
+        const eurVals = window.map(mo => mo.actual?.[i]?.eur || 0).filter(v => v > 0);
+        const aedAvg = aedVals.length ? aedVals.reduce((s, v) => s + v, 0) / aedVals.length : (last.budget[i]?.aed || 0);
+        const eurAvg = eurVals.length ? eurVals.reduce((s, v) => s + v, 0) / eurVals.length : (last.budget[i]?.eur ?? null);
+        newMonth.budget.push({ aed: Math.round(aedAvg), eur: eurAvg ? Math.round(eurAvg * 100) / 100 : null });
         newMonth.actual.push({ aed: 0, eur: null });
       });
       if (last.soldeEnd > 0) newMonth.soldeStart = last.soldeEnd;
@@ -209,14 +227,18 @@ export default function TrackerPage() {
     setCurMonth(name);
     setNewMonthOpen(false);
     save();
+    const fillLabel = nmFillMode === 'avg3' ? 'moyenne 3 mois' : nmFillMode === 'copy' ? 'copie M-1' : 'vide';
+    logChange?.('month.create', `Création du mois ${name} (${fillLabel})`);
   };
 
   const deleteMonth = () => {
     if (!curMonth || !confirm(`Supprimer ${curMonth} ?`)) return;
+    const removed = curMonth;
     const months = state.months.filter(mo => mo.id !== curMonth);
     setState({ ...state, months });
     setCurMonth(months.length > 0 ? months[months.length - 1].id : null as unknown as string);
     save();
+    logChange?.('month.delete', `Suppression du mois ${removed}`);
   };
 
   const updateBudget = (idx: number, val: number, isEur = false) => {
@@ -537,15 +559,31 @@ export default function TrackerPage() {
                 const ratio = beur > 0 ? eur / beur : 0;
                 const ecart = beur - eur;
                 const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';
+                // M-1 inline: % delta vs mois précédent (sur l'actual)
+                const prevEur = prevM ? rowEur(prevM.actual[i] || { aed: 0, eur: null }, prevM.rate) : 0;
+                const hasPrev = !!prevM && prevEur > 0;
+                const delta = hasPrev ? ((eur - prevEur) / prevEur) * 100 : 0;
+                const showDelta = hasPrev && eur > 0 && Math.abs(delta) >= 1;
+                // Pour les dépenses, hausse = mauvais (rouge), baisse = bon (vert)
+                const deltaColor = delta > 0 ? 'text-danger bg-danger/10 border-danger/25' : 'text-accent bg-accent/10 border-accent/25';
+                const arrow = delta > 0 ? '↗' : '↘';
                 return (
                   <tr key={i} className="border-b border-border hover:bg-white/[.02]">
                     <td className="px-4 py-2.5 text-[13px] font-semibold">
                       <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="hover:text-accent transition-colors cursor-pointer text-left">{p.name}</button>
                       <button onClick={() => openTxnAdd(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
                       {(m.actual[i]?.txns || []).length > 0 && (
-                        <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20 ml-1">
-                          {(m.actual[i]?.txns || []).length}
+                        <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="inline-flex items-center gap-1 text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20 ml-1 font-bold" title="Voir les transactions">
+                          <span>👁</span>{(m.actual[i]?.txns || []).length}
                         </button>
+                      )}
+                      {showDelta && (
+                        <span
+                          title={`Mois précédent (${prevM?.id}): ${f$(prevEur)} €`}
+                          className={`text-[9px] font-bold border px-1.5 py-0.5 rounded ml-1.5 mono-value tracking-tight ${deltaColor}`}
+                        >
+                          {arrow} {delta > 0 ? '+' : ''}{delta.toFixed(0)}%
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -573,7 +611,9 @@ export default function TrackerPage() {
                       {r.name}
                       <button onClick={() => openTxnAddExtra(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
                       {(r.txns || []).length > 0 && (
-                        <span className="text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded ml-1">{(r.txns || []).length}</span>
+                        <button onClick={() => setSlidePoste({ name: r.name, idx: i, section: 'actual', isExtra: true })} className="inline-flex items-center gap-1 text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20 ml-1 font-bold" title="Voir les transactions">
+                          <span>👁</span>{(r.txns || []).length}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value">{f0(r.aed)}</span></td>
@@ -658,6 +698,31 @@ export default function TrackerPage() {
           <FormField label="Solde début de mois (AED)">
             <input className="fi" type="number" value={nmSolde} onChange={e => setNmSolde(parseFloat(e.target.value) || 0)} step="0.01" />
           </FormField>
+          {state.months.length > 0 && (
+            <FormField label="Pré-remplissage du budget">
+              <div className="grid grid-cols-3 gap-1.5 p-1 bg-bg-2 border border-border rounded-md">
+                {([
+                  { id: 'copy', label: 'Copier M-1', sub: 'Reprend le budget précédent' },
+                  { id: 'avg3', label: 'Moyenne 3 mois', sub: 'Lissé sur les 3 actuals' },
+                  { id: 'empty', label: 'Vide', sub: 'Tout à zéro' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setNmFillMode(opt.id)}
+                    title={opt.sub}
+                    className={`px-2 py-2 rounded text-[11px] font-semibold tracking-tight transition-all ${
+                      nmFillMode === opt.id
+                        ? 'bg-accent text-black shadow-glow-sm'
+                        : 'text-t-2 hover:text-t-1 hover:bg-bg-3'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </FormField>
+          )}
           <div className="flex gap-2.5 mt-5">
             <button onClick={createMonth} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">Créer</button>
             <button onClick={() => setNewMonthOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
@@ -706,18 +771,29 @@ export default function TrackerPage() {
         subtitle={m ? `${m.id} — Détail du poste` : ''}
       >
         {slidePoste && m && (() => {
-          const row = m.actual[slidePoste.idx] || { aed: 0, eur: null };
-          const brow = m.budget[slidePoste.idx] || { aed: 0, eur: null };
-          const p = state.postes[slidePoste.idx];
-          const eur = rowEur(row, m.rate);
-          const beur = rowEur(brow, liveRate);
-          const txns = row.txns || [];
+          const isExtra = !!slidePoste.isExtra;
+          const row = isExtra
+            ? (m.extraActual?.[slidePoste.idx] || { aed: 0, eur: 0, name: slidePoste.name, txns: [] })
+            : (m.actual[slidePoste.idx] || { aed: 0, eur: null });
+          const brow = isExtra ? { aed: 0, eur: 0 } : (m.budget[slidePoste.idx] || { aed: 0, eur: null });
+          const p = isExtra ? null : state.postes[slidePoste.idx];
+          const eur = isExtra
+            ? ((row as { eur?: number }).eur && (row as { eur: number }).eur > 0 ? (row as { eur: number }).eur : toEur((row as { aed: number }).aed, m.rate))
+            : rowEur(row as ActualRow, m.rate);
+          const beur = isExtra ? 0 : rowEur(brow as ActualRow, liveRate);
+          const txns = (row as { txns?: { amount: number; eur?: number; rate?: number; currency?: string; label?: string; date?: string }[] }).txns || [];
           // Historical data across months
-          const history = state.months.map(mo => ({
-            month: mo.id.slice(0, 3),
-            actual: rowEur(mo.actual[slidePoste.idx] || { aed: 0, eur: null }, mo.rate),
-            budget: rowEur(mo.budget[slidePoste.idx] || { aed: 0, eur: null }, liveRate),
-          }));
+          const history = isExtra
+            ? state.months.map(mo => {
+                const er = mo.extraActual?.find(x => x.name === slidePoste.name);
+                const a = er ? (er.eur && er.eur > 0 ? er.eur : toEur(er.aed, mo.rate)) : 0;
+                return { month: mo.id.slice(0, 3), actual: a, budget: 0 };
+              })
+            : state.months.map(mo => ({
+                month: mo.id.slice(0, 3),
+                actual: rowEur(mo.actual[slidePoste.idx] || { aed: 0, eur: null }, mo.rate),
+                budget: rowEur(mo.budget[slidePoste.idx] || { aed: 0, eur: null }, liveRate),
+              }));
           const avg = history.length > 0 ? history.reduce((s, h) => s + h.actual, 0) / history.filter(h => h.actual > 0).length || 0 : 0;
 
           return (
@@ -727,7 +803,7 @@ export default function TrackerPage() {
                 <div className="bg-bg-3 border border-border rounded-md p-3">
                   <div className="text-[9px] text-t-3 uppercase tracking-wider">Réel ce mois</div>
                   <div className="font-mono text-base font-semibold mt-1 mono-value">{f$(eur)} €</div>
-                  {p?.isAed && <div className="text-[10px] text-t-3 font-mono mono-value">{f0(row.aed)} AED</div>}
+                  {(isExtra || p?.isAed) && <div className="text-[10px] text-t-3 font-mono mono-value">{f0((row as { aed: number }).aed)} AED</div>}
                 </div>
                 <div className="bg-bg-3 border border-border rounded-md p-3">
                   <div className="text-[9px] text-t-3 uppercase tracking-wider">Budget</div>
@@ -759,7 +835,7 @@ export default function TrackerPage() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <div className="text-[10px] text-t-3 uppercase tracking-wider font-medium">Transactions ({txns.length})</div>
-                  <button onClick={() => openTxnAdd(slidePoste.idx)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded cursor-pointer hover:bg-accent/20 font-bold">+ Ajouter</button>
+                  <button onClick={() => isExtra ? openTxnAddExtra(slidePoste.idx) : openTxnAdd(slidePoste.idx)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded cursor-pointer hover:bg-accent/20 font-bold">+ Ajouter</button>
                 </div>
                 {txns.length > 0 ? (
                   <div className="space-y-1.5">
@@ -778,8 +854,8 @@ export default function TrackerPage() {
                             <div className="text-[10px] text-t-3 font-mono">{f0(t.amount)} AED</div>
                           </div>
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openTxnEdit(slidePoste.idx, ti)} className="text-[10px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20">✎</button>
-                            <button onClick={() => deleteTxn(slidePoste.idx, ti)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
+                            <button onClick={() => isExtra ? openTxnEditExtra(slidePoste.idx, ti) : openTxnEdit(slidePoste.idx, ti)} className="text-[10px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20">✎</button>
+                            <button onClick={() => isExtra ? deleteTxnExtra(slidePoste.idx, ti) : deleteTxn(slidePoste.idx, ti)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
                           </div>
                         </div>
                       </div>
@@ -903,13 +979,13 @@ export default function TrackerPage() {
 // Sub-components
 function SoldeCard({ icon, label, value, onChange }: { icon: string; label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex-1 min-w-[180px] bg-bg-3 border border-border rounded-lg px-4 py-3.5 flex items-center gap-3 transition-all hover:border-border-2 shadow-inset-border">
-      <span className="text-xl leading-none">{icon}</span>
+    <div className="flex-1 min-w-[160px] bg-bg-3 border border-border rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all hover:border-border-2 shadow-inset-border">
+      <span className="text-[17px] leading-none">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
         <input
           type="number"
-          className="bg-transparent border border-transparent text-[17px] w-full max-w-[140px] outline-none hover:border-border-2 hover:bg-bg-2 focus:border-accent focus:bg-bg-2 rounded-md px-1.5 py-0.5 mt-1 transition-all mono-value"
+          className="bg-transparent border border-transparent text-[15px] w-full max-w-[140px] outline-none hover:border-border-2 hover:bg-bg-2 focus:border-accent focus:bg-bg-2 rounded-md px-1 py-0.5 mt-0.5 transition-all mono-value"
           value={value}
           onChange={e => onChange(parseFloat(e.target.value) || 0)}
           step="0.01"
@@ -933,12 +1009,12 @@ function SoldeDisplay({
     ? 'border-warning/40 bg-warning/5'
     : 'border-border';
   return (
-    <div className={`flex-1 min-w-[180px] bg-bg-3 border ${toneClass} rounded-lg px-4 py-3.5 flex items-center gap-3 transition-all hover:border-border-2 shadow-inset-border relative overflow-hidden`}>
-      <span className="text-xl leading-none flex-shrink-0">{icon}</span>
+    <div className={`flex-1 min-w-[160px] bg-bg-3 border ${toneClass} rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all hover:border-border-2 shadow-inset-border relative overflow-hidden`}>
+      <span className="text-[17px] leading-none flex-shrink-0">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
-        <div className={`text-[17px] mt-1 mono-value ${color}`}>{value}</div>
-        {sub && <div className="text-[10px] text-t-3 mt-1 mono-value font-medium">{sub}</div>}
+        <div className={`text-[15px] mt-0.5 mono-value ${color}`}>{value}</div>
+        {sub && <div className="text-[10px] text-t-3 mt-0.5 mono-value font-medium">{sub}</div>}
       </div>
     </div>
   );

@@ -14,8 +14,37 @@ const CAT_STYLES: Record<string, string> = {
   logement: 'text-info bg-info/10 border-info/25',
 };
 
+const ACTION_STYLES: Record<string, { lbl: string; cls: string }> = {
+  'revenu.add':     { lbl: 'Ajout',     cls: 'text-accent bg-accent/10 border-accent/25' },
+  'revenu.update':  { lbl: 'Modif',     cls: 'text-info bg-info/10 border-info/25' },
+  'revenu.delete':  { lbl: 'Suppr',     cls: 'text-danger bg-danger/10 border-danger/25' },
+  'revenu.confirm': { lbl: 'Confirm',   cls: 'text-accent bg-accent/10 border-accent/25' },
+  'month.create':   { lbl: 'Mois +',    cls: 'text-accent bg-accent/10 border-accent/25' },
+  'month.delete':   { lbl: 'Mois ✕',    cls: 'text-danger bg-danger/10 border-danger/25' },
+  'space.create':   { lbl: 'Space +',   cls: 'text-purple bg-purple/10 border-purple/25' },
+  'space.update':   { lbl: 'Space ~',   cls: 'text-info bg-info/10 border-info/25' },
+  'space.delete':   { lbl: 'Space ✕',   cls: 'text-danger bg-danger/10 border-danger/25' },
+  'poste.create':   { lbl: 'Poste +',   cls: 'text-accent bg-accent/10 border-accent/25' },
+  'poste.update':   { lbl: 'Poste ~',   cls: 'text-info bg-info/10 border-info/25' },
+  'poste.delete':   { lbl: 'Poste ✕',   cls: 'text-danger bg-danger/10 border-danger/25' },
+};
+
+function fmtRelTs(iso: string): string {
+  const t = new Date(iso).getTime();
+  const diff = Date.now() - t;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `il y a ${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `il y a ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `il y a ${d}j`;
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+}
+
 export default function SettingsPage() {
-  const { state, setState, save, liveRate } = useApp();
+  const { state, setState, save, liveRate, history, clearHistory, logChange } = useApp();
   const postes = state.postes || [];
 
   const [addOpen, setAddOpen] = useState(false);
@@ -23,6 +52,8 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Poste>({ name: '', cat: 'vital', isAed: true });
   const [importText, setImportText] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(15);
 
   const openAdd = () => {
     setForm({ name: '', cat: 'vital', isAed: true });
@@ -48,12 +79,15 @@ export default function SettingsPage() {
     setState({ ...state, postes: updated });
     setAddOpen(false);
     save();
+    logChange?.(editIdx !== null ? 'poste.update' : 'poste.create', `${editIdx !== null ? 'Modif' : 'Création'} poste « ${p.name} » (${p.cat})`);
   };
 
   const deletePoste = (idx: number) => {
-    if (!confirm(`Supprimer ${postes[idx].name} ?`)) return;
+    const removed = postes[idx];
+    if (!confirm(`Supprimer ${removed.name} ?`)) return;
     setState({ ...state, postes: postes.filter((_, i) => i !== idx) });
     save();
+    logChange?.('poste.delete', `Suppression poste « ${removed.name} »`);
   };
 
   const movePoste = (idx: number, dir: -1 | 1) => {
@@ -155,6 +189,83 @@ export default function SettingsPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Historique des modifs */}
+      <div className="bg-bg-3 border border-border rounded-lg overflow-hidden mb-5 shadow-inset-border">
+        <button
+          onClick={() => setHistoryOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 border-b border-border hover:bg-white/[.02] transition-colors cursor-pointer"
+        >
+          <span className="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
+            🔨 Historique des modifications
+            <span className="text-[10px] text-t-3 font-mono mono-value font-normal">
+              ({history.length} entrée{history.length > 1 ? 's' : ''})
+            </span>
+          </span>
+          <span className={`text-t-3 text-[11px] transition-transform ${historyOpen ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+        {historyOpen && (
+          <div>
+            {history.length === 0 ? (
+              <div className="px-4 py-8 text-center text-t-4 text-[12px]">
+                Aucune modification enregistrée pour le moment.
+              </div>
+            ) : (
+              <>
+                <div className="max-h-[440px] overflow-y-auto">
+                  {history.slice(0, historyLimit).map((h, i) => {
+                    const meta = ACTION_STYLES[h.action] || { lbl: h.action, cls: 'text-t-3 bg-bg-4 border-border' };
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-start gap-3 px-4 py-2.5 border-b border-border last:border-0 hover:bg-white/[.02] transition-colors"
+                      >
+                        <span className={`text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded border whitespace-nowrap mt-0.5 ${meta.cls}`}>
+                          {meta.lbl}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12px] text-t-1 leading-snug">{h.detail}</div>
+                          <div className="text-[10px] text-t-4 mt-0.5 flex items-center gap-2 font-mono">
+                            <span title={new Date(h.ts).toLocaleString('fr-FR')}>{fmtRelTs(h.ts)}</span>
+                            {h.spaceName && (
+                              <>
+                                <span>·</span>
+                                <span>{h.spaceName}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between px-4 py-2.5 bg-bg-2 border-t border-border">
+                  {history.length > historyLimit ? (
+                    <button
+                      onClick={() => setHistoryLimit(l => l + 25)}
+                      className="text-[11px] text-accent hover:underline cursor-pointer font-semibold"
+                    >
+                      Voir plus ({history.length - historyLimit} restantes)
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-t-4">Fin de l&apos;historique</span>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (confirm('Effacer tout l\'historique ? Cette action est irréversible.')) {
+                        clearHistory();
+                      }
+                    }}
+                    className="text-[10px] text-danger hover:underline cursor-pointer font-semibold"
+                  >
+                    Effacer l&apos;historique
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Export/Import */}
