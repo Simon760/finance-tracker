@@ -50,23 +50,16 @@ export function sumAedBudget(m: Month, postes: { isAed: boolean }[], liveRate: n
   return total;
 }
 
+// NOTE: aligné sur la version HTML (_old/js/services/budget.js).
+// Les save handlers de transaction gardent row.aed / row.eur synchronisés
+// avec la somme des txns, donc on lit directement ces champs.
+// (Sommer les txns ici provoquait une double conversion sur les txns EUR
+// car t.amount est déjà stocké en AED — cf. tracker/page.tsx onSaveTxn.)
 export function sumEur(m: Month, actual: ActualRow[], extra: ExtraRow[]): number {
   let total = 0;
-  actual.forEach(row => {
-    const txns = row.txns || [];
-    if (txns.length > 0) {
-      total += txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || m.rate)), 0);
-    } else {
-      total += rowEur(row, m.rate);
-    }
-  });
+  actual.forEach(row => { total += rowEur(row, m.rate); });
   (extra || []).forEach(r => {
-    const txns = r.txns || [];
-    if (txns.length > 0) {
-      total += txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || m.rate)), 0);
-    } else {
-      total += r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
-    }
+    total += r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
   });
   return total;
 }
@@ -74,32 +67,12 @@ export function sumEur(m: Month, actual: ActualRow[], extra: ExtraRow[]): number
 export function sumAed(m: Month, actual: ActualRow[], extra: ExtraRow[]): number {
   let total = 0;
   actual.forEach(row => {
-    const txns = row.txns || [];
-    if (txns.length > 0) {
-      // Si on a des transactions, on les somme en AED (conversion si EUR)
-      total += txns.reduce((s, t) => {
-        if (t.currency === 'AED') return s + (t.amount || 0);
-        return s + (t.amount || 0) * (t.rate || m.rate);
-      }, 0);
-    } else if (row.aed && row.aed > 0) {
-      total += row.aed;
-    } else if (row.eur && row.eur > 0) {
-      // Poste EUR : on convertit au rate du mois
-      total += toAed(row.eur, m.rate);
-    }
+    if (row.aed && row.aed > 0) total += row.aed;
+    else if (row.eur && row.eur > 0) total += toAed(row.eur, m.rate);
   });
   (extra || []).forEach(r => {
-    const txns = r.txns || [];
-    if (txns.length > 0) {
-      total += txns.reduce((s, t) => {
-        if (t.currency === 'AED') return s + (t.amount || 0);
-        return s + (t.amount || 0) * (t.rate || m.rate);
-      }, 0);
-    } else if (r.aed && r.aed > 0) {
-      total += r.aed;
-    } else if (r.eur && r.eur > 0) {
-      total += toAed(r.eur, m.rate);
-    }
+    if (r.aed && r.aed > 0) total += r.aed;
+    else if (r.eur && r.eur > 0) total += toAed(r.eur, m.rate);
   });
   return total;
 }
