@@ -51,24 +51,33 @@ export function sumAedBudget(m: Month, postes: { isAed: boolean }[], liveRate: n
 }
 
 // NOTE: aligné sur la version HTML (_old/js/services/budget.js).
+// On itère state.postes (et non actual[]) pour ignorer les rows orphelines
+// laissées dans m.actual après la suppression d'un poste.
 // Les save handlers de transaction gardent row.aed / row.eur synchronisés
 // avec la somme des txns, donc on lit directement ces champs.
-// (Sommer les txns ici provoquait une double conversion sur les txns EUR
-// car t.amount est déjà stocké en AED — cf. tracker/page.tsx onSaveTxn.)
-export function sumEur(m: Month, actual: ActualRow[], extra: ExtraRow[]): number {
+export function sumEur(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
   let total = 0;
-  actual.forEach(row => { total += rowEur(row, m.rate); });
+  postes.forEach((_, i) => {
+    const row = m.actual?.[i];
+    if (!row) return;
+    total += rowEur(row, m.rate);
+  });
   (extra || []).forEach(r => {
     total += r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
   });
   return total;
 }
 
-export function sumAed(m: Month, actual: ActualRow[], extra: ExtraRow[]): number {
+export function sumAed(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
   let total = 0;
-  actual.forEach(row => {
-    if (row.aed && row.aed > 0) total += row.aed;
-    else if (row.eur && row.eur > 0) total += toAed(row.eur, m.rate);
+  postes.forEach((p, i) => {
+    const row = m.actual?.[i];
+    if (!row) return;
+    if (p.isAed) {
+      total += row.aed || 0;
+    } else {
+      total += toAed(rowEur(row, m.rate), m.rate);
+    }
   });
   (extra || []).forEach(r => {
     if (r.aed && r.aed > 0) total += r.aed;

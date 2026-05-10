@@ -20,7 +20,7 @@ export default function GlobalPage() {
 
   const spaceStats = useMemo(() => {
     return spaces.map(space => {
-      const totalSpent = space.months.reduce((s, m) => s + sumEur(m, m.actual, m.extraActual), 0);
+      const totalSpent = space.months.reduce((s, m) => s + sumEur(m, space.postes, m.extraActual), 0);
       const totalRevConfirmed = Object.values(space.revenus?.months || {}).reduce((total, entries) => {
         return total + (entries || []).filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       }, 0);
@@ -56,7 +56,7 @@ export default function GlobalPage() {
       const earnLocal = synced
         ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((sum, e) => sum + ((e.cashed || 0) * (e.rate || lastMonth.rate)), 0)
         : (lastMonth.earn || 0) * lastMonth.rate;
-      const spentLocal = sumAed(lastMonth, lastMonth.actual, lastMonth.extraActual);
+      const spentLocal = sumAed(lastMonth, s.postes, lastMonth.extraActual);
       const balance = (lastMonth.soldeStart || 0) + earnLocal - spentLocal;
       const eurBalance = s.localCurrency === 'EUR' ? balance : balance / liveRate;
       return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance, eurBalance };
@@ -90,7 +90,7 @@ export default function GlobalPage() {
     const row: Record<string, string | number> = { name: mId.slice(0, 3) };
     spaces.forEach(s => {
       const m = s.months.find(mo => mo.id === mId);
-      row[s.name] = m ? sumEur(m, m.actual, m.extraActual) : 0;
+      row[s.name] = m ? sumEur(m, s.postes, m.extraActual) : 0;
     });
     return row;
   });

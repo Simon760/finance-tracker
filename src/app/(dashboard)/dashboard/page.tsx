@@ -39,7 +39,7 @@ export default function DashboardPage() {
     return toAed(m.earn || 0, m.rate);
   };
 
-  const totalSpent = ms.reduce((s, m) => s + sumEur(m, m.actual, m.extraActual), 0);
+  const totalSpent = ms.reduce((s, m) => s + sumEur(m, state.postes, m.extraActual), 0);
   const avg = totalSpent / ms.length;
   const dcFmt = (v: number, rate: number) => dashCur === 'EUR' ? `${f$(v)} €` : `${f0(toAed(v, rate))} AED`;
   const avgRate = ms.reduce((s, m) => s + m.rate, 0) / ms.length;
@@ -47,7 +47,7 @@ export default function DashboardPage() {
   // Evolution data
   const evoData = ms.map(m => ({
     name: m.id.slice(0, 3),
-    Dépenses: dashCur === 'EUR' ? sumEur(m, m.actual, m.extraActual) : toAed(sumEur(m, m.actual, m.extraActual), m.rate),
+    Dépenses: dashCur === 'EUR' ? sumEur(m, state.postes, m.extraActual) : toAed(sumEur(m, state.postes, m.extraActual), m.rate),
     Revenus: dashCur === 'EUR' ? monthEarnEur(m) : monthEarnAed(m),
   }));
 

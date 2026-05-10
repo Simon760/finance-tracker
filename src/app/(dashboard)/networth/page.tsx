@@ -69,7 +69,7 @@ export default function NetWorthPage() {
       const earnLocal = synced
         ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((sum, e) => sum + ((e.cashed || 0) * (e.rate || lastMonth.rate)), 0)
         : (lastMonth.earn || 0) * lastMonth.rate;
-      const spentLocal = sumAed(lastMonth, lastMonth.actual, lastMonth.extraActual);
+      const spentLocal = sumAed(lastMonth, s.postes, lastMonth.extraActual);
       const balance = (lastMonth.soldeStart || 0) + earnLocal - spentLocal;
       const eurBalance = s.localCurrency === 'EUR' ? balance : balance / liveRate;
       return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance, eurBalance };

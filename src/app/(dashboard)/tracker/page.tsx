@@ -284,8 +284,8 @@ export default function TrackerPage() {
   const periodMonths = periodMode ? filtered.slice(periodFrom, periodTo + 1) : [];
   const periodAgg = periodMode ? {
     totalBudgetEur: periodMonths.reduce((s, pm) => s + sumEurBudget(pm, state.postes, liveRate), 0),
-    totalActualEur: periodMonths.reduce((s, pm) => s + sumEur(pm, pm.actual, pm.extraActual), 0),
-    totalActualAed: periodMonths.reduce((s, pm) => s + sumAed(pm, pm.actual, pm.extraActual), 0),
+    totalActualEur: periodMonths.reduce((s, pm) => s + sumEur(pm, state.postes, pm.extraActual), 0),
+    totalActualAed: periodMonths.reduce((s, pm) => s + sumAed(pm, state.postes, pm.extraActual), 0),
     avgBudgetEur: 0, avgActualEur: 0,
   } : null;
   if (periodAgg && periodMonths.length > 0) {
@@ -311,8 +311,8 @@ export default function TrackerPage() {
   // Computed values
   const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
   const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
-  const aE = m ? sumEur(m, m.actual, m.extraActual) : 0;
-  const aA = m ? sumAed(m, m.actual, m.extraActual) : 0;
+  const aE = m ? sumEur(m, state.postes, m.extraActual) : 0;
+  const aA = m ? sumAed(m, state.postes, m.extraActual) : 0;
 
   const synced = m ? isRevSynced(m.id) : false;
   const earnEur = m ? (synced ? getMonthRevEur(m.id) : (m.earn || 0)) : 0;
@@ -491,14 +491,14 @@ export default function TrackerPage() {
                       {p.isAed ? (
                         <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
                       ) : (
-                        <span className="font-mono text-xs text-t-3">—</span>
+                        <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block">{(row.eur || 0) > 0 ? f0(toAed(row.eur || 0, liveRate)) : '—'}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {!p.isAed ? (
                         <CellInput value={row.eur || 0} onChange={v => updateBudget(i, v, true)} />
                       ) : (
-                        <span className="font-mono text-xs text-t-3 mono-value">{f$(eur)}</span>
+                        <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block">{f$(eur)}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -515,8 +515,8 @@ export default function TrackerPage() {
                 return (
                   <tr key={`eb${i}`} className="border-b border-border hover:bg-white/[.02]">
                     <td className="px-4 py-2.5 text-[13px] font-semibold">{r.name}</td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value">{f0(r.aed)}</span></td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value">{f$(eur)}</span></td>
+                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value pr-2 inline-block">{r.aed > 0 ? f0(r.aed) : (r.eur > 0 ? f0(toAed(r.eur, liveRate)) : '—')}</span></td>
+                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block">{f$(eur)}</span></td>
                     <td className="px-4 py-2.5 text-right">
                       <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraBudget: mo.extraBudget.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
                     </td>
@@ -532,8 +532,8 @@ export default function TrackerPage() {
             <tfoot>
               <tr className="bg-bg-2">
                 <td className="px-4 py-2.5 font-bold text-[13px]">TOTAL</td>
-                <td className="px-4 py-2.5 text-right font-mono font-bold text-[13px] mono-value">{f0(bA)} AED</td>
-                <td className="px-4 py-2.5 text-right font-mono font-bold text-[13px] mono-value">{f$(bE)} €</td>
+                <td className="px-4 py-2.5 text-right font-mono font-bold text-[13px] mono-value pr-6">{f0(bA)} AED</td>
+                <td className="px-4 py-2.5 text-right font-mono font-bold text-[13px] mono-value pr-6">{f$(bE)} €</td>
                 <td />
               </tr>
             </tfoot>
@@ -559,6 +559,9 @@ export default function TrackerPage() {
                 const ratio = beur > 0 ? eur / beur : 0;
                 const ecart = beur - eur;
                 const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';
+                // Quand l'écart est ~ 0 (objectif atteint pile), on rend le badge discret
+                const ecartZero = beur > 0 && Math.abs(ecart) < 0.5;
+                const ecartCls = ecartZero ? 'text-t-3 opacity-60' : ecart >= 0 ? 'text-accent' : 'text-danger';
                 // M-1 inline: % delta vs mois précédent (sur l'actual)
                 const prevEur = prevM ? rowEur(prevM.actual[i] || { aed: 0, eur: null }, prevM.rate) : 0;
                 const hasPrev = !!prevM && prevEur > 0;
@@ -587,16 +590,20 @@ export default function TrackerPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {p.isAed ? <CellInput value={row.aed} onChange={v => updateActual(i, v)} /> : <span className="font-mono text-xs text-t-3">—</span>}
+                      {p.isAed
+                        ? <CellInput value={row.aed} onChange={v => updateActual(i, v)} />
+                        : <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block">{(row.eur || 0) > 0 ? f0(toAed(row.eur || 0, m.rate)) : '—'}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {!p.isAed ? <CellInput value={row.eur || 0} onChange={v => updateActual(i, v, true)} /> : <span className="font-mono text-xs text-t-3 mono-value">{f$(eur)}</span>}
+                      {!p.isAed
+                        ? <CellInput value={row.eur || 0} onChange={v => updateActual(i, v, true)} />
+                        : <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block">{f$(eur)}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className={`font-mono text-[11px] font-semibold ${rc}`}>{beur > 0 ? `${(ratio * 100).toFixed(0)}%` : '—'}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <span className={`font-mono text-[11px] ${ecart >= 0 ? 'text-accent' : 'text-danger'} mono-value`}>
+                      <span className={`font-mono text-[11px] ${ecartCls} mono-value`}>
                         {beur > 0 ? `${ecart >= 0 ? '+' : ''}${f$(ecart)} €` : '—'}
                       </span>
                     </td>
@@ -616,8 +623,8 @@ export default function TrackerPage() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value">{f0(r.aed)}</span></td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value">{f$(eur)}</span></td>
+                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value pr-2 inline-block">{r.aed > 0 ? f0(r.aed) : (r.eur > 0 ? f0(toAed(r.eur, m.rate)) : '—')}</span></td>
+                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block">{f$(eur)}</span></td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-[11px] text-t-3">—</span></td>
                     <td className="px-4 py-2.5 text-right">
                       <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraActual: mo.extraActual.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
@@ -634,8 +641,8 @@ export default function TrackerPage() {
             <tfoot>
               <tr className="bg-bg-2">
                 <td className="px-4 py-2.5 font-bold text-[13px]">TOTAL</td>
-                <td className="px-4 py-2.5 text-right font-mono font-bold mono-value">{f0(aA)} AED</td>
-                <td className="px-4 py-2.5 text-right font-mono font-bold mono-value">{f$(aE)} €</td>
+                <td className="px-4 py-2.5 text-right font-mono font-bold mono-value pr-6">{f0(aA)} AED</td>
+                <td className="px-4 py-2.5 text-right font-mono font-bold mono-value pr-6">{f$(aE)} €</td>
                 <td className="px-4 py-2.5 text-right">
                   <span className={`font-mono text-[11px] font-semibold ${bE > 0 && aE / bE > 1.05 ? 'text-danger' : 'text-accent'}`}>
                     {bE > 0 ? `${(aE / bE * 100).toFixed(0)}%` : '—'}
