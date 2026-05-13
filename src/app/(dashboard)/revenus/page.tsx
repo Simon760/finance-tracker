@@ -99,9 +99,25 @@ export default function RevenusPage() {
 
   const categories = rev.categories || [];
 
+  // Liste des clients déjà vus, triée par fréquence (desc). Sert à la datalist d'auto-complétion.
+  const clientSuggestions = useMemo(() => {
+    const counts = new Map<string, number>();
+    Object.values(rev.months || {}).forEach(entries => {
+      (entries || []).forEach(e => {
+        const name = (e.client || '').trim();
+        if (!name) return;
+        counts.set(name, (counts.get(name) || 0) + 1);
+      });
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [rev.months]);
+
   // Actions
   const openAdd = (month?: string) => {
-    setForm({ date: '', client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
+    const today = new Date().toISOString().split('T')[0];
+    setForm({ date: today, client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
     setFormMonth(month || orderedMonths[orderedMonths.length - 1] || '');
     setEditIdx(null);
     setAddOpen(true);
@@ -179,6 +195,10 @@ export default function RevenusPage() {
   const renderTracker = () => {
     const curMonthName = effectiveTab;
     const curEntries = rev.months[curMonthName] || [];
+    // Tri chronologique pour l'affichage, en gardant l'index d'origine pour edit/delete/confirm
+    const sortedEntries = curEntries
+      .map((e, i) => ({ e, i }))
+      .sort((a, b) => (a.e.date || '').localeCompare(b.e.date || ''));
 
     // Per-month aggregates (matches old HTML logic)
     const monthCashed = curEntries
@@ -273,7 +293,7 @@ export default function RevenusPage() {
                 </tr>
               </thead>
               <tbody>
-                {curEntries.map((e, i) => {
+                {sortedEntries.map(({ e, i }) => {
                   const status = e.status || 'confirmed';
                   const isConfirmed = status === 'confirmed';
                   const cashedColor = status === 'preview' ? 'text-info' : status === 'pending' ? 'text-warning' : 'text-accent';
@@ -766,7 +786,17 @@ export default function RevenusPage() {
             <input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
           </FormField>
           <FormField label="Client">
-            <input className="fi" value={form.client} onChange={e => setForm({ ...form, client: e.target.value })} placeholder="Ex: Client A" />
+            <input
+              className="fi"
+              list="rv-clients"
+              value={form.client}
+              onChange={e => setForm({ ...form, client: e.target.value })}
+              placeholder="Ex: Client A"
+              autoComplete="off"
+            />
+            <datalist id="rv-clients">
+              {clientSuggestions.map(c => <option key={c} value={c} />)}
+            </datalist>
           </FormField>
           <FormField label="Catégorie">
             <select className="fi" value={form.cat} onChange={e => setForm({ ...form, cat: e.target.value })}>
