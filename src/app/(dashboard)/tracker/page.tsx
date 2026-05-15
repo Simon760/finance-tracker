@@ -358,50 +358,83 @@ export default function TrackerPage() {
   return (
     <div>
       <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
-        <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
-          + Nouveau mois
-        </button>
-      </PageHeader>
-
-      {/* Year filter + Month tabs */}
-      <div className="flex items-center gap-2.5 mb-5 flex-wrap">
-        <select
-          value={curYear}
-          onChange={e => {
-            setCurYear(e.target.value);
-            const f = e.target.value === 'all' ? state.months : state.months.filter(mo => mo._year === parseInt(e.target.value));
-            if (f.length > 0 && !f.find(mo => mo.id === curMonth)) setCurMonth(f[f.length - 1].id);
-          }}
-          className="px-3 py-1.5 bg-bg-3 border border-border rounded-md text-xs font-semibold text-t-1 outline-none cursor-pointer"
-        >
-          <option value="all">Tous</option>
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        <div className="flex gap-1 flex-wrap">
-          {filtered.map(mo => (
-            <button
-              key={mo.id}
-              onClick={() => setCurMonth(mo.id)}
-              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                mo.id === curMonth
-                  ? 'bg-bg-4 text-t-1 border border-border-2'
-                  : 'text-t-3 border border-transparent hover:text-t-2 hover:bg-bg-3'
-              }`}
-            >
-              {mo.id}
-            </button>
-          ))}
-          <button onClick={deleteMonth} className="px-2.5 py-1 text-[11px] bg-danger/10 text-danger border border-danger/25 rounded-md font-semibold ml-1.5 cursor-pointer hover:bg-danger/20 transition-all">
+        <div className="flex flex-col items-end gap-1.5">
+          <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
+            + Nouveau mois
+          </button>
+          <button onClick={deleteMonth} disabled={!curMonth} className="px-3 py-1 text-[11px] bg-danger/10 text-danger border border-danger/25 rounded-md font-semibold cursor-pointer hover:bg-danger/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             Supprimer
           </button>
-          <button onClick={() => setPeriodOpen(true)} className={`px-2.5 py-1 text-[11px] rounded-md font-semibold ml-1.5 cursor-pointer transition-all ${periodMode ? 'bg-info/20 text-info border border-info/40' : 'bg-bg-3 text-t-2 border border-border hover:bg-bg-4'}`}>
-            📅 Période
-          </button>
-          {periodMode && (
-            <button onClick={() => setPeriodMode(false)} className="px-2 py-1 text-[11px] text-t-3 hover:text-t-1 cursor-pointer">✕ Reset</button>
-          )}
         </div>
-      </div>
+      </PageHeader>
+
+      {/* Month navigator + Year/Month/Période selectors */}
+      {(() => {
+        const idx = filtered.findIndex(mo => mo.id === curMonth);
+        const hasPrev = idx > 0;
+        const hasNext = idx >= 0 && idx < filtered.length - 1;
+        const goPrev = () => { if (hasPrev) setCurMonth(filtered[idx - 1].id); };
+        const goNext = () => { if (hasNext) setCurMonth(filtered[idx + 1].id); };
+        return (
+          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+            {/* Month nav: arrows + centered current */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={goPrev}
+                disabled={!hasPrev}
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Mois précédent"
+              >‹</button>
+              <div className="min-w-[120px] px-4 py-1.5 text-center text-sm font-bold tracking-tight bg-bg-3 border border-border-2 rounded-md">
+                {curMonth || '—'}
+              </div>
+              <button
+                onClick={goNext}
+                disabled={!hasNext}
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Mois suivant"
+              >›</button>
+            </div>
+
+            {/* Selectors */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="flex items-center gap-1.5 bg-bg-3 border border-border rounded-md pl-2.5 pr-1 py-1 cursor-pointer hover:bg-bg-4 transition-colors">
+                <span className="text-[10px] uppercase tracking-wider text-t-3 font-semibold">Année</span>
+                <select
+                  value={curYear}
+                  onChange={e => {
+                    setCurYear(e.target.value);
+                    const f = e.target.value === 'all' ? state.months : state.months.filter(mo => mo._year === parseInt(e.target.value));
+                    if (f.length > 0 && !f.find(mo => mo.id === curMonth)) setCurMonth(f[f.length - 1].id);
+                  }}
+                  className="bg-transparent border-0 outline-none text-xs font-semibold text-t-1 cursor-pointer pr-1"
+                >
+                  <option value="all">Tous</option>
+                  {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 bg-bg-3 border border-border rounded-md pl-2.5 pr-1 py-1 cursor-pointer hover:bg-bg-4 transition-colors">
+                <span className="text-[10px] uppercase tracking-wider text-t-3 font-semibold">Mois</span>
+                <select
+                  value={curMonth || ''}
+                  onChange={e => setCurMonth(e.target.value)}
+                  disabled={filtered.length === 0}
+                  className="bg-transparent border-0 outline-none text-xs font-semibold text-t-1 cursor-pointer pr-1 disabled:opacity-40"
+                >
+                  {filtered.length === 0 && <option value="">—</option>}
+                  {filtered.map(mo => <option key={mo.id} value={mo.id}>{mo.id}</option>)}
+                </select>
+              </label>
+              <button onClick={() => setPeriodOpen(true)} className={`px-2.5 py-1.5 text-[11px] rounded-md font-semibold cursor-pointer transition-all ${periodMode ? 'bg-info/20 text-info border border-info/40' : 'bg-bg-3 text-t-2 border border-border hover:bg-bg-4'}`}>
+                📅 Période
+              </button>
+              {periodMode && (
+                <button onClick={() => setPeriodMode(false)} className="px-2 py-1 text-[11px] text-t-3 hover:text-t-1 cursor-pointer">✕ Reset</button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Period aggregation summary */}
       {periodMode && periodAgg && periodMonths.length > 0 && (
