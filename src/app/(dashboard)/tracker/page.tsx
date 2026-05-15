@@ -482,8 +482,7 @@ export default function TrackerPage() {
               <SoldeDisplay
                 icon="💵"
                 label="Revenus confirmés"
-                value={`${f$(earnEur)} €`}
-                sub={previewEur > 0 ? `${f0(earnAed)} AED · + ${f$(previewEur)} € en prévision` : `${f0(earnAed)} AED`}
+                value={previewEur > 0 ? `${f$(earnEur)} € (${f$(earnEur + previewEur)} €)` : `${f$(earnEur)} €`}
                 color="text-t-1"
               />
             ) : (
