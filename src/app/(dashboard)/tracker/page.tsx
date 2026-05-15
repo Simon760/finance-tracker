@@ -358,17 +358,12 @@ export default function TrackerPage() {
   return (
     <div>
       <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
-        <div className="flex flex-col items-end gap-1.5">
-          <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
-            + Nouveau mois
-          </button>
-          <button onClick={deleteMonth} disabled={!curMonth} className="px-3 py-1 text-[11px] bg-danger/10 text-danger border border-danger/25 rounded-md font-semibold cursor-pointer hover:bg-danger/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-            Supprimer
-          </button>
-        </div>
+        <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
+          + Nouveau mois
+        </button>
       </PageHeader>
 
-      {/* Month navigator + Year/Month/Période selectors */}
+      {/* Selectors (gauche) + mois courant centré */}
       {(() => {
         const idx = filtered.findIndex(mo => mo.id === curMonth);
         const hasPrev = idx > 0;
@@ -376,28 +371,9 @@ export default function TrackerPage() {
         const goPrev = () => { if (hasPrev) setCurMonth(filtered[idx - 1].id); };
         const goNext = () => { if (hasNext) setCurMonth(filtered[idx + 1].id); };
         return (
-          <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-            {/* Month nav: arrows + centered current */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={goPrev}
-                disabled={!hasPrev}
-                className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Mois précédent"
-              >‹</button>
-              <div className="min-w-[120px] px-4 py-1.5 text-center text-sm font-bold tracking-tight bg-bg-3 border border-border-2 rounded-md">
-                {curMonth || '—'}
-              </div>
-              <button
-                onClick={goNext}
-                disabled={!hasNext}
-                className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Mois suivant"
-              >›</button>
-            </div>
-
-            {/* Selectors */}
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="grid grid-cols-3 items-center gap-3 mb-5 max-md:grid-cols-1">
+            {/* Left: selectors */}
+            <div className="flex items-center gap-2 flex-wrap justify-start">
               <label className="flex items-center gap-1.5 bg-bg-3 border border-border rounded-md pl-2.5 pr-1 py-1 cursor-pointer hover:bg-bg-4 transition-colors">
                 <span className="text-[10px] uppercase tracking-wider text-t-3 font-semibold">Année</span>
                 <select
@@ -432,6 +408,28 @@ export default function TrackerPage() {
                 <button onClick={() => setPeriodMode(false)} className="px-2 py-1 text-[11px] text-t-3 hover:text-t-1 cursor-pointer">✕ Reset</button>
               )}
             </div>
+
+            {/* Center: arrows + current month */}
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={goPrev}
+                disabled={!hasPrev}
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Mois précédent"
+              >‹</button>
+              <div className="min-w-[120px] px-4 py-1.5 text-center text-sm font-bold tracking-tight bg-bg-3 border border-border-2 rounded-md">
+                {curMonth || '—'}
+              </div>
+              <button
+                onClick={goNext}
+                disabled={!hasNext}
+                className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Mois suivant"
+              >›</button>
+            </div>
+
+            {/* Right: spacer to keep center centered */}
+            <div />
           </div>
         );
       })()}
