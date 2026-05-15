@@ -11,8 +11,8 @@ import {
 
 const spaceNavItems = [
   { href: '/tracker', label: 'Tracker', icon: LayoutGrid },
-  { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { href: '/revenus', label: 'Revenus', icon: DollarSign },
+  { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { href: '/setup', label: 'Setup', icon: Home },
 ];
 
