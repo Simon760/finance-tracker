@@ -357,14 +357,14 @@ export default function ResidencyPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <KpiCard
           label="🇦🇪 UAE"
-          value={`${computed.uae}/90J`}
+          value={`${computed.uae} / 90 J`}
           sub={`${uaeZone.label}${isCurrentYear ? ` · proj. ${computed.projection.uae}J` : ''}`}
           accentColor={uaeZone.color}
           hero
         />
         <KpiCard
           label="🇫🇷 France"
-          value={`${computed.fr}/183J`}
+          value={`${computed.fr} / 183 J`}
           sub={`${frZone.label}${isCurrentYear ? ` · proj. ${computed.projection.fr}J` : ''}`}
           accentColor={frZone.color}
           hero
