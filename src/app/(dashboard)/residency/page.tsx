@@ -246,7 +246,7 @@ export default function ResidencyPage() {
         const en = e.end ? parseYmd(e.end) : new Date();
         return en >= start && s < endExcl;
       })
-      .sort((a, b) => a.start.localeCompare(b.start));
+      .sort((a, b) => b.start.localeCompare(a.start));
   }, [year, residencyEntries]);
 
   const isCurrentYear = year === nowYear;
@@ -428,7 +428,7 @@ export default function ResidencyPage() {
           <div>
             <div className="text-[10px] text-t-3 uppercase tracking-[0.12em] font-semibold mb-1">Streak hors UAE</div>
             <div className="text-[18px] mono-value" style={{ color: computed.streakOutUae > 150 ? ZONE.red : computed.streakOutUae > 100 ? ZONE.orange : undefined }}>
-              {computed.streakOutUae} J
+              {computed.streakOutUae} / 180 J
             </div>
             <div className="text-[10px] text-t-3 mt-0.5 mono-value">
               {computed.streakOutUaeFrom ? `${formatFr(computed.streakOutUaeFrom)} → ${formatFr(computed.streakOutUaeTo!)}` : '—'}
