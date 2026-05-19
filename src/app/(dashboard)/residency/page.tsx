@@ -357,22 +357,22 @@ export default function ResidencyPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <KpiCard
           label="🇦🇪 UAE"
-          value={`${computed.uae} j`}
-          sub={`${uaeZone.label}${isCurrentYear ? ` · proj. ${computed.projection.uae}j` : ''}`}
+          value={`${computed.uae}/90J`}
+          sub={`${uaeZone.label}${isCurrentYear ? ` · proj. ${computed.projection.uae}J` : ''}`}
           accentColor={uaeZone.color}
           hero
         />
         <KpiCard
           label="🇫🇷 France"
-          value={`${computed.fr} j`}
-          sub={`${frZone.label}${isCurrentYear ? ` · proj. ${computed.projection.fr}j` : ''}`}
+          value={`${computed.fr}/183J`}
+          sub={`${frZone.label}${isCurrentYear ? ` · proj. ${computed.projection.fr}J` : ''}`}
           accentColor={frZone.color}
           hero
         />
         <KpiCard
           label="🌍 Autres pays"
-          value={`${computed.other} j`}
-          sub={`${isCurrentYear ? `proj. ${computed.projection.other}j · ` : ''}voir détail tableau`}
+          value={`${computed.other} J`}
+          sub={`${isCurrentYear ? `proj. ${computed.projection.other}J · ` : ''}voir détail tableau`}
           accentColor={ZONE.neutral}
           hero
         />
@@ -414,38 +414,24 @@ export default function ResidencyPage() {
 
       {/* Bandeau résumé */}
       <Card className="mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <div className="text-[10px] text-t-3 uppercase tracking-[0.12em] font-semibold mb-1">Total jours saisis</div>
-            <div className="text-[18px] mono-value">{computed.uae + computed.fr + computed.other} / {isCurrentYear ? computed.daysElapsed : computed.yearTotal} j</div>
+            <div className="text-[18px] mono-value">{computed.uae + computed.fr + computed.other} / {isCurrentYear ? computed.daysElapsed : computed.yearTotal} J</div>
             <div className="text-[10px] text-t-3 mt-0.5">
               {(() => {
                 const reste = (isCurrentYear ? computed.daysElapsed : computed.yearTotal) - (computed.uae + computed.fr + computed.other);
-                return reste > 0 ? `${reste}j non renseignés` : 'tous renseignés';
+                return reste > 0 ? `${reste}J non renseignés` : 'tous renseignés';
               })()}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-t-3 uppercase tracking-[0.12em] font-semibold mb-1">Streak hors UAE</div>
             <div className="text-[18px] mono-value" style={{ color: computed.streakOutUae > 150 ? ZONE.red : computed.streakOutUae > 100 ? ZONE.orange : undefined }}>
-              {computed.streakOutUae} j
+              {computed.streakOutUae} J
             </div>
             <div className="text-[10px] text-t-3 mt-0.5 mono-value">
               {computed.streakOutUaeFrom ? `${formatFr(computed.streakOutUaeFrom)} → ${formatFr(computed.streakOutUaeTo!)}` : '—'}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-t-3 uppercase tracking-[0.12em] font-semibold mb-1">Seuil UAE (TRC)</div>
-            <div className="text-[18px] mono-value">≥ 90 j</div>
-            <div className="text-[10px] text-t-3 mt-0.5">
-              {computed.uae >= 90 ? `OK (+${computed.uae - 90}j)` : `manque ${90 - computed.uae}j`}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-t-3 uppercase tracking-[0.12em] font-semibold mb-1">Plafond France</div>
-            <div className="text-[18px] mono-value">≤ 183 j</div>
-            <div className="text-[10px] text-t-3 mt-0.5">
-              {computed.fr <= 183 ? `marge ${183 - computed.fr}j` : `+${computed.fr - 183}j de trop`}
             </div>
           </div>
         </div>
