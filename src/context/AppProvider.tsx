@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
-import { AppState, Month, Space, Poste, HistoryEntry } from '@/lib/types';
+import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry } from '@/lib/types';
 import { DEFAULT_POSTES } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate } from '@/lib/utils';
@@ -48,6 +48,12 @@ interface AppContextType {
   history: HistoryEntry[];
   logChange: (action: string, detail: string) => void;
   clearHistory: () => void;
+
+  // Résidence fiscale
+  residencyEntries: ResidencyEntry[];
+  addResidencyEntry: (e: Omit<ResidencyEntry, 'id'>) => void;
+  updateResidencyEntry: (id: string, updates: Partial<ResidencyEntry>) => void;
+  deleteResidencyEntry: (id: string) => void;
 }
 
 const HISTORY_CAP = 200;
@@ -343,6 +349,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase]);
 
+  const residencyEntries = useMemo(() => state.residency?.entries || [], [state.residency]);
+
+  const addResidencyEntry = useCallback((e: Omit<ResidencyEntry, 'id'>) => {
+    setStateRaw(prev => {
+      const id = `res-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const entry: ResidencyEntry = { ...e, id };
+      const list = [...(prev.residency?.entries || []), entry];
+      const hist: HistoryEntry = {
+        ts: new Date().toISOString(),
+        action: 'residency.add',
+        detail: `Séjour ${entry.country}${entry.countryName ? ' (' + entry.countryName + ')' : ''} du ${entry.start}${entry.end ? ' au ' + entry.end : ' (en cours)'}`,
+      };
+      const updated = {
+        ...prev,
+        residency: { entries: list },
+        history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP),
+        lastUpdate: new Date().toISOString(),
+      };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
+  const updateResidencyEntry = useCallback((id: string, updates: Partial<ResidencyEntry>) => {
+    setStateRaw(prev => {
+      const list = (prev.residency?.entries || []).map(e => e.id === id ? { ...e, ...updates } : e);
+      const hist: HistoryEntry = {
+        ts: new Date().toISOString(),
+        action: 'residency.update',
+        detail: `Modif séjour (${Object.keys(updates).join(', ')})`,
+      };
+      const updated = {
+        ...prev,
+        residency: { entries: list },
+        history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP),
+        lastUpdate: new Date().toISOString(),
+      };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
+  const deleteResidencyEntry = useCallback((id: string) => {
+    setStateRaw(prev => {
+      const before = (prev.residency?.entries || []).find(e => e.id === id);
+      const list = (prev.residency?.entries || []).filter(e => e.id !== id);
+      const hist: HistoryEntry = {
+        ts: new Date().toISOString(),
+        action: 'residency.delete',
+        detail: before
+          ? `Suppr séjour ${before.country} du ${before.start}${before.end ? ' au ' + before.end : ''}`
+          : 'Suppr séjour',
+      };
+      const updated = {
+        ...prev,
+        residency: { entries: list },
+        history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP),
+        lastUpdate: new Date().toISOString(),
+      };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
   const updateMonth = useCallback((id: string, field: keyof Month, val: number) => {
     setStateRaw(prev => {
       const months = prev.months.map(m => m.id === id ? { ...m, [field]: val } : m);
@@ -373,6 +446,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateMonth,
       history: state.history || [],
       logChange, clearHistory,
+      residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry,
     }}>
       <div className={hiddenMode ? 'amounts-hidden' : ''}>
         {children}

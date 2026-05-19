@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppProvider';
 import Modal from '@/components/ui/Modal';
 import {
   LayoutGrid, BarChart3, DollarSign, Home, Settings, Eye, EyeOff,
-  RefreshCw, LogOut, Globe, TrendingUp, Menu, X,
+  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin,
 } from 'lucide-react';
 
 const spaceNavItems = [
@@ -19,6 +19,7 @@ const spaceNavItems = [
 const globalNavItems = [
   { href: '/global', label: 'Vue Globale', icon: Globe },
   { href: '/networth', label: 'Net Worth', icon: TrendingUp },
+  { href: '/residency', label: 'Résidence', icon: MapPin },
 ];
 
 const CURRENCY_SYMBOLS: Record<string, string> = {

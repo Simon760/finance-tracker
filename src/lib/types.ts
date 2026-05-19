@@ -94,6 +94,22 @@ export interface HistoryEntry {
   detail: string;        // résumé humain
 }
 
+// Résidence fiscale — suivi des jours par pays
+export type ResidencyCountry = 'UAE' | 'FR' | 'OTHER';
+
+export interface ResidencyEntry {
+  id: string;
+  start: string;          // YYYY-MM-DD inclus
+  end: string | null;     // YYYY-MM-DD inclus, null = en cours jusqu'à aujourd'hui
+  country: ResidencyCountry;
+  countryName?: string;   // libre si country === 'OTHER' (ex: "Italie")
+  note?: string;
+}
+
+export interface ResidencyState {
+  entries: ResidencyEntry[];
+}
+
 // Ce qui est stocké en Firebase (backward compatible)
 export interface AppState {
   rate: number;
@@ -107,4 +123,6 @@ export interface AppState {
   activeSpaceId?: string;
   // Historique de modifs — capé à N entrées
   history?: HistoryEntry[];
+  // Résidence fiscale (global, hors spaces)
+  residency?: ResidencyState;
 }
