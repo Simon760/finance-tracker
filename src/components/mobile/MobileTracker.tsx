@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
 import { f$, f0, toEur, sumEur, sumAed, sumEurBudget, sumAedBudget } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
-import { Month, Transaction } from '@/lib/types';
+import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt } from 'lucide-react';
@@ -22,6 +22,9 @@ export default function MobileTracker() {
   const [txTarget, setTxTarget] = useState<{ posteIdx: number; editIdx?: number } | null>(null);
   const [tx, setTx] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: todayStr() });
   const [showLabelSugg, setShowLabelSugg] = useState(false);
+  // Move-to / Create-poste
+  const [createPosteMode, setCreatePosteMode] = useState(false);
+  const [newPosteForm, setNewPosteForm] = useState<{ name: string; cat: 'vital' | 'lifestyle' | 'finance' | 'logement'; isAed: boolean }>({ name: '', cat: 'vital', isAed: true });
 
   // Poste detail sheet
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
@@ -83,10 +86,16 @@ export default function MobileTracker() {
     return arr.slice(0, 6);
   }, [labelSuggestions, tx.label]);
 
+  const resetPosteCreate = () => {
+    setCreatePosteMode(false);
+    setNewPosteForm({ name: '', cat: 'vital', isAed: true });
+  };
+
   const openAddTx = (posteIdx: number) => {
     setTxTarget({ posteIdx });
     setTx({ label: '', amount: 0, currency: 'AED', date: todayStr() });
     setShowLabelSugg(false);
+    resetPosteCreate();
     setTxSheetOpen(true);
   };
 
@@ -98,6 +107,7 @@ export default function MobileTracker() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setTx({ label: t.label || '', amount: (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || todayStr() });
     setShowLabelSugg(false);
+    resetPosteCreate();
     setTxSheetOpen(true);
   };
 
@@ -117,25 +127,59 @@ export default function MobileTracker() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (entry as any).originalAmount = Math.round(tx.amount * 100) / 100;
 
-    const updatedMonths = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const actual = [...mo.actual];
-      const row = { ...actual[txTarget.posteIdx] };
-      const txns = [...(row.txns || [])];
-      if (txTarget.editIdx !== undefined) txns[txTarget.editIdx] = entry;
-      else txns.push(entry);
-      row.txns = txns;
-      const p = state.postes[txTarget.posteIdx];
-      if (p?.isAed) {
+    const recalc = (row: ActualRow, isAed: boolean): ActualRow => {
+      const txns = row.txns || [];
+      if (isAed) {
         row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
         row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
       } else {
         row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
       }
-      actual[txTarget.posteIdx] = row;
+      return row;
+    };
+
+    // Détermine la cible (poste existant ou nouveau)
+    let postes: Poste[] = state.postes;
+    let targetIdx = txTarget.posteIdx;
+    if (createPosteMode) {
+      const trimmed = newPosteForm.name.trim().toUpperCase();
+      if (!trimmed) return;
+      const existing = postes.findIndex(p => p.name === trimmed);
+      if (existing >= 0) {
+        targetIdx = existing;
+      } else {
+        postes = [...postes, { name: trimmed, cat: newPosteForm.cat, isAed: newPosteForm.isAed }];
+        targetIdx = postes.length - 1;
+      }
+    }
+    const sourceIdx = txTarget.posteIdx;
+    const isMove = txTarget.editIdx !== undefined && targetIdx !== sourceIdx;
+
+    const updatedMonths = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const actual = [...mo.actual];
+      if (isMove) {
+        const sourceRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        sourceRow.txns = (sourceRow.txns || []).filter((_, i) => i !== txTarget.editIdx);
+        recalc(sourceRow, !!postes[sourceIdx]?.isAed);
+        actual[sourceIdx] = sourceRow;
+
+        const targetRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        targetRow.txns = [...(targetRow.txns || []), entry];
+        recalc(targetRow, !!postes[targetIdx]?.isAed);
+        actual[targetIdx] = targetRow;
+      } else {
+        const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        const txns = [...(row.txns || [])];
+        if (txTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txTarget.editIdx] = entry;
+        else txns.push(entry);
+        row.txns = txns;
+        recalc(row, !!postes[targetIdx]?.isAed);
+        actual[targetIdx] = row;
+      }
       return { ...mo, actual };
     });
-    setState({ ...state, months: updatedMonths });
+    setState({ ...state, postes, months: updatedMonths });
     setTxSheetOpen(false);
     save();
   };
@@ -379,14 +423,65 @@ export default function MobileTracker() {
         <div className="space-y-4 pt-1">
           <div>
             <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Poste</label>
-            <select
-              className="fi !h-11"
-              value={txTarget?.posteIdx ?? 0}
-              onChange={e => setTxTarget(prev => prev ? { ...prev, posteIdx: parseInt(e.target.value) } : null)}
-              disabled={txTarget?.editIdx !== undefined}
-            >
-              {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
-            </select>
+            {!createPosteMode ? (
+              <div className="flex gap-2">
+                <select
+                  className="fi !h-11 flex-1"
+                  value={txTarget?.posteIdx ?? 0}
+                  onChange={e => setTxTarget(prev => prev ? { ...prev, posteIdx: parseInt(e.target.value) } : null)}
+                >
+                  {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setCreatePosteMode(true)}
+                  className="px-3 h-11 text-[11px] font-semibold bg-accent/10 text-accent border border-accent/25 rounded-md active:bg-accent/20 whitespace-nowrap"
+                >
+                  + Nouveau
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 border border-accent/30 rounded-md p-3 bg-accent/5">
+                <input
+                  className="fi !h-11"
+                  value={newPosteForm.name}
+                  onChange={e => setNewPosteForm({ ...newPosteForm, name: e.target.value.toUpperCase() })}
+                  placeholder="Nom (ex: TRANSPORT)"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <select
+                    className="fi !h-11 flex-1"
+                    value={newPosteForm.cat}
+                    onChange={e => setNewPosteForm({ ...newPosteForm, cat: e.target.value as 'vital' | 'lifestyle' | 'finance' | 'logement' })}
+                  >
+                    <option value="vital">Vital</option>
+                    <option value="lifestyle">Lifestyle</option>
+                    <option value="finance">Finance</option>
+                    <option value="logement">Logement</option>
+                  </select>
+                  <div className="flex bg-bg-4 rounded-md p-0.5">
+                    {([['AED', true], ['EUR', false]] as const).map(([label, val]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setNewPosteForm({ ...newPosteForm, isAed: val })}
+                        className={`px-3 text-[11px] font-semibold rounded transition-all ${newPosteForm.isAed === val ? 'bg-bg-2 text-t-1' : 'text-t-3'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetPosteCreate}
+                  className="text-[11px] text-t-3 active:text-t-1"
+                >
+                  ← Choisir un poste existant
+                </button>
+              </div>
+            )}
           </div>
 
           <div>

@@ -39,6 +39,10 @@ export default function TrackerPage() {
   const [txnTarget, setTxnTarget] = useState<{ posteIdx: number; editIdx?: number; isExtra?: boolean; extraIdx?: number } | null>(null);
   const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: new Date().toISOString().split('T')[0] });
   const [showLabelSugg, setShowLabelSugg] = useState(false);
+  // Pour bouger la tx vers un autre poste (ou en créer un nouveau)
+  const [selectedPosteIdx, setSelectedPosteIdx] = useState<number>(0);
+  const [createPosteMode, setCreatePosteMode] = useState(false);
+  const [newPosteForm, setNewPosteForm] = useState<{ name: string; cat: 'vital' | 'lifestyle' | 'finance' | 'logement'; isAed: boolean }>({ name: '', cat: 'vital', isAed: true });
 
   // Suggestions de libellés pour le poste courant : fréquence sur tout l'historique du space
   const labelSuggestions = useMemo<{ label: string; count: number; lastDate: string }[]>(() => {
@@ -84,15 +88,23 @@ export default function TrackerPage() {
     return arr.slice(0, 8);
   }, [labelSuggestions, txnForm.label]);
 
+  const resetPosteSelector = (posteIdx: number) => {
+    setSelectedPosteIdx(posteIdx);
+    setCreatePosteMode(false);
+    setNewPosteForm({ name: '', cat: 'vital', isAed: true });
+  };
+
   const openTxnAdd = (posteIdx: number) => {
     setTxnTarget({ posteIdx });
     setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
+    resetPosteSelector(posteIdx);
     setTxnOpen(true);
   };
 
   const openTxnAddExtra = (extraIdx: number) => {
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx });
     setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
+    resetPosteSelector(-1);
     setTxnOpen(true);
   };
 
@@ -104,6 +116,7 @@ export default function TrackerPage() {
     setTxnTarget({ posteIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
+    resetPosteSelector(posteIdx);
     setTxnOpen(true);
   };
 
@@ -115,6 +128,7 @@ export default function TrackerPage() {
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
+    resetPosteSelector(-1);
     setTxnOpen(true);
   };
 
@@ -134,40 +148,103 @@ export default function TrackerPage() {
     // @ts-expect-error: originalAmount for edit round-trip
     txnEntry.originalAmount = Math.round(txnForm.amount * 100) / 100;
 
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
+    // Helper: recalcule aed/eur d'une row à partir de ses txns
+    const recalc = (row: ActualRow, isAed: boolean): ActualRow => {
+      const txns = row.txns || [];
+      if (isAed) {
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+      } else {
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+      }
+      return row;
+    };
+
+    // Cas extras : pas de mouvement de poste supporté, juste add/edit en place
+    if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
+      const months = state.months.map(mo => {
+        if (mo.id !== m.id) return mo;
         const extraActual = [...(mo.extraActual || [])];
-        const r = { ...extraActual[txnTarget.extraIdx] };
+        const r = { ...extraActual[txnTarget.extraIdx!] };
         const txns = [...(r.txns || [])];
         if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
         else txns.push(txnEntry);
         r.txns = txns;
         r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
         r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-        extraActual[txnTarget.extraIdx] = r;
+        extraActual[txnTarget.extraIdx!] = r;
         return { ...mo, extraActual };
+      });
+      setState({ ...state, months });
+      setTxnOpen(false);
+      save();
+      return;
+    }
+
+    // Cas poste classique. Détermine le poste cible (peut être nouveau).
+    let postes = state.postes;
+    let targetIdx = selectedPosteIdx;
+    let createdNewPoste = false;
+    if (createPosteMode) {
+      const trimmedName = newPosteForm.name.trim().toUpperCase();
+      if (!trimmedName) return;
+      // Vérif unicité
+      const existing = postes.findIndex(p => p.name === trimmedName);
+      if (existing >= 0) {
+        targetIdx = existing;
       } else {
-        const actual = [...mo.actual];
-        const row = { ...actual[txnTarget.posteIdx] };
+        postes = [...postes, { name: trimmedName, cat: newPosteForm.cat, isAed: newPosteForm.isAed }];
+        targetIdx = postes.length - 1;
+        createdNewPoste = true;
+      }
+    }
+    const sourceIdx = txnTarget.posteIdx;
+    const isMove = txnTarget.editIdx !== undefined && targetIdx !== sourceIdx;
+
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const actual = [...mo.actual];
+
+      if (isMove) {
+        // Retire la tx de la source
+        const sourceRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        sourceRow.txns = (sourceRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
+        const sP = postes[sourceIdx];
+        recalc(sourceRow, !!sP?.isAed);
+        actual[sourceIdx] = sourceRow;
+
+        // Ajoute à la cible
+        const targetRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        targetRow.txns = [...(targetRow.txns || []), txnEntry];
+        const tP = postes[targetIdx];
+        recalc(targetRow, !!tP?.isAed);
+        actual[targetIdx] = targetRow;
+      } else {
+        // Add ou edit en place
+        const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         const txns = [...(row.txns || [])];
-        if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
+        if (txnTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txnTarget.editIdx] = txnEntry;
         else txns.push(txnEntry);
         row.txns = txns;
-        const p = state.postes[txnTarget.posteIdx];
-        if (p?.isAed) {
-          row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-        } else {
-          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-        }
-        actual[txnTarget.posteIdx] = row;
-        return { ...mo, actual };
+        const p = postes[targetIdx];
+        recalc(row, !!p?.isAed);
+        actual[targetIdx] = row;
       }
+      return { ...mo, actual };
     });
-    setState({ ...state, months });
+
+    setState({ ...state, postes, months });
     setTxnOpen(false);
     save();
+    if (createdNewPoste) {
+      const newP = postes[targetIdx];
+      logChange?.('poste.create', `Création poste « ${newP.name} » (${newP.cat}) depuis edit tx`);
+    }
+    if (isMove) {
+      const sName = state.postes[sourceIdx]?.name || '—';
+      const tName = postes[targetIdx]?.name || '—';
+      logChange?.('txn.move', `Tx « ${txnEntry.label} » déplacée de ${sName} → ${tName}`);
+    }
   };
 
   const deleteTxn = (posteIdx: number, txnIdx: number) => {
@@ -990,6 +1067,69 @@ export default function TrackerPage() {
         })()
       }>
         <div className="space-y-4">
+          {!txnTarget?.isExtra && (
+            <FormField label="Poste">
+              {!createPosteMode ? (
+                <div className="flex gap-2">
+                  <select
+                    className="fi flex-1"
+                    value={selectedPosteIdx}
+                    onChange={e => setSelectedPosteIdx(parseInt(e.target.value))}
+                  >
+                    {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setCreatePosteMode(true)}
+                    className="px-3 py-2 text-[11px] font-semibold bg-accent/10 text-accent border border-accent/25 rounded-md hover:bg-accent/20 cursor-pointer whitespace-nowrap"
+                  >
+                    + Nouveau
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 border border-accent/30 rounded-md p-3 bg-accent/5">
+                  <input
+                    className="fi"
+                    value={newPosteForm.name}
+                    onChange={e => setNewPosteForm({ ...newPosteForm, name: e.target.value.toUpperCase() })}
+                    placeholder="Nom du poste (ex: TRANSPORT)"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <select
+                      className="fi flex-1"
+                      value={newPosteForm.cat}
+                      onChange={e => setNewPosteForm({ ...newPosteForm, cat: e.target.value as 'vital' | 'lifestyle' | 'finance' | 'logement' })}
+                    >
+                      <option value="vital">Vital</option>
+                      <option value="lifestyle">Lifestyle</option>
+                      <option value="finance">Finance</option>
+                      <option value="logement">Logement</option>
+                    </select>
+                    <div className="flex bg-bg-4 rounded-md p-0.5">
+                      {([['AED', true], ['EUR', false]] as const).map(([label, val]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => setNewPosteForm({ ...newPosteForm, isAed: val })}
+                          className={`px-3 py-1 text-[11px] font-semibold rounded cursor-pointer transition-all ${newPosteForm.isAed === val ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setCreatePosteMode(false); setNewPosteForm({ name: '', cat: 'vital', isAed: true }); }}
+                    className="text-[11px] text-t-3 hover:text-t-1 cursor-pointer"
+                  >
+                    ← Choisir un poste existant
+                  </button>
+                </div>
+              )}
+            </FormField>
+          )}
           <FormField label="Libellé">
             <div className="relative">
               <input
