@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import MobileTracker from '@/components/mobile/MobileTracker';
 import { useIsMobile } from '@/lib/useIsMobile';
+import MonthStatsCard from '@/components/MonthStatsCard';
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
@@ -727,6 +728,9 @@ export default function TrackerPage() {
               </tr>
             </tfoot>
           </TableSection>
+
+          {/* Stats du mois */}
+          <MonthStatsCard month={m} postes={state.postes} />
 
           {/* Charts */}
           <div className="grid grid-cols-2 gap-3 mb-5 max-lg:grid-cols-1">

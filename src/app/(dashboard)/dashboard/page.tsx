@@ -5,6 +5,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import { f$, f0, toAed, rowEur, sumEur } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
+import BankStatsCard from '@/components/BankStatsCard';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -104,6 +105,9 @@ export default function DashboardPage() {
       <div className="max-w-[400px] mb-6">
         <KpiCard label="Total dépensé" value={dcFmt(totalSpent, avgRate)} sub={`Moy: ${dcFmt(avg, avgRate)}/mois`} accentColor="#3b82f6" hero />
       </div>
+
+      {/* Bank stats: ATH / ATL / Solde moyen */}
+      <BankStatsCard state={state} currency={activeSpace?.localCurrency || 'AED'} />
 
       {/* Evo Chart */}
       <div className="bg-bg-3 border border-border rounded-md p-4 mb-3.5" style={{ height: 320 }}>
