@@ -7,6 +7,8 @@ import {
   Eye, EyeOff, RefreshCw, LogOut, BarChart3, TrendingUp, Home, Settings, ChevronRight, X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
+import { setForceDesktop } from '@/lib/useIsMobile';
+import { Monitor } from 'lucide-react';
 
 const TABS = [
   { href: '/tracker', label: 'Tracker', icon: LayoutGrid },
@@ -148,7 +150,13 @@ export default function MobileShell({ children }: { children: React.ReactNode })
                 <span>Utilisateur</span>
                 <span className="text-t-2 font-mono">{userId || '—'}</span>
               </div>
-              <button onClick={logout} className="w-full flex items-center justify-center gap-2 mt-3 py-3 bg-danger/10 text-danger border border-danger/25 rounded-lg font-semibold text-[13px] active:bg-danger/20">
+              <button
+                onClick={() => setForceDesktop(true)}
+                className="w-full flex items-center justify-center gap-2 mt-3 py-3 bg-bg-3 text-t-2 border border-border rounded-lg font-semibold text-[12px] active:bg-bg-4"
+              >
+                <Monitor size={14} /> Forcer la vue desktop
+              </button>
+              <button onClick={logout} className="w-full flex items-center justify-center gap-2 mt-1.5 py-3 bg-danger/10 text-danger border border-danger/25 rounded-lg font-semibold text-[13px] active:bg-danger/20">
                 <LogOut size={16} /> Déconnexion
               </button>
             </div>

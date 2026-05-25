@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
+import MobileGlobal from '@/components/mobile/MobileGlobal';
+import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
 import { f$, f0, sumEur, sumAed } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
@@ -15,6 +17,7 @@ import {
 const tooltipStyle = { background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 };
 
 export default function GlobalPage() {
+  const isMobile = useIsMobile();
   const { spaces, liveRate, setActiveSpaceId } = useApp();
   const router = useRouter();
 
@@ -99,6 +102,9 @@ export default function GlobalPage() {
     setActiveSpaceId(id);
     router.push('/tracker');
   };
+
+  // Mobile: dedicated UI shell
+  if (isMobile === true) return <MobileGlobal />;
 
   return (
     <div>

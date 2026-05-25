@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
+import MobileRevenus from '@/components/mobile/MobileRevenus';
+import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
 import { f$ } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
@@ -80,6 +82,7 @@ const STATUS_ROW_BORDER: Record<string, string> = {
 };
 
 export default function RevenusPage() {
+  const isMobile = useIsMobile();
   const { state, setState, save, liveRate, activeSpace, logChange } = useApp();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
 
@@ -762,6 +765,9 @@ export default function RevenusPage() {
       </>
     );
   };
+
+  // Mobile: dedicated UI shell
+  if (isMobile === true) return <MobileRevenus />;
 
   return (
     <div>
