@@ -127,3 +127,18 @@ select.fi { @apply cursor-pointer; }
 .pill-active { @apply text-accent bg-accent/10 border-accent/25; }
 .pill-archived { @apply text-t-3 bg-bg-4 border-border; }
 .pill-draft { @apply text-info bg-info/10 border-info/25; }
+
+/* Mobile: réduit le padding/font des cellules dans les tables denses */
+@media (max-width: 767px) {
+  .overflow-x-auto > table th,
+  .overflow-x-auto > table td {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .overflow-x-auto > table th { font-size: 9px; }
+  /* Indique visuellement qu'on peut scroller horizontalement */
+  .overflow-x-auto {
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+}

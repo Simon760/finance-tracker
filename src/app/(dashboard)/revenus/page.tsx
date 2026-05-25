@@ -280,7 +280,8 @@ export default function RevenusPage() {
                 <button onClick={() => openAdd(curMonthName)} className="btn btn-ghost !py-1 !px-2.5 !text-[11px]">+</button>
               </div>
             </div>
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[720px]">
               <thead>
                 <tr className="bg-bg-2">
                   <th className="text-left px-4 py-2 text-[10px] uppercase tracking-[0.12em] text-t-3 font-semibold">Date</th>
@@ -330,6 +331,7 @@ export default function RevenusPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           </div>
         ) : (
           <div className="bg-bg-3 border border-border rounded-lg p-8 text-center text-t-3 text-sm mb-4">
@@ -586,7 +588,8 @@ export default function RevenusPage() {
           <div className="px-4 py-3 border-b border-border">
             <span className="text-[13px] font-semibold tracking-tight">📅 Vue Globale — Mois par mois</span>
           </div>
-          <table className="w-full border-collapse">
+          <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-bg-2">
                 <th className="text-left px-4 py-2 text-[10px] uppercase tracking-[0.12em] text-t-3 font-semibold">Mois</th>
@@ -636,6 +639,7 @@ export default function RevenusPage() {
               </tfoot>
             )}
           </table>
+          </div>
         </div>
 
         {/* Charts row */}
@@ -682,7 +686,8 @@ export default function RevenusPage() {
                 {clientStats.length} client{clientStats.length > 1 ? 's' : ''} · top : <span className="text-accent">{topClient?.client}</span>
               </span>
             </div>
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[780px]">
               <thead>
                 <tr className="bg-bg-2">
                   <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-semibold">Client</th>
@@ -736,6 +741,7 @@ export default function RevenusPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           </div>
         )}
 

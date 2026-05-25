@@ -88,7 +88,8 @@ export default function SetupPage() {
           <span className="text-[13px] font-semibold">Détail des frais</span>
           <span className="font-mono text-sm font-semibold text-accent mono-value">{f$(totalEur)} €</span>
         </div>
-        <table className="w-full border-collapse">
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[640px]">
           <thead>
             <tr className="bg-bg-2">
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Poste</th>
@@ -120,6 +121,7 @@ export default function SetupPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal */}

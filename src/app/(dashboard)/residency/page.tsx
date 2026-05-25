@@ -449,7 +449,7 @@ export default function ResidencyPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[12px] min-w-[560px]">
               <thead>
                 <tr className="text-[10px] text-t-3 uppercase tracking-[0.12em]">
                   <th className="text-left font-semibold py-2 px-2">Pays</th>

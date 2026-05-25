@@ -156,7 +156,8 @@ export default function SettingsPage() {
         <div className="flex justify-between items-center px-4 py-3 border-b border-border">
           <span className="text-[13px] font-semibold">Postes budgétaires ({postes.length})</span>
         </div>
-        <table className="w-full border-collapse">
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[560px]">
           <thead>
             <tr className="bg-bg-2">
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium w-8">#</th>
@@ -189,6 +190,7 @@ export default function SettingsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Historique des modifs */}

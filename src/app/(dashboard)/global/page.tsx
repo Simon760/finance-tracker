@@ -156,7 +156,8 @@ export default function GlobalPage() {
               <span className="text-[13px] font-semibold">Soldes bancaires</span>
               <button onClick={() => router.push('/networth')} className="text-[11px] text-accent hover:underline cursor-pointer">Voir détail</button>
             </div>
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[460px]">
               <tbody>
                 {bankBalances.map((b, i) => (
                   <tr key={i} className="border-b border-border last:border-0 hover:bg-white/[.02]">
@@ -174,6 +175,7 @@ export default function GlobalPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           </div>
         </>
       )}

@@ -1142,7 +1142,9 @@ function TableSection({ title, subtitle, children }: { title: string; subtitle?:
         <span className="text-[13px] font-semibold">{title}</span>
         {subtitle && <span className="text-[11px] text-t-3">{subtitle}</span>}
       </div>
-      <table className="w-full border-collapse">{children}</table>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[600px]">{children}</table>
+      </div>
     </div>
   );
 }

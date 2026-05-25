@@ -34,7 +34,7 @@ export default function Modal({ open, onClose, title, children, width = 'w-[440p
     >
       <div
         ref={ref}
-        className={`bg-bg-3 border border-border-2 rounded-lg p-7 ${width} max-h-[88vh] overflow-y-auto shadow-xl animate-fade-up`}
+        className={`bg-bg-3 border border-border-2 rounded-lg p-7 max-md:p-5 ${width} max-w-full max-h-[88vh] overflow-y-auto shadow-xl animate-fade-up`}
         onClick={e => e.stopPropagation()}
       >
         <h3 className="text-[15px] font-bold mb-5 tracking-tight text-t-1">{title}</h3>

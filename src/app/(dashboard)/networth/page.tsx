@@ -124,7 +124,8 @@ export default function NetWorthPage() {
             <span className="text-[13px] font-semibold">Soldes bancaires (auto)</span>
             <span className="text-[10px] text-t-3 ml-2">Derniers soldes de chaque space</span>
           </div>
-          <table className="w-full border-collapse">
+          <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[460px]">
             <thead>
               <tr className="bg-bg-2">
                 <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Space</th>
@@ -142,6 +143,7 @@ export default function NetWorthPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -151,7 +153,8 @@ export default function NetWorthPage() {
           <span className="text-[13px] font-semibold">Actifs manuels</span>
           <button onClick={() => setAddOpen(true)} className="text-xs text-t-2 border border-border px-2.5 py-1 rounded-sm hover:bg-bg-4 transition-all cursor-pointer">+</button>
         </div>
-        <table className="w-full border-collapse">
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[600px]">
           <thead>
             <tr className="bg-bg-2">
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Nom</th>
@@ -182,6 +185,7 @@ export default function NetWorthPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Charts */}
