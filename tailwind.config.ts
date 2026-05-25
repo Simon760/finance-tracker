@@ -41,6 +41,7 @@ const config: Config = {
       animation: {
         'fade-up': 'fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'fade-in': 'fadeIn 0.25s ease-out forwards',
+        'slide-up': 'slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'pulse-slow': 'pulseSoft 2.4s ease-in-out infinite',
         'shimmer': 'shimmer 2.4s linear infinite',
       },
@@ -52,6 +53,10 @@ const config: Config = {
         fadeIn: {
           from: { opacity: '0' },
           to: { opacity: '1' },
+        },
+        slideUp: {
+          from: { transform: 'translateY(100%)' },
+          to: { transform: 'translateY(0)' },
         },
         pulseSoft: {
           '0%, 100%': { opacity: '1' },

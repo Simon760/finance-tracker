@@ -3,6 +3,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
+import MobileTracker from '@/components/mobile/MobileTracker';
+import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
@@ -14,6 +16,7 @@ import SlideOver from '@/components/ui/SlideOver';
 const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'];
 
 export default function TrackerPage() {
+  const isMobile = useIsMobile();
   const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange } = useApp();
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [nmName, setNmName] = useState('');
@@ -384,6 +387,9 @@ export default function TrackerPage() {
     Budget: rowEur(m.budget[i] || { aed: 0, eur: null }, liveRate),
     Réel: rowEur(m.actual[i] || { aed: 0, eur: null }, m.rate),
   })).filter(d => d.Budget > 0 || d.Réel > 0) : [];
+
+  // Mobile: dedicated UI shell (gère aussi le cas "aucun mois")
+  if (isMobile === true) return <MobileTracker />;
 
   if (state.months.length === 0) {
     return (
