@@ -41,7 +41,21 @@ Types principaux : `Month`, `Poste { isAed }`, `ActualRow`, `ExtraRow`, `RevenuE
 Toggle dans Sidebar. Ajoute `.amounts-hidden` sur `<body>` → CSS `::after` mask de 6 dots fixes sur tout `.mono-value` / `.hero-num`. Pas de transformation de valeurs réelles.
 
 ## Mobile
-Sidebar = drawer avec hamburger (`max-md:` prefix). Backdrop, scroll lock, auto-close on route change.
+**Architecture parallèle** : UI mobile dédiée via `src/components/mobile/`. Le switch desktop ↔ mobile se fait via `useIsMobile()` (`src/lib/useIsMobile.ts`, breakpoint 768px).
+
+- `MobileShell` (`(dashboard)/layout.tsx`) : top app bar (space switcher + privacy toggle) + bottom tabs (Tracker · Revenus · Global · Résidence · Plus) + drawer "Plus" pour les pages secondaires
+- `BottomSheet` : modal slide-up réutilisable (anim `slide-up` dans tailwind config)
+- Chaque page mobile fait `if (isMobile === true) return <MobileXxx />;` après les hooks et avant le return desktop
+- **Backup desktop** : `?desktop=1` URL ou bouton "Forcer la vue desktop" dans le sheet Plus → force la UI desktop sur mobile (utilise localStorage `fdxb_force_desktop`)
+
+**Pages mobile dédiées actuellement** : Tracker, Revenus, Vue Globale.
+**Pages utilisant encore la UI desktop** (responsive via `max-md:` + tables wrappées `overflow-x-auto`) : Dashboard, Net Worth, Résidence, Setup, Settings.
+
+### ⚠️ Règle de parité mobile (workflow utilisateur)
+**Chaque feature ajoutée sur la UI desktop DOIT être portée en mobile dans le même commit/push.** L'utilisateur ne valide pas un feature mobile manquante après-coup.
+- Si la feature touche une page qui a son `Mobile<Page>.tsx` → mettre à jour les 2 fichiers
+- Si la feature touche une page encore en UI desktop sur mobile → vérifier que ça reste utilisable, sinon créer le `Mobile<Page>.tsx` correspondant
+- Si la feature ajoute un nouveau bouton/sheet/flow → l'intégrer dans le pattern mobile (FAB, BottomSheet, cards verticales — pas de table dense)
 
 ## Workflow utilisateur (préférences)
 - Communication en **français**
