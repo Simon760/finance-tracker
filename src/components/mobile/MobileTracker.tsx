@@ -6,7 +6,7 @@ import { f$, f0, toEur, sumEur, sumAed, sumEurBudget, sumAedBudget } from '@/lib
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction } from '@/lib/types';
 import BottomSheet from './BottomSheet';
-import MonthStatsCard from '@/components/MonthStatsCard';
+// import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt } from 'lucide-react';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -288,15 +288,13 @@ export default function MobileTracker() {
         ))}
       </div>
 
-      {/* Stats du mois */}
-      <div className="mt-5">
-        <MonthStatsCard month={m} postes={state.postes} compact />
-      </div>
+      {/* Stats du mois — à retravailler */}
+      {/* <div className="mt-5"><MonthStatsCard month={m} postes={state.postes} compact /></div> */}
 
       {/* New month button */}
       <button
         onClick={() => setNewMonthOpen(true)}
-        className="w-full mt-2 py-3 border border-dashed border-border-2 rounded-xl text-[13px] text-t-3 active:bg-bg-3"
+        className="w-full mt-5 py-3 border border-dashed border-border-2 rounded-xl text-[13px] text-t-3 active:bg-bg-3"
       >
         + Nouveau mois
       </button>
