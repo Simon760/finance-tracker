@@ -6,3 +6,7 @@ out/
 .next/
 .env
 .env.local
+
+# TS build cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
