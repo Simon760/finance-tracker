@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
@@ -34,6 +34,51 @@ export default function TrackerPage() {
   const [txnOpen, setTxnOpen] = useState(false);
   const [txnTarget, setTxnTarget] = useState<{ posteIdx: number; editIdx?: number; isExtra?: boolean; extraIdx?: number } | null>(null);
   const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: new Date().toISOString().split('T')[0] });
+  const [showLabelSugg, setShowLabelSugg] = useState(false);
+
+  // Suggestions de libellés pour le poste courant : fréquence sur tout l'historique du space
+  const labelSuggestions = useMemo<{ label: string; count: number; lastDate: string }[]>(() => {
+    if (!txnTarget) return [];
+    const map = new Map<string, { label: string; count: number; lastDate: string }>();
+    const collect = (txns: Transaction[] | undefined) => {
+      (txns || []).forEach(t => {
+        const raw = (t.label || '').trim();
+        if (!raw || raw === '---') return;
+        const key = raw.toLowerCase();
+        const cur = map.get(key);
+        if (cur) {
+          cur.count++;
+          if ((t.date || '') > cur.lastDate) cur.lastDate = t.date || '';
+        } else {
+          map.set(key, { label: raw, count: 1, lastDate: t.date || '' });
+        }
+      });
+    };
+    if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
+      const curM = state.months.find(mo => mo.id === curMonth);
+      const targetName = curM?.extraActual?.[txnTarget.extraIdx]?.name;
+      if (!targetName) return [];
+      state.months.forEach(mo => {
+        (mo.extraActual || []).forEach(r => {
+          if (r.name === targetName) collect(r.txns);
+        });
+      });
+    } else {
+      const posteIdx = txnTarget.posteIdx;
+      if (posteIdx < 0) return [];
+      state.months.forEach(mo => {
+        const row = mo.actual?.[posteIdx];
+        if (row) collect(row.txns);
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''));
+  }, [txnTarget, state.months, curMonth]);
+
+  const filteredSuggestions = useMemo(() => {
+    const q = (txnForm.label || '').trim().toLowerCase();
+    const arr = q ? labelSuggestions.filter(s => s.label.toLowerCase().includes(q) && s.label.toLowerCase() !== q) : labelSuggestions;
+    return arr.slice(0, 8);
+  }, [labelSuggestions, txnForm.label]);
 
   const openTxnAdd = (posteIdx: number) => {
     setTxnTarget({ posteIdx });
@@ -936,7 +981,33 @@ export default function TrackerPage() {
       }>
         <div className="space-y-4">
           <FormField label="Libellé">
-            <input className="fi" value={txnForm.label} onChange={e => setTxnForm({ ...txnForm, label: e.target.value })} placeholder="Ex: Carrefour, Uber..." autoFocus />
+            <div className="relative">
+              <input
+                className="fi"
+                value={txnForm.label}
+                onChange={e => { setTxnForm({ ...txnForm, label: e.target.value }); setShowLabelSugg(true); }}
+                onFocus={() => setShowLabelSugg(true)}
+                onBlur={() => setTimeout(() => setShowLabelSugg(false), 150)}
+                placeholder="Ex: Carrefour, Uber..."
+                autoFocus
+                autoComplete="off"
+              />
+              {showLabelSugg && filteredSuggestions.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 bg-bg-3 border border-border-2 rounded-md shadow-lg max-h-56 overflow-y-auto">
+                  {filteredSuggestions.map(s => (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onMouseDown={e => { e.preventDefault(); setTxnForm({ ...txnForm, label: s.label }); setShowLabelSugg(false); }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-[13px] text-t-1 hover:bg-bg-4 cursor-pointer transition-colors"
+                    >
+                      <span className="truncate">{s.label}</span>
+                      <span className="text-[10px] text-t-3 shrink-0">×{s.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </FormField>
           <FormField label="Date">
             <input className="fi" type="date" value={txnForm.date} onChange={e => setTxnForm({ ...txnForm, date: e.target.value })} />
