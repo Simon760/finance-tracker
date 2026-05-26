@@ -44,9 +44,11 @@ export default function TrackerPage() {
   const [createPosteMode, setCreatePosteMode] = useState(false);
   const [newPosteForm, setNewPosteForm] = useState<{ name: string; cat: 'vital' | 'lifestyle' | 'finance' | 'logement'; isAed: boolean }>({ name: '', cat: 'vital', isAed: true });
 
-  // Suggestions de libellés pour le poste courant : fréquence sur tout l'historique du space
+  // Suggestions de libellés pour le poste courant : occurrences SUR LE MOIS COURANT uniquement
   const labelSuggestions = useMemo<{ label: string; count: number; lastDate: string }[]>(() => {
     if (!txnTarget) return [];
+    const curM = state.months.find(mo => mo.id === curMonth);
+    if (!curM) return [];
     const map = new Map<string, { label: string; count: number; lastDate: string }>();
     const collect = (txns: Transaction[] | undefined) => {
       (txns || []).forEach(t => {
@@ -63,21 +65,13 @@ export default function TrackerPage() {
       });
     };
     if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
-      const curM = state.months.find(mo => mo.id === curMonth);
-      const targetName = curM?.extraActual?.[txnTarget.extraIdx]?.name;
-      if (!targetName) return [];
-      state.months.forEach(mo => {
-        (mo.extraActual || []).forEach(r => {
-          if (r.name === targetName) collect(r.txns);
-        });
-      });
+      const r = curM.extraActual?.[txnTarget.extraIdx];
+      if (r) collect(r.txns);
     } else {
       const posteIdx = txnTarget.posteIdx;
       if (posteIdx < 0) return [];
-      state.months.forEach(mo => {
-        const row = mo.actual?.[posteIdx];
-        if (row) collect(row.txns);
-      });
+      const row = curM.actual?.[posteIdx];
+      if (row) collect(row.txns);
     }
     return Array.from(map.values()).sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''));
   }, [txnTarget, state.months, curMonth]);

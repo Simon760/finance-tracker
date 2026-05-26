@@ -59,26 +59,24 @@ export default function MobileTracker() {
   const earnAed = m ? earnEur * m.rate : 0;
   const prevCompte = m ? (m.soldeStart || 0) + earnAed - aA : 0;
 
-  // Suggestions de libellés pour le poste courant
+  // Suggestions de libellés pour le poste courant — mois courant uniquement
   const labelSuggestions = useMemo<{ label: string; count: number }[]>(() => {
-    if (!txTarget || txTarget.posteIdx < 0) return [];
+    if (!txTarget || txTarget.posteIdx < 0 || !m) return [];
     const map = new Map<string, { label: string; count: number; lastDate: string }>();
-    state.months.forEach(mo => {
-      (mo.actual?.[txTarget.posteIdx]?.txns || []).forEach(t => {
-        const raw = (t.label || '').trim();
-        if (!raw || raw === '---') return;
-        const key = raw.toLowerCase();
-        const cur = map.get(key);
-        if (cur) {
-          cur.count++;
-          if ((t.date || '') > cur.lastDate) cur.lastDate = t.date || '';
-        } else {
-          map.set(key, { label: raw, count: 1, lastDate: t.date || '' });
-        }
-      });
+    (m.actual?.[txTarget.posteIdx]?.txns || []).forEach(t => {
+      const raw = (t.label || '').trim();
+      if (!raw || raw === '---') return;
+      const key = raw.toLowerCase();
+      const cur = map.get(key);
+      if (cur) {
+        cur.count++;
+        if ((t.date || '') > cur.lastDate) cur.lastDate = t.date || '';
+      } else {
+        map.set(key, { label: raw, count: 1, lastDate: t.date || '' });
+      }
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate));
-  }, [txTarget, state.months]);
+  }, [txTarget, m]);
 
   const filteredSugg = useMemo(() => {
     const q = tx.label.trim().toLowerCase();
