@@ -104,7 +104,7 @@ export default function TrackerPage() {
   const openTxnAddExtra = (extraIdx: number) => {
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx });
     setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
-    resetPosteSelector(-1);
+    resetPosteSelector(-1); // -1 = "Garder dans l'extra"
     setTxnOpen(true);
   };
 
@@ -128,7 +128,7 @@ export default function TrackerPage() {
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
-    resetPosteSelector(-1);
+    resetPosteSelector(-1); // -1 = "Garder dans l'extra"
     setTxnOpen(true);
   };
 
@@ -160,35 +160,20 @@ export default function TrackerPage() {
       return row;
     };
 
-    // Cas extras : pas de mouvement de poste supporté, juste add/edit en place
-    if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
-      const months = state.months.map(mo => {
-        if (mo.id !== m.id) return mo;
-        const extraActual = [...(mo.extraActual || [])];
-        const r = { ...extraActual[txnTarget.extraIdx!] };
-        const txns = [...(r.txns || [])];
-        if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
-        else txns.push(txnEntry);
-        r.txns = txns;
-        r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-        r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-        extraActual[txnTarget.extraIdx!] = r;
-        return { ...mo, extraActual };
-      });
-      setState({ ...state, months });
-      setTxnOpen(false);
-      save();
-      return;
-    }
+    // Helper pour recalcul d'une extra row
+    const recalcExtra = (r: { aed?: number; eur?: number; txns?: Transaction[] }) => {
+      const txns = r.txns || [];
+      r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+      r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+    };
 
-    // Cas poste classique. Détermine le poste cible (peut être nouveau).
+    // Détermine le poste cible (peut être un nouveau)
     let postes = state.postes;
-    let targetIdx = selectedPosteIdx;
+    let targetIdx = selectedPosteIdx; // -1 = "Garder dans extra source"
     let createdNewPoste = false;
     if (createPosteMode) {
       const trimmedName = newPosteForm.name.trim().toUpperCase();
       if (!trimmedName) return;
-      // Vérif unicité
       const existing = postes.findIndex(p => p.name === trimmedName);
       if (existing >= 0) {
         targetIdx = existing;
@@ -198,39 +183,77 @@ export default function TrackerPage() {
         createdNewPoste = true;
       }
     }
+
+    const isExtraSrc = !!(txnTarget.isExtra && txnTarget.extraIdx !== undefined);
     const sourceIdx = txnTarget.posteIdx;
-    const isMove = txnTarget.editIdx !== undefined && targetIdx !== sourceIdx;
+    // Cas où on garde dans l'extra (targetIdx === -1) — pas de déplacement
+    const stayInExtra = isExtraSrc && targetIdx === -1 && !createPosteMode;
+    const isMove = txnTarget.editIdx !== undefined && (
+      (isExtraSrc && !stayInExtra) || // extra → poste régulier
+      (!isExtraSrc && targetIdx !== sourceIdx) // poste régulier → autre régulier
+    );
 
     const months = state.months.map(mo => {
       if (mo.id !== m.id) return mo;
       const actual = [...mo.actual];
+      const extraActual = [...(mo.extraActual || [])];
 
+      // ─── ADD ou EDIT IN PLACE dans EXTRA ───
+      if (stayInExtra) {
+        const r = { ...extraActual[txnTarget.extraIdx!] };
+        const txns = [...(r.txns || [])];
+        if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
+        else txns.push(txnEntry);
+        r.txns = txns;
+        recalcExtra(r);
+        extraActual[txnTarget.extraIdx!] = r;
+        return { ...mo, actual, extraActual };
+      }
+
+      // ─── MOVE depuis EXTRA vers POSTE REGULIER (edit) ───
+      if (isMove && isExtraSrc) {
+        const srcRow = { ...extraActual[txnTarget.extraIdx!] };
+        srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
+        recalcExtra(srcRow);
+        extraActual[txnTarget.extraIdx!] = srcRow;
+
+        const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
+        recalc(tgtRow, !!postes[targetIdx]?.isAed);
+        actual[targetIdx] = tgtRow;
+        return { ...mo, actual, extraActual };
+      }
+
+      // ─── ADD depuis EXTRA vers POSTE REGULIER (pas d'edit, ajoute direct au régulier) ───
+      if (!isMove && isExtraSrc) {
+        const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
+        recalc(tgtRow, !!postes[targetIdx]?.isAed);
+        actual[targetIdx] = tgtRow;
+        return { ...mo, actual, extraActual };
+      }
+
+      // ─── REGULIER ↔ REGULIER ───
       if (isMove) {
-        // Retire la tx de la source
-        const sourceRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        sourceRow.txns = (sourceRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-        const sP = postes[sourceIdx];
-        recalc(sourceRow, !!sP?.isAed);
-        actual[sourceIdx] = sourceRow;
+        const srcRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
+        recalc(srcRow, !!postes[sourceIdx]?.isAed);
+        actual[sourceIdx] = srcRow;
 
-        // Ajoute à la cible
-        const targetRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        targetRow.txns = [...(targetRow.txns || []), txnEntry];
-        const tP = postes[targetIdx];
-        recalc(targetRow, !!tP?.isAed);
-        actual[targetIdx] = targetRow;
+        const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+        tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
+        recalc(tgtRow, !!postes[targetIdx]?.isAed);
+        actual[targetIdx] = tgtRow;
       } else {
-        // Add ou edit en place
         const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         const txns = [...(row.txns || [])];
         if (txnTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txnTarget.editIdx] = txnEntry;
         else txns.push(txnEntry);
         row.txns = txns;
-        const p = postes[targetIdx];
-        recalc(row, !!p?.isAed);
+        recalc(row, !!postes[targetIdx]?.isAed);
         actual[targetIdx] = row;
       }
-      return { ...mo, actual };
+      return { ...mo, actual, extraActual };
     });
 
     setState({ ...state, postes, months });
@@ -241,7 +264,9 @@ export default function TrackerPage() {
       logChange?.('poste.create', `Création poste « ${newP.name} » (${newP.cat}) depuis edit tx`);
     }
     if (isMove) {
-      const sName = state.postes[sourceIdx]?.name || '—';
+      const sName = isExtraSrc
+        ? state.months.find(mo => mo.id === m.id)?.extraActual?.[txnTarget.extraIdx!]?.name || '—'
+        : state.postes[sourceIdx]?.name || '—';
       const tName = postes[targetIdx]?.name || '—';
       logChange?.('txn.move', `Tx « ${txnEntry.label} » déplacée de ${sName} → ${tName}`);
     }
@@ -1067,26 +1092,28 @@ export default function TrackerPage() {
         })()
       }>
         <div className="space-y-4">
-          {!txnTarget?.isExtra && (
-            <FormField label="Poste">
-              {!createPosteMode ? (
-                <div className="flex gap-2">
-                  <select
-                    className="fi flex-1"
-                    value={selectedPosteIdx}
-                    onChange={e => setSelectedPosteIdx(parseInt(e.target.value))}
-                  >
-                    {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setCreatePosteMode(true)}
-                    className="px-3 py-2 text-[11px] font-semibold bg-accent/10 text-accent border border-accent/25 rounded-md hover:bg-accent/20 cursor-pointer whitespace-nowrap"
-                  >
-                    + Nouveau
-                  </button>
-                </div>
-              ) : (
+          <FormField label="Poste">
+            {!createPosteMode ? (
+              <div className="flex gap-2">
+                <select
+                  className="fi flex-1"
+                  value={selectedPosteIdx}
+                  onChange={e => setSelectedPosteIdx(parseInt(e.target.value))}
+                >
+                  {txnTarget?.isExtra && txnTarget.extraIdx !== undefined && (
+                    <option value={-1}>📦 Garder dans « {m?.extraActual?.[txnTarget.extraIdx]?.name || 'Extra'} »</option>
+                  )}
+                  {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setCreatePosteMode(true)}
+                  className="px-3 py-2 text-[11px] font-semibold bg-accent/10 text-accent border border-accent/25 rounded-md hover:bg-accent/20 cursor-pointer whitespace-nowrap"
+                >
+                  + Nouveau
+                </button>
+              </div>
+            ) : (
                 <div className="space-y-2 border border-accent/30 rounded-md p-3 bg-accent/5">
                   <input
                     className="fi"
@@ -1128,8 +1155,7 @@ export default function TrackerPage() {
                   </button>
                 </div>
               )}
-            </FormField>
-          )}
+          </FormField>
           <FormField label="Libellé">
             <div className="relative">
               <input
