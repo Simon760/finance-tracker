@@ -9,20 +9,23 @@ import { fetchRate } from '@/lib/utils';
 /**
  * Choisit le meilleur mois à afficher à l'ouverture de l'app :
  * - Si un mois correspond au calendrier réel (mois + année actuels), on le retourne
+ * - Sinon, on cherche le mois courant par nom seul (peu importe _year, qui n'est assigné que lors d'une visite tracker)
+ * - Sinon, on cherche le mois courant en partant de la fin (le plus récent du même nom)
  * - Sinon, fallback : dernier mois enregistré
  */
 function pickInitialMonth(months: Month[]): string | null {
   if (months.length === 0) return null;
   const now = new Date();
-  const currentName = MOIS_LIST[now.getMonth()]; // ex: "MAI"
+  const currentName = MOIS_LIST[now.getMonth()]; // ex: "JUIN"
   const currentYear = now.getFullYear();
-  // Match exact mois + année
-  const match = months.find(m => m.id === currentName && m._year === currentYear);
-  if (match) return match.id;
-  // Match juste sur le nom (au cas où _year manque dans les données legacy)
-  const matchName = months.find(m => m.id === currentName && !m._year);
-  if (matchName) return matchName.id;
-  // Fallback : dernier mois
+  // Tier 1: match exact nom + année
+  const exact = months.find(m => m.id === currentName && m._year === currentYear);
+  if (exact) return exact.id;
+  // Tier 2: match nom seul, en parcourant à l'envers (donc le plus récent gagne)
+  for (let i = months.length - 1; i >= 0; i--) {
+    if (months[i].id === currentName) return months[i].id;
+  }
+  // Tier 3: fallback dernier mois enregistré
   return months[months.length - 1].id;
 }
 

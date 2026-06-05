@@ -91,14 +91,17 @@ export function sumAed(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]
 const RATE_FALLBACK = 4.0128;
 const RATE_TIMEOUT_MS = 4000;
 
-async function tryRateEndpoint(url: string, target: string): Promise<number> {
+// Chaque parseur extrait le taux EUR→target d'une réponse JSON
+type RateParser = (d: unknown, target: string) => number | null;
+
+async function tryRateEndpoint(url: string, target: string, parse: RateParser): Promise<number> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), RATE_TIMEOUT_MS);
   try {
     const r = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    const rate = d?.rates?.[target];
+    const rate = parse(d, target);
     if (typeof rate !== 'number' || !isFinite(rate) || rate <= 0) throw new Error('invalid rate');
     return rate;
   } finally {
@@ -107,14 +110,36 @@ async function tryRateEndpoint(url: string, target: string): Promise<number> {
 }
 
 export async function fetchRate(target = 'AED'): Promise<number> {
-  // 3 endpoints fiables sans clé d'API, racés en parallèle
-  const endpoints = [
-    `https://api.frankfurter.app/latest?from=EUR&to=${target}`, // ECB, très fiable & rapide
-    `https://open.er-api.com/v6/latest/EUR`,                    // fallback
-    `https://api.exchangerate.host/latest?base=EUR&symbols=${target}`, // 3e fallback
+  const t = target.toLowerCase();
+  const T = target.toUpperCase();
+
+  // Plusieurs sources racées en parallèle, du + temps réel au + fiable :
+  // - currency-api (fawazahmed0) : community-maintained, plusieurs updates/jour, données + fraîches que la BCE
+  // - frankfurter : BCE officielle (1 update/jour, jours ouvrés, ~16h CET) — précis mais peut être en retard
+  // - open-er-api : fallback générique
+  const endpoints: { url: string; parse: RateParser }[] = [
+    {
+      url: `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json`,
+      parse: (d, tg) => (d as { eur?: Record<string, number> })?.eur?.[tg.toLowerCase()] ?? null,
+    },
+    {
+      // Mirror CDN au cas où jsdelivr est down
+      url: `https://latest.currency-api.pages.dev/v1/currencies/eur.json`,
+      parse: (d, tg) => (d as { eur?: Record<string, number> })?.eur?.[tg.toLowerCase()] ?? null,
+    },
+    {
+      url: `https://api.frankfurter.app/latest?from=EUR&to=${T}`,
+      parse: (d, tg) => (d as { rates?: Record<string, number> })?.rates?.[tg.toUpperCase()] ?? null,
+    },
+    {
+      url: `https://open.er-api.com/v6/latest/EUR`,
+      parse: (d, tg) => (d as { rates?: Record<string, number> })?.rates?.[tg.toUpperCase()] ?? null,
+    },
   ];
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _ = t; // évite warning si target lowercase pas réutilisé directement
   try {
-    return await Promise.any(endpoints.map(u => tryRateEndpoint(u, target)));
+    return await Promise.any(endpoints.map(e => tryRateEndpoint(e.url, target, e.parse)));
   } catch {
     return RATE_FALLBACK;
   }
