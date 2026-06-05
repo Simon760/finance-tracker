@@ -779,13 +779,20 @@ export default function TrackerPage() {
               })}
               {(m.extraBudget || []).map((r, i) => {
                 const eur = r.eur > 0 ? r.eur : toEur(r.aed, liveRate);
+                const pct = bE > 0 ? ((eur / bE) * 100).toFixed(1) : '0.0';
                 return (
-                  <tr key={`eb${i}`} className="border-b border-border hover:bg-white/[.02]">
-                    <td className="px-4 py-2.5 text-[13px] font-semibold">{r.name}</td>
+                  <tr key={`eb${i}`} className="border-b border-border hover:bg-white/[.02] group">
+                    <td className="px-4 py-2.5 text-[13px] font-semibold">
+                      {r.name}
+                      <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraBudget: mo.extraBudget.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-danger/20" title="Supprimer cet extra">✕</button>
+                    </td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value pr-2 inline-block border border-transparent">{r.aed > 0 ? f0(r.aed) : (r.eur > 0 ? f0(toAed(r.eur, liveRate)) : '—')}</span></td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{f$(eur)}</span></td>
                     <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraBudget: mo.extraBudget.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
+                      <span className="font-mono text-[11px]">{pct}%</span>
+                      <div className="h-[3px] bg-border rounded mt-1 overflow-hidden">
+                        <div className="h-full bg-info rounded transition-all duration-300" style={{ width: `${Math.min(parseFloat(pct), 100)}%` }} />
+                      </div>
                     </td>
                   </tr>
                 );
@@ -863,8 +870,16 @@ export default function TrackerPage() {
               })}
               {(m.extraActual || []).map((r, i) => {
                 const eur = r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
+                // Cherche le budget correspondant dans extraBudget par nom
+                const bRow = (m.extraBudget || []).find(b => b.name === r.name);
+                const beur = bRow ? (bRow.eur > 0 ? bRow.eur : toEur(bRow.aed, liveRate)) : 0;
+                const ratio = beur > 0 ? eur / beur : 0;
+                const ecart = beur - eur;
+                const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';
+                const ecartZero = beur > 0 && Math.abs(ecart) < 0.5;
+                const ecartCls = ecartZero ? 'text-t-3 opacity-60' : ecart >= 0 ? 'text-accent' : 'text-danger';
                 return (
-                  <tr key={`ea${i}`} className="border-b border-border hover:bg-white/[.02]">
+                  <tr key={`ea${i}`} className="border-b border-border hover:bg-white/[.02] group">
                     <td className="px-4 py-2.5 text-[13px] font-semibold">
                       {r.name}
                       <button onClick={() => openTxnAddExtra(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
@@ -873,12 +888,17 @@ export default function TrackerPage() {
                           <span>👁</span>{(r.txns || []).length}
                         </button>
                       )}
+                      <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraActual: mo.extraActual.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-danger/20" title="Supprimer cet extra">✕</button>
                     </td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value pr-2 inline-block border border-transparent">{r.aed > 0 ? f0(r.aed) : (r.eur > 0 ? f0(toAed(r.eur, m.rate)) : '—')}</span></td>
                     <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{f$(eur)}</span></td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-[11px] text-t-3">—</span></td>
                     <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraActual: mo.extraActual.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
+                      <span className={`font-mono text-[11px] font-semibold ${rc}`}>{beur > 0 ? `${(ratio * 100).toFixed(0)}%` : '—'}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className={`font-mono text-[11px] ${ecartCls} mono-value`}>
+                        {beur > 0 ? `${ecart >= 0 ? '+' : ''}${f$(ecart)} €` : '—'}
+                      </span>
                     </td>
                   </tr>
                 );
