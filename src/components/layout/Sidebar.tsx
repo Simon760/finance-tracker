@@ -30,7 +30,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const {
-    liveRate, refreshRate, syncStatus, hiddenMode, toggleHidden, logout, userId,
+    liveRate, refreshRate, rateRefreshing, syncStatus, hiddenMode, toggleHidden, logout, userId,
     spaces, activeSpace, activeSpaceId, setActiveSpaceId, createSpace,
   } = useApp();
 
@@ -237,8 +237,8 @@ export default function Sidebar() {
         <div className="relative">
         <div className="flex justify-between items-center">
           <span className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">EUR / {activeSpace.localCurrency}</span>
-          <button onClick={refreshRate} className="text-t-3 hover:text-accent transition-colors cursor-pointer" title="Rafraîchir">
-            <RefreshCw size={11} />
+          <button onClick={refreshRate} disabled={rateRefreshing} className="text-t-3 hover:text-accent transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait" title={rateRefreshing ? 'Rafraîchissement…' : 'Rafraîchir'}>
+            <RefreshCw size={11} className={rateRefreshing ? 'animate-spin' : ''} />
           </button>
         </div>
         <div className="hero-num text-[22px] mt-1 mono-value text-t-1">{liveRate.toFixed(4)}</div>

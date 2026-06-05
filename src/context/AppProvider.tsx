@@ -51,6 +51,7 @@ interface AppContextType {
   // Rate
   liveRate: number;
   refreshRate: () => Promise<void>;
+  rateRefreshing: boolean;
 
   // UI
   syncStatus: 'ok' | 'saving' | 'off';
@@ -147,6 +148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [curYear, setCurYear] = useState<string>('all');
   const [dashCur, setDashCur] = useState<'EUR' | 'AED'>('EUR');
   const [liveRate, setLiveRate] = useState(4.3284);
+  const [rateRefreshing, setRateRefreshing] = useState(false);
   const [activeSpaceId, setActiveSpaceIdRaw] = useState<string>('dubai');
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -329,14 +331,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshRate = useCallback(async () => {
-    const rate = await fetchRate();
-    setLiveRate(rate);
-    setStateRaw(prev => {
-      const u = { ...prev, rate };
-      localStorage.setItem('fdxb_state', JSON.stringify(u));
-      if (userId) persistToFirebase(u, userId);
-      return u;
-    });
+    setRateRefreshing(true);
+    try {
+      const rate = await fetchRate();
+      setLiveRate(rate);
+      setStateRaw(prev => {
+        const u = { ...prev, rate };
+        localStorage.setItem('fdxb_state', JSON.stringify(u));
+        if (userId) persistToFirebase(u, userId);
+        return u;
+      });
+    } finally {
+      setRateRefreshing(false);
+    }
   }, [userId, persistToFirebase]);
 
   const toggleHidden = useCallback(() => setHiddenMode(prev => !prev), []);
@@ -457,7 +464,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createSpace, updateSpace, deleteSpace,
       userId, setUserId, isLoggedIn: !!userId,
       login, logout,
-      liveRate, refreshRate,
+      liveRate, refreshRate, rateRefreshing,
       syncStatus,
       hiddenMode, toggleHidden,
       curMonth, setCurMonth,

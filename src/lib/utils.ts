@@ -86,20 +86,37 @@ export function sumAed(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]
   return total;
 }
 
-// Live rate fetching
-export async function fetchRate(): Promise<number> {
+// Live rate fetching — race plusieurs endpoints en parallèle + timeout strict.
+// Le 1er qui répond gagne, on tombe sur fallback si tous échouent ou timeout.
+const RATE_FALLBACK = 4.0128;
+const RATE_TIMEOUT_MS = 4000;
+
+async function tryRateEndpoint(url: string, target: string): Promise<number> {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), RATE_TIMEOUT_MS);
   try {
-    const r = await fetch('https://api.exchangerate-data.com/v4/latest/EUR');
+    const r = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    return d.rates?.AED || 4.0128;
+    const rate = d?.rates?.[target];
+    if (typeof rate !== 'number' || !isFinite(rate) || rate <= 0) throw new Error('invalid rate');
+    return rate;
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+export async function fetchRate(target = 'AED'): Promise<number> {
+  // 3 endpoints fiables sans clé d'API, racés en parallèle
+  const endpoints = [
+    `https://api.frankfurter.app/latest?from=EUR&to=${target}`, // ECB, très fiable & rapide
+    `https://open.er-api.com/v6/latest/EUR`,                    // fallback
+    `https://api.exchangerate.host/latest?base=EUR&symbols=${target}`, // 3e fallback
+  ];
+  try {
+    return await Promise.any(endpoints.map(u => tryRateEndpoint(u, target)));
   } catch {
-    try {
-      const r2 = await fetch('https://open.er-api.com/v6/latest/EUR');
-      const d2 = await r2.json();
-      return d2.rates?.AED || 4.0128;
-    } catch {
-      return 4.0128;
-    }
+    return RATE_FALLBACK;
   }
 }
 

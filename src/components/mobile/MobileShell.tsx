@@ -28,7 +28,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const {
-    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, syncStatus,
+    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing,
     hiddenMode, toggleHidden, logout, userId,
   } = useApp();
 
@@ -141,8 +141,8 @@ export default function MobileShell({ children }: { children: React.ReactNode })
                 <span>Taux EUR/{activeSpace?.localCurrency || '—'}</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono mono-value text-t-1">{liveRate?.toFixed(4) || '—'}</span>
-                  <button onClick={refreshRate} className="w-7 h-7 flex items-center justify-center rounded-full active:bg-bg-4">
-                    <RefreshCw size={13} className={syncStatus === 'saving' ? 'animate-spin' : ''} />
+                  <button onClick={refreshRate} disabled={rateRefreshing} className="w-7 h-7 flex items-center justify-center rounded-full active:bg-bg-4 disabled:opacity-60">
+                    <RefreshCw size={13} className={rateRefreshing ? 'animate-spin' : ''} />
                   </button>
                 </div>
               </div>
