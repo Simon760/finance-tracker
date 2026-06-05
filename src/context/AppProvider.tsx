@@ -10,10 +10,13 @@ import { fetchRate } from '@/lib/utils';
  * Normalise un nom de mois : majuscules, sans accents, sans espaces.
  * Couvre les cas "Juin", "juin ", "JUIN", "JUİN" (etc.)
  */
+// Regex pour retirer les marques combinantes (accents) — construite via RegExp pour éviter
+// d'avoir des caractères diacritiques en littéral dans le source (qui faisaient tousser le bundler)
+const DIACRITICS_RE = new RegExp('[\\u0300-\\u036f]', 'g');
 function normalizeMonthName(s: string): string {
   return s
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(DIACRITICS_RE, '')
     .toUpperCase()
     .replace(/\s+/g, '');
 }

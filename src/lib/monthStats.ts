@@ -38,9 +38,10 @@ export interface MonthStats {
 }
 
 /** Normalise un libellé pour fuzzy matching : minuscules, sans accents, sans espaces ni ponctuation */
+const DIACRITICS_RE = new RegExp('[\\u0300-\\u036f]', 'g');
 function normalize(s: string): string {
   return s.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(DIACRITICS_RE, '')
     .replace(/[^a-z0-9]/g, '');
 }
 
