@@ -50,34 +50,41 @@ export default function DataAudit() {
   const totalWarnings = diags.filter(d => d.warnings.length > 0).length;
   const detailMonth = monthDetail ? months.find(m => m.id === monthDetail) : null;
 
-  // Détecte les doublons par nom (case-insensitive) dans state.postes
+  // Normalise un nom: trim + uppercase + retire les accents
+  const normalizeName = (s: string): string => {
+    return s.trim().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase();
+  };
+
+  // Détecte les doublons par nom (accent + case insensitive) dans state.postes
   const duplicates = useMemo(() => {
     const map = new Map<string, number[]>();
     postes.forEach((p, i) => {
-      const key = p.name.trim().toUpperCase();
+      const key = normalizeName(p.name);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(i);
     });
     return Array.from(map.entries())
       .filter(([, idxs]) => idxs.length > 1)
       .map(([name, idxs]) => ({ name, idxs }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postes]);
 
   // Détecte les extras dont le nom matche un poste régulier (= duplication cachée)
   const posteNamesSet = useMemo(() => {
-    return new Set(postes.map(p => p.name.trim().toUpperCase()));
+    return new Set(postes.map(p => normalizeName(p.name)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postes]);
   const extraConflicts = useMemo(() => {
     type Conflict = { monthId: string; section: 'budget' | 'actual'; idx: number; name: string; aed: number; eur: number; txnsCount: number };
     const list: Conflict[] = [];
     months.forEach(mo => {
       (mo.extraBudget || []).forEach((r, i) => {
-        if (posteNamesSet.has(r.name.trim().toUpperCase())) {
+        if (posteNamesSet.has(normalizeName(r.name))) {
           list.push({ monthId: mo.id, section: 'budget', idx: i, name: r.name, aed: r.aed || 0, eur: r.eur || 0, txnsCount: 0 });
         }
       });
       (mo.extraActual || []).forEach((r, i) => {
-        if (posteNamesSet.has(r.name.trim().toUpperCase())) {
+        if (posteNamesSet.has(normalizeName(r.name))) {
           list.push({ monthId: mo.id, section: 'actual', idx: i, name: r.name, aed: r.aed || 0, eur: r.eur || 0, txnsCount: (r.txns || []).length });
         }
       });
@@ -91,7 +98,7 @@ export default function DataAudit() {
     if (!month) return;
     const extra = section === 'budget' ? month.extraBudget?.[extraIdx] : month.extraActual?.[extraIdx];
     if (!extra) return;
-    const posteIdx = postes.findIndex(p => p.name.trim().toUpperCase() === extra.name.trim().toUpperCase());
+    const posteIdx = postes.findIndex(p => normalizeName(p.name) === normalizeName(extra.name));
     if (posteIdx < 0) return;
 
     if (!confirm(`Fusionner l'extra "${extra.name}" (${section}) du mois ${monthId} dans le poste régulier homonyme ?\n\n• Les valeurs aed/eur seront ajoutées au m.${section === 'budget' ? 'budget' : 'actual'}[${posteIdx}]\n${section === 'actual' ? `• Les ${(extra.txns || []).length} transactions seront concaténées\n` : ''}• L'extra sera supprimé\n\nBackup recommandé avant.`)) return;
@@ -195,6 +202,47 @@ export default function DataAudit() {
     setState(updated);
     save();
   };
+
+  // Pour le mois sélectionné, regroupe toutes les sources (regular + extras) par nom de poste
+  // Permet de voir si un même nom apparaît dans plusieurs entrées
+  type SourceEntry = { kind: 'regular' | 'extraBudget' | 'extraActual'; idx: number; name: string; budgetAed: number; actualAed: number; txnsCount: number };
+  const sourcesByName: Map<string, SourceEntry[]> = useMemo(() => {
+    const map = new Map<string, SourceEntry[]>();
+    if (!detailMonth) return map;
+    const push = (key: string, e: SourceEntry) => {
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(e);
+    };
+    // Regular postes (par index)
+    postes.forEach((p, i) => {
+      const key = normalizeName(p.name);
+      push(key, {
+        kind: 'regular',
+        idx: i,
+        name: p.name,
+        budgetAed: detailMonth.budget?.[i]?.aed || 0,
+        actualAed: detailMonth.actual?.[i]?.aed || 0,
+        txnsCount: (detailMonth.actual?.[i]?.txns || []).length,
+      });
+    });
+    // Extra budget
+    (detailMonth.extraBudget || []).forEach((r, i) => {
+      const key = normalizeName(r.name);
+      push(key, { kind: 'extraBudget', idx: i, name: r.name, budgetAed: r.aed || 0, actualAed: 0, txnsCount: 0 });
+    });
+    // Extra actual
+    (detailMonth.extraActual || []).forEach((r, i) => {
+      const key = normalizeName(r.name);
+      push(key, { kind: 'extraActual', idx: i, name: r.name, budgetAed: 0, actualAed: r.aed || 0, txnsCount: (r.txns || []).length });
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailMonth, postes]);
+
+  // Liste les noms qui apparaissent dans >1 source
+  const multiSourceNames = useMemo(() => {
+    return Array.from(sourcesByName.entries()).filter(([, srcs]) => srcs.length > 1);
+  }, [sourcesByName]);
 
   // Édition manuelle directe d'une cellule m.budget[idx].aed ou m.actual[idx].aed
   const setRowAed = (monthId: string, section: 'budget' | 'actual', idx: number, newAed: number) => {
@@ -372,6 +420,28 @@ export default function DataAudit() {
           {detailMonth && (
             <div className="bg-bg-2 border border-border rounded-md p-3 space-y-3">
               <div className="text-[12px] font-bold tracking-tight">Détail — {detailMonth.id}</div>
+
+              {/* Noms apparaissant dans plusieurs sources */}
+              {multiSourceNames.length > 0 && (
+                <div className="bg-danger/10 border border-danger/30 rounded-md p-2.5 space-y-1.5">
+                  <div className="text-[11px] font-bold text-danger">⚠ {multiSourceNames.length} nom{multiSourceNames.length > 1 ? 's' : ''} dans plusieurs sources</div>
+                  {multiSourceNames.map(([key, srcs]) => (
+                    <div key={key} className="text-[11px] bg-bg-3 p-2 rounded">
+                      <div className="font-semibold text-t-1 mb-1">{srcs[0].name} ({srcs.length} sources)</div>
+                      {srcs.map((s, i) => (
+                        <div key={i} className="flex items-center gap-2 text-[10px] font-mono text-t-3 pl-2">
+                          <span className="text-t-4 w-3">{i+1}.</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${s.kind === 'regular' ? 'bg-info/15 text-info' : 'bg-warning/15 text-warning'}`}>{s.kind === 'regular' ? `regular[${s.idx}]` : s.kind === 'extraBudget' ? `extraBudget[${s.idx}]` : `extraActual[${s.idx}]`}</span>
+                          <span className="flex-1">budget {f0(s.budgetAed)} · actual {f0(s.actualAed)} · {s.txnsCount} txns</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-t-3 pt-1 border-t border-danger/20">
+                    Si tu vois 2+ sources pour un même nom (ex: 1 regular + 1 extraBudget), c'est ça qui fausse les % entre Budget et Réel. Supprime la mauvaise via les ✕ dans la liste extras plus bas, OU édite manuellement les valeurs.
+                  </div>
+                </div>
+              )}
 
               {/* budget par index — éditable */}
               <details open>
