@@ -63,6 +63,72 @@ export default function DataAudit() {
       .map(([name, idxs]) => ({ name, idxs }));
   }, [postes]);
 
+  // Détecte les extras dont le nom matche un poste régulier (= duplication cachée)
+  const posteNamesSet = useMemo(() => {
+    return new Set(postes.map(p => p.name.trim().toUpperCase()));
+  }, [postes]);
+  const extraConflicts = useMemo(() => {
+    type Conflict = { monthId: string; section: 'budget' | 'actual'; idx: number; name: string; aed: number; eur: number; txnsCount: number };
+    const list: Conflict[] = [];
+    months.forEach(mo => {
+      (mo.extraBudget || []).forEach((r, i) => {
+        if (posteNamesSet.has(r.name.trim().toUpperCase())) {
+          list.push({ monthId: mo.id, section: 'budget', idx: i, name: r.name, aed: r.aed || 0, eur: r.eur || 0, txnsCount: 0 });
+        }
+      });
+      (mo.extraActual || []).forEach((r, i) => {
+        if (posteNamesSet.has(r.name.trim().toUpperCase())) {
+          list.push({ monthId: mo.id, section: 'actual', idx: i, name: r.name, aed: r.aed || 0, eur: r.eur || 0, txnsCount: (r.txns || []).length });
+        }
+      });
+    });
+    return list;
+  }, [months, posteNamesSet]);
+
+  // Fusionne un extra conflict dans le poste régulier (somme valeurs, append txns) puis le supprime
+  const mergeExtraIntoPoste = (monthId: string, section: 'budget' | 'actual', extraIdx: number) => {
+    const month = months.find(m => m.id === monthId);
+    if (!month) return;
+    const extra = section === 'budget' ? month.extraBudget?.[extraIdx] : month.extraActual?.[extraIdx];
+    if (!extra) return;
+    const posteIdx = postes.findIndex(p => p.name.trim().toUpperCase() === extra.name.trim().toUpperCase());
+    if (posteIdx < 0) return;
+
+    if (!confirm(`Fusionner l'extra "${extra.name}" (${section}) du mois ${monthId} dans le poste régulier homonyme ?\n\n• Les valeurs aed/eur seront ajoutées au m.${section === 'budget' ? 'budget' : 'actual'}[${posteIdx}]\n${section === 'actual' ? `• Les ${(extra.txns || []).length} transactions seront concaténées\n` : ''}• L'extra sera supprimé\n\nBackup recommandé avant.`)) return;
+
+    const updated = {
+      ...state,
+      months: months.map(mo => {
+        if (mo.id !== monthId) return mo;
+        const newM = { ...mo };
+        if (section === 'budget') {
+          const newBudget = [...(mo.budget || [])];
+          const cur = newBudget[posteIdx] || { aed: 0, eur: null };
+          newBudget[posteIdx] = {
+            aed: (cur.aed || 0) + (extra.aed || 0),
+            eur: (cur.eur ?? 0) + (extra.eur || 0) || null,
+          };
+          newM.budget = newBudget;
+          newM.extraBudget = (mo.extraBudget || []).filter((_, j) => j !== extraIdx);
+        } else {
+          const newActual = [...(mo.actual || [])];
+          const cur = newActual[posteIdx] || { aed: 0, eur: null, txns: [] };
+          const extraTxns = ('txns' in extra ? extra.txns : []) || [];
+          newActual[posteIdx] = {
+            aed: (cur.aed || 0) + (extra.aed || 0),
+            eur: (cur.eur ?? 0) + (extra.eur || 0) || null,
+            txns: [...(cur.txns || []), ...extraTxns],
+          };
+          newM.actual = newActual;
+          newM.extraActual = (mo.extraActual || []).filter((_, j) => j !== extraIdx);
+        }
+        return newM;
+      }),
+    };
+    setState(updated);
+    save();
+  };
+
   // Fusionne tous les doublons d'un nom en gardant le 1er index, supprimant les autres
   // Pour chaque mois: sum aed/eur dans budget+actual du 1er, append txns; puis splice les autres.
   const mergeDuplicates = (name: string, idxs: number[]) => {
@@ -174,6 +240,36 @@ export default function DataAudit() {
           <div className="text-[11px] text-t-3 leading-relaxed">
             <strong className="text-t-2">postes globaux : {postes.length}</strong> — chaque mois doit avoir {postes.length} entrées dans budget/actual. Si plus → orphelins, si moins → désalignement. Les extras (extraBudget/extraActual) ont leurs propres noms et ne posent pas de problème d'index.
           </div>
+
+          {/* Conflits extras vs poste régulier */}
+          {extraConflicts.length > 0 && (
+            <div className="bg-warning/10 border border-warning/30 rounded-md p-3 space-y-2">
+              <div className="text-[12px] font-bold text-warning">⚠ {extraConflicts.length} extra{extraConflicts.length > 1 ? 's' : ''} avec le même nom qu'un poste régulier</div>
+              <div className="text-[10px] text-t-3">
+                Probablement créés par erreur. Tu peux les fusionner dans le poste régulier homonyme (somme des valeurs + txns) ou les supprimer.
+              </div>
+              {extraConflicts.map((c, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px] bg-bg-3 px-2 py-1.5 rounded">
+                  <span className="font-mono text-t-2 flex-1">
+                    <strong>{c.name}</strong> · {c.monthId} · extra<span className="text-t-4">.{c.section}</span> · {f0(c.aed)} AED · {f$(c.eur)} €
+                    {c.section === 'actual' && c.txnsCount > 0 && <span className="text-t-3"> · {c.txnsCount} txns</span>}
+                  </span>
+                  <button
+                    onClick={() => mergeExtraIntoPoste(c.monthId, c.section, c.idx)}
+                    className="text-[10px] font-semibold text-accent bg-accent/15 border border-accent/30 px-2 py-0.5 rounded hover:bg-accent/25"
+                  >
+                    Fusionner
+                  </button>
+                  <button
+                    onClick={() => deleteExtra(c.monthId, c.section, c.idx)}
+                    className="text-[10px] font-semibold text-danger bg-danger/15 border border-danger/30 px-2 py-0.5 rounded hover:bg-danger/25"
+                  >
+                    ✕ Supprimer
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Doublons détectés */}
           {duplicates.length > 0 && (
