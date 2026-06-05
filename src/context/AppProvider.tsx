@@ -2,9 +2,29 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
 import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry } from '@/lib/types';
-import { DEFAULT_POSTES } from '@/lib/constants';
+import { DEFAULT_POSTES, MOIS_LIST } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate } from '@/lib/utils';
+
+/**
+ * Choisit le meilleur mois à afficher à l'ouverture de l'app :
+ * - Si un mois correspond au calendrier réel (mois + année actuels), on le retourne
+ * - Sinon, fallback : dernier mois enregistré
+ */
+function pickInitialMonth(months: Month[]): string | null {
+  if (months.length === 0) return null;
+  const now = new Date();
+  const currentName = MOIS_LIST[now.getMonth()]; // ex: "MAI"
+  const currentYear = now.getFullYear();
+  // Match exact mois + année
+  const match = months.find(m => m.id === currentName && m._year === currentYear);
+  if (match) return match.id;
+  // Match juste sur le nom (au cas où _year manque dans les données legacy)
+  const matchName = months.find(m => m.id === currentName && !m._year);
+  if (matchName) return matchName.id;
+  // Fallback : dernier mois
+  return months[months.length - 1].id;
+}
 
 interface AppContextType {
   // Raw state (what goes to Firebase)
@@ -152,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const activeId = data.activeSpaceId || sp[0].id;
         setActiveSpaceIdRaw(activeId);
         const active = sp.find(s => s.id === activeId) || sp[0];
-        if (active.months.length > 0) setCurMonth(active.months[active.months.length - 1].id);
+        if (active.months.length > 0) setCurMonth(pickInitialMonth(active.months));
       } catch {}
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -278,7 +298,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const activeId = data.activeSpaceId || sp[0].id;
         setActiveSpaceIdRaw(activeId);
         const active = sp.find(s => s.id === activeId) || sp[0];
-        if (active.months.length > 0) setCurMonth(active.months[active.months.length - 1].id);
+        if (active.months.length > 0) setCurMonth(pickInitialMonth(active.months));
       }
       setUserId(id);
       localStorage.setItem('fdxb_uid', id);
