@@ -7,23 +7,40 @@ import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate } from '@/lib/utils';
 
 /**
+ * Normalise un nom de mois : majuscules, sans accents, sans espaces.
+ * Couvre les cas "Juin", "juin ", "JUIN", "JUİN" (etc.)
+ */
+function normalizeMonthName(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+/**
  * Choisit le meilleur mois à afficher à l'ouverture de l'app :
  * - Si un mois correspond au calendrier réel (mois + année actuels), on le retourne
  * - Sinon, on cherche le mois courant par nom seul (peu importe _year, qui n'est assigné que lors d'une visite tracker)
  * - Sinon, on cherche le mois courant en partant de la fin (le plus récent du même nom)
  * - Sinon, fallback : dernier mois enregistré
+ *
+ * Matching tolérant : casse + accents + espaces normalisés.
  */
 function pickInitialMonth(months: Month[]): string | null {
   if (months.length === 0) return null;
   const now = new Date();
-  const currentName = MOIS_LIST[now.getMonth()]; // ex: "JUIN"
+  const currentRaw = MOIS_LIST[now.getMonth()];
+  const currentNorm = normalizeMonthName(currentRaw); // ex: "JUIN"
   const currentYear = now.getFullYear();
-  // Tier 1: match exact nom + année
-  const exact = months.find(m => m.id === currentName && m._year === currentYear);
-  if (exact) return exact.id;
-  // Tier 2: match nom seul, en parcourant à l'envers (donc le plus récent gagne)
+
+  // Tier 1: match nom normalisé + année
+  for (const m of months) {
+    if (normalizeMonthName(m.id) === currentNorm && m._year === currentYear) return m.id;
+  }
+  // Tier 2: match nom normalisé seul (peu importe l'année), en parcourant à l'envers (plus récent gagne)
   for (let i = months.length - 1; i >= 0; i--) {
-    if (months[i].id === currentName) return months[i].id;
+    if (normalizeMonthName(months[i].id) === currentNorm) return months[i].id;
   }
   // Tier 3: fallback dernier mois enregistré
   return months[months.length - 1].id;
@@ -180,7 +197,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const active = sp.find(s => s.id === activeId) || sp[0];
         if (active.months.length > 0) {
           const picked = pickInitialMonth(active.months);
-          console.log('[fdxb] pickInitialMonth →', picked, '/ months:', active.months.map(m => m.id).join(', '));
+          const now = new Date();
+          console.log('[fdxb] pickInitialMonth →', picked, {
+            today: now.toISOString().split('T')[0],
+            calendar: MOIS_LIST[now.getMonth()] + ' ' + now.getFullYear(),
+            available: active.months.map(m => `${m.id}${m._year ? '/' + m._year : ''}`).join(', '),
+          });
           setCurMonth(picked);
         }
         // Auto-fetch rate en arrière-plan
