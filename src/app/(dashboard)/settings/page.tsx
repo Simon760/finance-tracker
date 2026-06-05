@@ -54,6 +54,9 @@ export default function SettingsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLimit, setHistoryLimit] = useState(15);
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [convertIdx, setConvertIdx] = useState<number | null>(null);
+  const [convertMonth, setConvertMonth] = useState<string>('');
 
   const openAdd = () => {
     setForm({ name: '', cat: 'vital', isAed: true });
@@ -97,6 +100,62 @@ export default function SettingsPage() {
     [arr[idx], arr[nIdx]] = [arr[nIdx], arr[idx]];
     setState({ ...state, postes: arr });
     save();
+  };
+
+  const openConvert = (idx: number) => {
+    setConvertIdx(idx);
+    setConvertMonth(state.months[state.months.length - 1]?.id || '');
+    setConvertOpen(true);
+  };
+
+  // Convertit un poste régulier en "extra" (poste du mois uniquement) pour le mois choisi.
+  // Préserve les données budget+actual+txns dans le mois sélectionné, supprime partout ailleurs.
+  const confirmConvert = () => {
+    if (convertIdx === null || !convertMonth) return;
+    const poste = postes[convertIdx];
+    if (!poste) return;
+    if (!confirm(`Convertir « ${poste.name} » en poste du mois uniquement ?\n\nIl sera conservé dans ${convertMonth} (budget + dépenses + transactions) et retiré de tous les autres mois.`)) return;
+    const idx = convertIdx;
+    const updated = {
+      ...state,
+      postes: postes.filter((_, i) => i !== idx),
+      months: state.months.map(mo => {
+        const savedBudget = mo.budget[idx];
+        const savedActual = mo.actual[idx];
+        const newBudget = [...mo.budget];
+        const newActual = [...mo.actual];
+        newBudget.splice(idx, 1);
+        newActual.splice(idx, 1);
+        if (mo.id === convertMonth) {
+          // Préserve dans les extras
+          const eBud = {
+            name: poste.name,
+            cat: poste.cat,
+            aed: savedBudget?.aed || 0,
+            eur: savedBudget?.eur ?? 0,
+          };
+          const eAct = {
+            name: poste.name,
+            cat: poste.cat,
+            aed: savedActual?.aed || 0,
+            eur: savedActual?.eur ?? 0,
+            txns: savedActual?.txns || [],
+          };
+          return {
+            ...mo,
+            budget: newBudget,
+            actual: newActual,
+            extraBudget: [...(mo.extraBudget || []), eBud],
+            extraActual: [...(mo.extraActual || []), eAct],
+          };
+        }
+        return { ...mo, budget: newBudget, actual: newActual };
+      }),
+    };
+    setState(updated);
+    setConvertOpen(false);
+    save();
+    logChange?.('poste.update', `« ${poste.name} » converti en poste du mois ${convertMonth} uniquement`);
   };
 
   const exportData = () => {
@@ -183,6 +242,7 @@ export default function SettingsPage() {
                     <button onClick={() => movePoste(i, -1)} className="text-[11px] text-t-3 border border-border px-1.5 py-0.5 rounded cursor-pointer hover:bg-bg-4" title="Monter">↑</button>
                     <button onClick={() => movePoste(i, 1)} className="text-[11px] text-t-3 border border-border px-1.5 py-0.5 rounded cursor-pointer hover:bg-bg-4" title="Descendre">↓</button>
                     <button onClick={() => openEdit(i)} className="text-[11px] text-info bg-info/10 border border-info/25 px-2 py-0.5 rounded cursor-pointer hover:bg-info/20">Edit</button>
+                    <button onClick={() => openConvert(i)} className="text-[11px] text-warning bg-warning/10 border border-warning/25 px-2 py-0.5 rounded cursor-pointer hover:bg-warning/20" title="Convertir en poste d'un mois unique">→ Mois</button>
                     <button onClick={() => deletePoste(i)} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
                   </div>
                 </td>
@@ -306,6 +366,27 @@ export default function SettingsPage() {
           <div className="flex gap-2.5 mt-5">
             <button onClick={savePoste} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">{editIdx !== null ? 'Modifier' : 'Créer'}</button>
             <button onClick={() => setAddOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Convert poste → month-only Modal */}
+      <Modal open={convertOpen} onClose={() => setConvertOpen(false)} title="Convertir en poste du mois">
+        <div className="space-y-4">
+          {convertIdx !== null && (
+            <div className="text-[12px] text-t-3 leading-relaxed">
+              Le poste <span className="text-t-1 font-semibold">{postes[convertIdx]?.name}</span> sera retiré de la liste des postes permanents. Ses données (budget + dépenses + transactions) seront conservées <strong className="text-t-2">uniquement dans le mois choisi</strong>. Les autres mois où il était utilisé perdront ses données.
+            </div>
+          )}
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-medium mb-1.5">Garder uniquement dans le mois</label>
+            <select className="fi" value={convertMonth} onChange={e => setConvertMonth(e.target.value)}>
+              {state.months.map(mo => <option key={mo.id} value={mo.id}>{mo.id}{mo._year ? ` ${mo._year}` : ''}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2.5 mt-5">
+            <button onClick={confirmConvert} disabled={!convertMonth} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40">Convertir</button>
+            <button onClick={() => setConvertOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>
