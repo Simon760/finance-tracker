@@ -40,8 +40,6 @@ export interface Month {
   actual: ActualRow[];
   extraBudget: ExtraRow[];
   extraActual: ExtraRow[];
-  /** Noms de postes (state.postes) masqués pour ce mois — pas affichés + exclus des sommes */
-  hiddenPostes?: string[];
   _year?: number;
 }
 

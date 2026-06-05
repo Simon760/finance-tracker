@@ -23,17 +23,10 @@ export function rowEur(row: BudgetRow | ActualRow, rate: number): number {
   return toEur(row.aed || 0, rate);
 }
 
-// Helper: filtre les postes masqués pour ce mois (m.hiddenPostes contient les noms)
-function isHidden(m: Month, posteName?: string): boolean {
-  if (!posteName || !m.hiddenPostes || m.hiddenPostes.length === 0) return false;
-  return m.hiddenPostes.includes(posteName);
-}
-
 // Budget sums
-export function sumEurBudget(m: Month, postes: { isAed: boolean; name?: string }[], liveRate: number): number {
+export function sumEurBudget(m: Month, postes: { isAed: boolean }[], liveRate: number): number {
   let total = 0;
   postes.forEach((p, i) => {
-    if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
     total += p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
@@ -44,10 +37,9 @@ export function sumEurBudget(m: Month, postes: { isAed: boolean; name?: string }
   return total;
 }
 
-export function sumAedBudget(m: Month, postes: { isAed: boolean; name?: string }[], liveRate: number): number {
+export function sumAedBudget(m: Month, postes: { isAed: boolean }[], liveRate: number): number {
   let total = 0;
   postes.forEach((p, i) => {
-    if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
     total += p.isAed ? (row.aed || 0) : toAed(row.eur || 0, liveRate);
@@ -63,10 +55,9 @@ export function sumAedBudget(m: Month, postes: { isAed: boolean; name?: string }
 // laissées dans m.actual après la suppression d'un poste.
 // Les save handlers de transaction gardent row.aed / row.eur synchronisés
 // avec la somme des txns, donc on lit directement ces champs.
-export function sumEur(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[]): number {
+export function sumEur(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
   let total = 0;
-  postes.forEach((p, i) => {
-    if (isHidden(m, p.name)) return;
+  postes.forEach((_, i) => {
     const row = m.actual?.[i];
     if (!row) return;
     total += rowEur(row, m.rate);
@@ -77,10 +68,9 @@ export function sumEur(m: Month, postes: { isAed: boolean; name?: string }[], ex
   return total;
 }
 
-export function sumAed(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[]): number {
+export function sumAed(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
   let total = 0;
   postes.forEach((p, i) => {
-    if (isHidden(m, p.name)) return;
     const row = m.actual?.[i];
     if (!row) return;
     if (p.isAed) {

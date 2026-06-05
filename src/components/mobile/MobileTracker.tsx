@@ -24,7 +24,7 @@ export default function MobileTracker() {
   const [showLabelSugg, setShowLabelSugg] = useState(false);
   // Move-to / Create-poste
   const [createPosteMode, setCreatePosteMode] = useState(false);
-  const [newPosteForm, setNewPosteForm] = useState<{ name: string; cat: 'vital' | 'lifestyle' | 'finance' | 'logement'; isAed: boolean }>({ name: '', cat: 'vital', isAed: true });
+  const [newPosteForm, setNewPosteForm] = useState<{ name: string; cat: 'vital' | 'lifestyle' | 'finance' | 'logement'; isAed: boolean; scope: 'permanent' | 'month' }>({ name: '', cat: 'vital', isAed: true, scope: 'month' });
 
   // Poste detail sheet
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
@@ -86,7 +86,7 @@ export default function MobileTracker() {
 
   const resetPosteCreate = () => {
     setCreatePosteMode(false);
-    setNewPosteForm({ name: '', cat: 'vital', isAed: true });
+    setNewPosteForm({ name: '', cat: 'vital', isAed: true, scope: 'month' });
   };
 
   const openAddTx = (posteIdx: number) => {
@@ -136,7 +136,41 @@ export default function MobileTracker() {
       return row;
     };
 
-    // Détermine la cible (poste existant ou nouveau)
+    const recalcExtra = (r: { aed?: number; eur?: number; txns?: Transaction[] }) => {
+      const txns = r.txns || [];
+      r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+      r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
+    };
+
+    // CAS SPÉCIAL: création d'un poste "ce mois uniquement" → on crée un EXTRA
+    if (createPosteMode && newPosteForm.scope === 'month') {
+      const trimmed = newPosteForm.name.trim().toUpperCase();
+      if (!trimmed) return;
+      const updatedMonths = state.months.map(mo => {
+        if (mo.id !== m.id) return mo;
+        let actualArr = [...mo.actual];
+        let extraActual = [...(mo.extraActual || [])];
+        let extraBudget = [...(mo.extraBudget || [])];
+        // Si édition: retire de la source
+        if (txTarget.editIdx !== undefined) {
+          const srcRow = { ...(actualArr[txTarget.posteIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
+          srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txTarget.editIdx);
+          recalc(srcRow, !!state.postes[txTarget.posteIdx]?.isAed);
+          actualArr[txTarget.posteIdx] = srcRow;
+        }
+        const newExtra = { name: trimmed, cat: newPosteForm.cat, aed: 0, eur: 0, txns: [entry] };
+        recalcExtra(newExtra);
+        extraActual = [...extraActual, newExtra];
+        extraBudget = [...extraBudget, { name: trimmed, cat: newPosteForm.cat, aed: 0, eur: 0 }];
+        return { ...mo, actual: actualArr, extraActual, extraBudget };
+      });
+      setState({ ...state, months: updatedMonths });
+      setTxSheetOpen(false);
+      save();
+      return;
+    }
+
+    // Détermine la cible (poste existant ou nouveau global)
     let postes: Poste[] = state.postes;
     let targetIdx = txTarget.posteIdx;
     if (createPosteMode) {
@@ -245,36 +279,15 @@ export default function MobileTracker() {
     );
   }
 
-  const hidden = m.hiddenPostes || [];
-  const posteRows = state.postes
-    .map((p, i) => {
-      if (hidden.includes(p.name)) return null;
-      const bRow = m.budget[i] || { aed: 0, eur: null };
-      const aRow = m.actual[i] || { aed: 0, eur: null };
-      const budgetEur = bRow.eur ?? (p.isAed ? toEur(bRow.aed || 0, liveRate) : 0);
-      const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
-      const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
-      const txnsCount = (aRow.txns || []).length;
-      return { i, p, budgetEur, actualEur, pct, txnsCount };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
-
-  const toggleHidePoste = (posteName: string) => {
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const cur = mo.hiddenPostes || [];
-      const next = cur.includes(posteName) ? cur.filter(n => n !== posteName) : [...cur, posteName];
-      return { ...mo, hiddenPostes: next };
-    });
-    setState({ ...state, months });
-    save();
-  };
-
-  const restoreAllHiddenMobile = () => {
-    const months = state.months.map(mo => mo.id === m.id ? { ...mo, hiddenPostes: [] } : mo);
-    setState({ ...state, months });
-    save();
-  };
+  const posteRows = state.postes.map((p, i) => {
+    const bRow = m.budget[i] || { aed: 0, eur: null };
+    const aRow = m.actual[i] || { aed: 0, eur: null };
+    const budgetEur = bRow.eur ?? (p.isAed ? toEur(bRow.aed || 0, liveRate) : 0);
+    const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
+    const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
+    const txnsCount = (aRow.txns || []).length;
+    return { i, p, budgetEur, actualEur, pct, txnsCount };
+  });
 
   return (
     <div className="pb-20">
@@ -317,19 +330,9 @@ export default function MobileTracker() {
         </div>
       </div>
 
-      {/* Banner postes masqués */}
-      {hidden.length > 0 && (
-        <div className="flex items-center justify-between gap-2 mb-3 px-3 py-2 bg-bg-3 border border-border rounded-lg text-[11px]">
-          <span className="text-t-3 truncate">
-            {hidden.length} masqué{hidden.length > 1 ? 's' : ''} : <span className="text-t-2">{hidden.join(', ')}</span>
-          </span>
-          <button onClick={restoreAllHiddenMobile} className="text-[11px] text-accent font-semibold whitespace-nowrap active:opacity-60">Restaurer</button>
-        </div>
-      )}
-
       {/* Postes list */}
       <div className="flex items-center justify-between mb-2.5 px-1">
-        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Postes ({posteRows.length}{hidden.length > 0 && ` / ${state.postes.length}`})</span>
+        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Postes ({state.postes.length})</span>
         <span className="text-[10px] text-t-4 font-mono">Budget · Réel</span>
       </div>
       <div className="space-y-2">
@@ -406,13 +409,6 @@ export default function MobileTracker() {
                   <div className={`text-[15px] font-bold mono-value ${actualEur > budgetEur && budgetEur > 0 ? 'text-danger' : 'text-t-1'}`}>{f$(actualEur)} €</div>
                 </div>
               </div>
-
-              <button
-                onClick={() => { toggleHidePoste(state.postes[detailIdx].name); setDetailIdx(null); }}
-                className="w-full mb-3 py-2.5 text-[12px] font-semibold text-danger bg-danger/10 border border-danger/25 rounded-lg active:bg-danger/20"
-              >
-                ✕ Masquer ce poste dans {m.id}
-              </button>
 
               <div className="flex items-center justify-between mb-2 px-1">
                 <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Transactions ({txns.length})</span>
@@ -507,6 +503,24 @@ export default function MobileTracker() {
                         {label}
                       </button>
                     ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Portée</div>
+                  <div className="flex bg-bg-4 rounded-md p-0.5">
+                    {([['Ce mois', 'month'], ['Permanent', 'permanent']] as const).map(([label, val]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setNewPosteForm({ ...newPosteForm, scope: val })}
+                        className={`flex-1 py-1.5 text-[11px] font-semibold rounded transition-all ${newPosteForm.scope === val ? 'bg-bg-2 text-t-1' : 'text-t-3'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-t-4 mt-1">
+                    {newPosteForm.scope === 'month' ? `${m.id} uniquement` : 'Tous les mois'}
                   </div>
                 </div>
                 <button
