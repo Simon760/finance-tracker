@@ -435,12 +435,18 @@ export default function TrackerPage() {
     logChange?.('month.delete', `Suppression du mois ${removed}`);
   };
 
+  // IMPORTANT: quand on édite l'AED, on RESET le eur à null (et inversement).
+  // Sinon rowEur() privilégie l'ancien eur stocké et ignore le nouvel aed,
+  // ce qui crée une incohérence (le user a edit AED=290 mais le ratio reste calculé avec l'ancien eur=271).
   const updateBudget = (idx: number, val: number, isEur = false) => {
     if (!m) return;
     const months = state.months.map(mo => {
       if (mo.id !== m.id) return mo;
       const budget = [...mo.budget];
-      budget[idx] = isEur ? { ...budget[idx], eur: val } : { ...budget[idx], aed: val };
+      const prev = budget[idx] || { aed: 0, eur: null };
+      budget[idx] = isEur
+        ? { ...prev, eur: val, aed: 0 }      // édite EUR: reset AED
+        : { ...prev, aed: val, eur: null };  // édite AED: reset EUR (sera recalculé via toEur)
       return { ...mo, budget };
     });
     setState({ ...state, months });
@@ -452,7 +458,10 @@ export default function TrackerPage() {
     const months = state.months.map(mo => {
       if (mo.id !== m.id) return mo;
       const actual = [...mo.actual];
-      actual[idx] = isEur ? { ...actual[idx], eur: val } : { ...actual[idx], aed: val };
+      const prev = actual[idx] || { aed: 0, eur: null };
+      actual[idx] = isEur
+        ? { ...prev, eur: val, aed: 0 }
+        : { ...prev, aed: val, eur: null };
       return { ...mo, actual };
     });
     setState({ ...state, months });
