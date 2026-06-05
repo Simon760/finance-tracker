@@ -110,34 +110,41 @@ async function tryRateEndpoint(url: string, target: string, parse: RateParser): 
 }
 
 export async function fetchRate(target = 'AED'): Promise<number> {
-  const t = target.toLowerCase();
   const T = target.toUpperCase();
 
-  // Plusieurs sources racées en parallèle, du + temps réel au + fiable :
-  // - currency-api (fawazahmed0) : community-maintained, plusieurs updates/jour, données + fraîches que la BCE
-  // - frankfurter : BCE officielle (1 update/jour, jours ouvrés, ~16h CET) — précis mais peut être en retard
-  // - open-er-api : fallback générique
+  // Sources racées en parallèle, du plus "live marché" au plus "interbank/ECB" :
+  // - Wise: prix marché temps réel (mid-market), updates multiples/seconde — match exactement ce qu'on voit sur Google/XE
+  // - Yahoo Finance: prix marché chart, temps réel pendant les heures de trading
+  // - currency-api (fawazahmed0): community, multi-updates/jour, taux moyens — peut être en retard de 1-2h
+  // - open-er-api: daily, mid-market
+  // - frankfurter: BCE officielle, 1 update/jour vers 16h CET
   const endpoints: { url: string; parse: RateParser }[] = [
+    {
+      url: `https://wise.com/rates/live?source=EUR&target=${T}`,
+      parse: d => (d as { value?: number })?.value ?? null,
+    },
+    {
+      url: `https://query1.finance.yahoo.com/v8/finance/chart/EUR${T}=X?interval=1m`,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parse: d => (d as any)?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null,
+    },
     {
       url: `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.json`,
       parse: (d, tg) => (d as { eur?: Record<string, number> })?.eur?.[tg.toLowerCase()] ?? null,
     },
     {
-      // Mirror CDN au cas où jsdelivr est down
       url: `https://latest.currency-api.pages.dev/v1/currencies/eur.json`,
       parse: (d, tg) => (d as { eur?: Record<string, number> })?.eur?.[tg.toLowerCase()] ?? null,
-    },
-    {
-      url: `https://api.frankfurter.app/latest?from=EUR&to=${T}`,
-      parse: (d, tg) => (d as { rates?: Record<string, number> })?.rates?.[tg.toUpperCase()] ?? null,
     },
     {
       url: `https://open.er-api.com/v6/latest/EUR`,
       parse: (d, tg) => (d as { rates?: Record<string, number> })?.rates?.[tg.toUpperCase()] ?? null,
     },
+    {
+      url: `https://api.frankfurter.app/latest?from=EUR&to=${T}`,
+      parse: (d, tg) => (d as { rates?: Record<string, number> })?.rates?.[tg.toUpperCase()] ?? null,
+    },
   ];
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _ = t; // évite warning si target lowercase pas réutilisé directement
   try {
     return await Promise.any(endpoints.map(e => tryRateEndpoint(e.url, target, e.parse)));
   } catch {
