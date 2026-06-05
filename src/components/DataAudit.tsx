@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { Month, Transaction } from '@/lib/types';
+import { Month, Transaction, ActualRow, BudgetRow } from '@/lib/types';
 import { f0, f$ } from '@/lib/utils';
 
 interface RowDiagnostic {
@@ -49,6 +49,68 @@ export default function DataAudit() {
 
   const totalWarnings = diags.filter(d => d.warnings.length > 0).length;
   const detailMonth = monthDetail ? months.find(m => m.id === monthDetail) : null;
+
+  // Détecte les doublons par nom (case-insensitive) dans state.postes
+  const duplicates = useMemo(() => {
+    const map = new Map<string, number[]>();
+    postes.forEach((p, i) => {
+      const key = p.name.trim().toUpperCase();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(i);
+    });
+    return Array.from(map.entries())
+      .filter(([, idxs]) => idxs.length > 1)
+      .map(([name, idxs]) => ({ name, idxs }));
+  }, [postes]);
+
+  // Fusionne tous les doublons d'un nom en gardant le 1er index, supprimant les autres
+  // Pour chaque mois: sum aed/eur dans budget+actual du 1er, append txns; puis splice les autres.
+  const mergeDuplicates = (name: string, idxs: number[]) => {
+    if (idxs.length < 2) return;
+    if (!confirm(`Fusionner ${idxs.length} entrées "${name}" en une seule ?\n\n• Les valeurs budget et réel de chaque mois seront SOMMÉES dans la 1ère entrée\n• Les transactions seront concaténées\n• Les autres entrées seront supprimées (splice clean des indices dans tous les mois)\n\nÀ faire après backup ! (Settings → Exporter)`)) return;
+
+    const keepIdx = idxs[0];
+    const removeIdxs = idxs.slice(1).sort((a, b) => b - a); // desc pour splice safe
+
+    const updated = {
+      ...state,
+      postes: postes.filter((_, i) => !removeIdxs.includes(i)),
+      months: months.map(mo => {
+        let budget = [...(mo.budget || [])];
+        let actual = [...(mo.actual || [])];
+
+        // Snapshot des valeurs pour SUMMING
+        const budgetEntries = idxs.map(idx => budget[idx] || { aed: 0, eur: null });
+        const actualEntries = idxs.map(idx => actual[idx] || { aed: 0, eur: null });
+        const txnsMerged: Transaction[] = [];
+        actualEntries.forEach(a => { if (a.txns) txnsMerged.push(...a.txns); });
+
+        // Set la fusion dans le keepIdx
+        const sumAed = budgetEntries.reduce((s, b) => s + (b.aed || 0), 0);
+        const sumEurB = budgetEntries.reduce((s: number, b: BudgetRow) => s + (b.eur ?? 0), 0);
+        budget[keepIdx] = { aed: sumAed, eur: sumEurB > 0 ? sumEurB : null };
+
+        const sumActAed = actualEntries.reduce((s, a) => s + (a.aed || 0), 0);
+        const sumActEur = actualEntries.reduce((s: number, a: ActualRow) => s + (a.eur ?? 0), 0);
+        actual[keepIdx] = {
+          aed: sumActAed,
+          eur: sumActEur > 0 ? sumActEur : null,
+          txns: txnsMerged,
+        };
+
+        // Splice les indices supplémentaires (desc pour pas casser)
+        removeIdxs.forEach(i => {
+          budget.splice(i, 1);
+          actual.splice(i, 1);
+        });
+
+        return { ...mo, budget, actual };
+      }),
+    };
+    setState(updated);
+    save();
+    alert(`Fusion OK : ${idxs.length} entrées "${name}" → 1 entrée.`);
+  };
 
   // Helpers d'action sur les extras
   const deleteExtra = (monthId: string, section: 'budget' | 'actual', idx: number) => {
@@ -113,12 +175,39 @@ export default function DataAudit() {
             <strong className="text-t-2">postes globaux : {postes.length}</strong> — chaque mois doit avoir {postes.length} entrées dans budget/actual. Si plus → orphelins, si moins → désalignement. Les extras (extraBudget/extraActual) ont leurs propres noms et ne posent pas de problème d'index.
           </div>
 
+          {/* Doublons détectés */}
+          {duplicates.length > 0 && (
+            <div className="bg-danger/10 border border-danger/30 rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-bold text-danger">⚠ {duplicates.length} doublon{duplicates.length > 1 ? 's' : ''} détecté{duplicates.length > 1 ? 's' : ''}</span>
+              </div>
+              {duplicates.map(({ name, idxs }) => (
+                <div key={name} className="flex items-center gap-2 text-[11px]">
+                  <span className="font-mono text-t-2 flex-1">
+                    <strong>{name}</strong> aux index <span className="text-danger">{idxs.join(', ')}</span> ({idxs.length}×)
+                  </span>
+                  <button
+                    onClick={() => mergeDuplicates(name, idxs)}
+                    className="text-[11px] font-semibold text-accent bg-accent/15 border border-accent/30 px-2.5 py-1 rounded hover:bg-accent/25"
+                  >
+                    Fusionner
+                  </button>
+                </div>
+              ))}
+              <div className="text-[10px] text-t-3 pt-1 border-t border-danger/20">
+                Fusion = somme des montants budget+actual du nom, txns concaténées, indices supplémentaires retirés cleanly de tous les mois.
+              </div>
+            </div>
+          )}
+
           {/* Liste des postes globaux pour reference */}
           <details className="bg-bg-2 border border-border rounded-md p-2">
             <summary className="cursor-pointer text-[11px] font-semibold text-t-2">Postes globaux ({postes.length}) — par index</summary>
             <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1 text-[11px] font-mono">
               {postes.map((p, i) => (
-                <div key={i} className="text-t-3"><span className="text-t-4">{i}.</span> {p.name}</div>
+                <div key={i} className={`${duplicates.some(d => d.idxs.includes(i)) ? 'text-danger font-bold' : 'text-t-3'}`}>
+                  <span className="text-t-4">{i}.</span> {p.name}
+                </div>
               ))}
             </div>
           </details>
