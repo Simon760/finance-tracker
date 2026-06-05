@@ -128,7 +128,20 @@ const defaultState: AppState = {
 
 // Convert flat state to spaces array (backward compat)
 function stateToSpaces(s: AppState): Space[] {
-  if (s.spaces && s.spaces.length > 0) return s.spaces;
+  if (s.spaces && s.spaces.length > 0) {
+    // BUG FIX : le top-level state (postes/months/revenus/emmenagement) est la source de vérité
+    // après chaque setState (createMonth, etc.). Mais spaces[activeId] peut être stale (les
+    // setState dans tracker/MobileTracker ne syncent pas back vers spaces[]).
+    // Donc on patche ici en mirrorant le top-level dans le space actif.
+    if (s.activeSpaceId) {
+      return s.spaces.map(sp =>
+        sp.id === s.activeSpaceId
+          ? { ...sp, postes: s.postes, months: s.months, revenus: s.revenus, emmenagement: s.emmenagement }
+          : sp
+      );
+    }
+    return s.spaces;
+  }
   // Wrap existing data as spaces[0]
   return [{
     id: 'dubai',
@@ -238,7 +251,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const save = useCallback(() => {
     setStateRaw(prev => {
-      const updated = { ...prev, lastUpdate: new Date().toISOString() };
+      // Sync spaces[activeId] avec top-level avant persistance (sinon les modifs en top-level
+      // ne sont jamais mirrorées vers spaces[], et au reload stateToSpaces voit du stale).
+      let synced = prev;
+      if (prev.spaces && prev.spaces.length > 0 && prev.activeSpaceId) {
+        synced = {
+          ...prev,
+          spaces: prev.spaces.map(sp =>
+            sp.id === prev.activeSpaceId
+              ? { ...sp, postes: prev.postes, months: prev.months, revenus: prev.revenus, emmenagement: prev.emmenagement }
+              : sp
+          ),
+        };
+      }
+      const updated = { ...synced, lastUpdate: new Date().toISOString() };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
