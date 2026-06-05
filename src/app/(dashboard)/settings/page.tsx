@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Poste } from '@/lib/types';
+import DataAudit from '@/components/DataAudit';
 
 const CAT_OPTIONS = ['vital', 'lifestyle', 'finance', 'logement'] as const;
 const CAT_STYLES: Record<string, string> = {
@@ -192,6 +193,9 @@ export default function SettingsPage() {
         </table>
         </div>
       </div>
+
+      {/* Outil d'audit et repair de la data */}
+      <DataAudit />
 
       {/* Historique des modifs */}
       <div className="bg-bg-3 border border-border rounded-lg overflow-hidden mb-5 shadow-inset-border">
