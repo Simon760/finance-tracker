@@ -27,9 +27,11 @@ export default function TrackerPage() {
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [arSection, setArSection] = useState<'budget' | 'actual'>('budget');
   const [arName, setArName] = useState('');
-  const [arCat, setArCat] = useState('vital');
+  const [arCat, setArCat] = useState<'vital' | 'lifestyle' | 'finance' | 'logement'>('vital');
   const [arAed, setArAed] = useState(0);
   const [arEur, setArEur] = useState(0);
+  const [arScope, setArScope] = useState<'permanent' | 'month'>('month');
+  const [arIsAed, setArIsAed] = useState(true);
 
   // Slide-over
   const [slidePoste, setSlidePoste] = useState<{ name: string; idx: number; section: 'budget' | 'actual'; isExtra?: boolean } | null>(null);
@@ -459,7 +461,46 @@ export default function TrackerPage() {
 
   const addCustomRow = () => {
     if (!m) return;
-    const row = { name: arName.trim().toUpperCase() || 'AUTRE', cat: arCat, aed: arAed, eur: arEur };
+    const name = arName.trim().toUpperCase() || 'AUTRE';
+
+    // SCOPE = PERMANENT : crée un VRAI poste dans state.postes (visible dans tous les mois)
+    if (arScope === 'permanent') {
+      // Vérif unicité par nom — si existant, on ne re-crée pas, on update juste la valeur du mois courant
+      const existingIdx = state.postes.findIndex(p => p.name === name);
+      let newPostes = state.postes;
+      let posteIdx = existingIdx;
+      if (existingIdx < 0) {
+        newPostes = [...state.postes, { name, cat: arCat, isAed: arIsAed }];
+        posteIdx = newPostes.length - 1;
+      }
+      const months = state.months.map(mo => {
+        if (mo.id !== m.id) return mo;
+        const budget = [...mo.budget];
+        const actual = [...mo.actual];
+        if (arSection === 'budget') {
+          // Set le budget du mois courant
+          budget[posteIdx] = arIsAed
+            ? { aed: arAed, eur: arEur > 0 ? arEur : null }
+            : { aed: 0, eur: arEur > 0 ? arEur : (arAed > 0 ? arAed : null) };
+          if (!actual[posteIdx]) actual[posteIdx] = { aed: 0, eur: null };
+        } else {
+          // section actual: set le réel du mois
+          actual[posteIdx] = arIsAed
+            ? { aed: arAed, eur: arEur > 0 ? arEur : null }
+            : { aed: 0, eur: arEur > 0 ? arEur : (arAed > 0 ? arAed : null) };
+          if (!budget[posteIdx]) budget[posteIdx] = { aed: 0, eur: null };
+        }
+        return { ...mo, budget, actual };
+      });
+      setState({ ...state, postes: newPostes, months });
+      setAddRowOpen(false);
+      save();
+      if (existingIdx < 0) logChange?.('poste.create', `Création poste permanent « ${name} » (${arCat})`);
+      return;
+    }
+
+    // SCOPE = MONTH : extras (comportement précédent)
+    const row = { name, cat: arCat, aed: arAed, eur: arEur };
     const months = state.months.map(mo => {
       if (mo.id !== m.id) return mo;
       if (arSection === 'budget') {
@@ -751,7 +792,7 @@ export default function TrackerPage() {
               })}
               <tr>
                 <td colSpan={4} className="text-center py-2">
-                  <button onClick={() => { setArSection('budget'); setArName(''); setArAed(0); setArEur(0); setAddRowOpen(true); }} className="text-xs text-t-2 border border-border px-3 py-1 rounded-sm hover:bg-bg-3 transition-all cursor-pointer">+ Ajouter un poste</button>
+                  <button onClick={() => { setArSection('budget'); setArName(''); setArAed(0); setArEur(0); setArScope('month'); setArIsAed(true); setAddRowOpen(true); }} className="text-xs text-t-2 border border-border px-3 py-1 rounded-sm hover:bg-bg-3 transition-all cursor-pointer">+ Ajouter un poste</button>
                 </td>
               </tr>
             </tbody>
@@ -964,6 +1005,23 @@ export default function TrackerPage() {
       {/* Add Row Modal */}
       <Modal open={addRowOpen} onClose={() => setAddRowOpen(false)} title="Ajouter un poste">
         <div className="space-y-3.5">
+          <FormField label="Portée">
+            <div className="flex bg-bg-4 rounded-md p-0.5">
+              {([['Ce mois uniquement', 'month'], ['Permanent', 'permanent']] as const).map(([label, val]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setArScope(val)}
+                  className={`flex-1 py-1.5 text-[12px] font-semibold rounded cursor-pointer transition-all ${arScope === val ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-t-4 mt-1">
+              {arScope === 'month' ? `Apparaît uniquement dans ${m?.id || 'ce mois'}` : 'Apparaît dans tous les mois (présents et futurs)'}
+            </div>
+          </FormField>
           <FormField label="Section">
             <select className="fi" value={arSection} onChange={e => setArSection(e.target.value as 'budget' | 'actual')}>
               <option value="budget">Budget</option>
@@ -971,16 +1029,32 @@ export default function TrackerPage() {
             </select>
           </FormField>
           <FormField label="Nom">
-            <input className="fi" value={arName} onChange={e => setArName(e.target.value)} placeholder="Ex: KSA, FRANCE..." />
+            <input className="fi" value={arName} onChange={e => setArName(e.target.value)} placeholder="Ex: PARFUMS, TRANSPORT..." />
           </FormField>
           <FormField label="Catégorie">
-            <select className="fi" value={arCat} onChange={e => setArCat(e.target.value)}>
+            <select className="fi" value={arCat} onChange={e => setArCat(e.target.value as 'vital' | 'lifestyle' | 'finance' | 'logement')}>
               <option value="vital">Vital</option>
               <option value="lifestyle">Lifestyle</option>
               <option value="logement">Logement</option>
               <option value="finance">Finance</option>
             </select>
           </FormField>
+          {arScope === 'permanent' && (
+            <FormField label="Devise principale">
+              <div className="flex bg-bg-4 rounded-md p-0.5">
+                {([['AED', true], ['EUR', false]] as const).map(([label, val]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setArIsAed(val)}
+                    className={`flex-1 py-1.5 text-[12px] font-semibold rounded cursor-pointer transition-all ${arIsAed === val ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </FormField>
+          )}
           <FormField label="Montant AED">
             <input className="fi" type="number" value={arAed} onChange={e => setArAed(parseFloat(e.target.value) || 0)} step="0.01" />
           </FormField>
