@@ -30,7 +30,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const {
-    liveRate, refreshRate, rateRefreshing, syncStatus, hiddenMode, toggleHidden, logout, userId,
+    liveRate, refreshRate, rateRefreshing, setRateManually, syncStatus, hiddenMode, toggleHidden, logout, userId,
     spaces, activeSpace, activeSpaceId, setActiveSpaceId, createSpace,
   } = useApp();
 
@@ -41,6 +41,8 @@ export default function Sidebar() {
   const [nsCurrency, setNsCurrency] = useState('EUR');
   const [nsStatus, setNsStatus] = useState<'active' | 'draft'>('active');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [rateEditing, setRateEditing] = useState(false);
+  const [rateInput, setRateInput] = useState('');
 
   // Auto-close drawer on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -241,7 +243,38 @@ export default function Sidebar() {
             <RefreshCw size={11} className={rateRefreshing ? 'animate-spin' : ''} />
           </button>
         </div>
-        <div className="hero-num text-[22px] mt-1 mono-value text-t-1">{liveRate.toFixed(4)}</div>
+        {rateEditing ? (
+          <div className="flex items-center gap-1 mt-1">
+            <input
+              type="number"
+              step="0.0001"
+              value={rateInput}
+              onChange={e => setRateInput(e.target.value)}
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const n = parseFloat(rateInput);
+                  if (n > 0) setRateManually(n);
+                  setRateEditing(false);
+                } else if (e.key === 'Escape') {
+                  setRateEditing(false);
+                }
+              }}
+              onBlur={() => {
+                const n = parseFloat(rateInput);
+                if (n > 0) setRateManually(n);
+                setRateEditing(false);
+              }}
+              className="bg-bg-2 border border-accent/40 rounded px-2 py-1 text-[18px] font-bold w-full mono-value outline-none text-accent"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => { setRateInput(liveRate.toFixed(4)); setRateEditing(true); }}
+            className="hero-num text-[22px] mt-1 mono-value text-t-1 hover:text-accent transition-colors cursor-text text-left block w-full"
+            title="Cliquer pour saisir manuellement"
+          >{liveRate.toFixed(4)}</button>
+        )}
         <div className="text-[10px] text-t-3 mt-0.5 tracking-tight">Taux de conversion</div>
         <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-accent font-bold tracking-[0.14em]">
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow shadow-glow-sm" />

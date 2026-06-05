@@ -28,12 +28,14 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const {
-    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing,
+    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing, setRateManually,
     hiddenMode, toggleHidden, logout, userId,
   } = useApp();
 
   const [moreOpen, setMoreOpen] = useState(false);
   const [spaceOpen, setSpaceOpen] = useState(false);
+  const [rateEditing, setRateEditing] = useState(false);
+  const [rateInput, setRateInput] = useState('');
 
   useEffect(() => {
     setMoreOpen(false);
@@ -140,7 +142,27 @@ export default function MobileShell({ children }: { children: React.ReactNode })
               <div className="flex items-center justify-between px-1 text-[11px] text-t-3">
                 <span>Taux EUR/{activeSpace?.localCurrency || '—'}</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono mono-value text-t-1">{liveRate?.toFixed(4) || '—'}</span>
+                  {rateEditing ? (
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={rateInput}
+                      onChange={e => setRateInput(e.target.value)}
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { const n = parseFloat(rateInput); if (n > 0) setRateManually(n); setRateEditing(false); }
+                        else if (e.key === 'Escape') setRateEditing(false);
+                      }}
+                      onBlur={() => { const n = parseFloat(rateInput); if (n > 0) setRateManually(n); setRateEditing(false); }}
+                      className="bg-bg-3 border border-accent/40 rounded px-2 py-1 text-[13px] font-mono w-24 mono-value outline-none text-accent text-right"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => { setRateInput(liveRate.toFixed(4)); setRateEditing(true); }}
+                      className="font-mono mono-value text-t-1 hover:text-accent active:text-accent"
+                      title="Cliquer pour saisir manuellement"
+                    >{liveRate?.toFixed(4) || '—'}</button>
+                  )}
                   <button onClick={refreshRate} disabled={rateRefreshing} className="w-7 h-7 flex items-center justify-center rounded-full active:bg-bg-4 disabled:opacity-60">
                     <RefreshCw size={13} className={rateRefreshing ? 'animate-spin' : ''} />
                   </button>

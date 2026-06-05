@@ -54,6 +54,7 @@ interface AppContextType {
   // Rate
   liveRate: number;
   refreshRate: () => Promise<void>;
+  setRateManually: (rate: number) => void;
   rateRefreshing: boolean;
 
   // UI
@@ -177,7 +178,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const activeId = data.activeSpaceId || sp[0].id;
         setActiveSpaceIdRaw(activeId);
         const active = sp.find(s => s.id === activeId) || sp[0];
-        if (active.months.length > 0) setCurMonth(pickInitialMonth(active.months));
+        if (active.months.length > 0) {
+          const picked = pickInitialMonth(active.months);
+          console.log('[fdxb] pickInitialMonth →', picked, '/ months:', active.months.map(m => m.id).join(', '));
+          setCurMonth(picked);
+        }
+        // Auto-fetch rate en arrière-plan
+        fetchRate().then(r => {
+          if (r > 0) {
+            console.log('[fdxb] auto-fetched rate:', r);
+            setLiveRate(r);
+            setStateRaw(prev => ({ ...prev, rate: r }));
+          }
+        }).catch(() => {});
       } catch {}
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -349,6 +362,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [userId, persistToFirebase]);
 
+  const setRateManually = useCallback((rate: number) => {
+    if (!isFinite(rate) || rate <= 0) return;
+    setLiveRate(rate);
+    setStateRaw(prev => {
+      const u = { ...prev, rate };
+      localStorage.setItem('fdxb_state', JSON.stringify(u));
+      if (userId) persistToFirebase(u, userId);
+      return u;
+    });
+  }, [userId, persistToFirebase]);
+
   const toggleHidden = useCallback(() => setHiddenMode(prev => !prev), []);
 
   const logChange = useCallback((action: string, detail: string) => {
@@ -467,7 +491,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createSpace, updateSpace, deleteSpace,
       userId, setUserId, isLoggedIn: !!userId,
       login, logout,
-      liveRate, refreshRate, rateRefreshing,
+      liveRate, refreshRate, setRateManually, rateRefreshing,
       syncStatus,
       hiddenMode, toggleHidden,
       curMonth, setCurMonth,
