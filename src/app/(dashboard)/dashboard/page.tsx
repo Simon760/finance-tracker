@@ -41,16 +41,21 @@ export default function DashboardPage() {
   };
 
   const totalSpent = ms.reduce((s, m) => s + sumEur(m, state.postes, m.extraActual), 0);
-  const avg = totalSpent / ms.length;
+  // Moyenne sur les mois qui ont du réel (ignore les mois de prévision vides)
+  const activeMonthsCount = ms.filter(m => sumEur(m, state.postes, m.extraActual) > 0).length || ms.length;
+  const avg = totalSpent / activeMonthsCount;
   const dcFmt = (v: number, rate: number) => dashCur === 'EUR' ? `${f$(v)} €` : `${f0(toAed(v, rate))} AED`;
   const avgRate = ms.reduce((s, m) => s + m.rate, 0) / ms.length;
 
-  // Evolution data
-  const evoData = ms.map(m => ({
-    name: m.id.slice(0, 3),
-    Dépenses: dashCur === 'EUR' ? sumEur(m, state.postes, m.extraActual) : toAed(sumEur(m, state.postes, m.extraActual), m.rate),
-    Revenus: dashCur === 'EUR' ? monthEarnEur(m) : monthEarnAed(m),
-  }));
+  // Evolution data — n'inclut QUE les mois qui ont du réel (dépenses ou revenus).
+  // Les mois créés pour prévision (budget seul, sans actuals) ne polluent plus le graphe.
+  const evoData = ms
+    .map(m => ({
+      name: m.id.slice(0, 3),
+      Dépenses: dashCur === 'EUR' ? sumEur(m, state.postes, m.extraActual) : toAed(sumEur(m, state.postes, m.extraActual), m.rate),
+      Revenus: dashCur === 'EUR' ? monthEarnEur(m) : monthEarnAed(m),
+    }))
+    .filter(d => d.Dépenses > 0 || d.Revenus > 0);
 
   // Solde data — if soldeEnd is 0, carry forward previous month's soldeEnd
   const soldeMonths = ms.filter(m => m.soldeStart > 0 || m.soldeEnd > 0);
