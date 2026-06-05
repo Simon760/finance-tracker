@@ -196,6 +196,26 @@ export default function DataAudit() {
     save();
   };
 
+  // Édition manuelle directe d'une cellule m.budget[idx].aed ou m.actual[idx].aed
+  const setRowAed = (monthId: string, section: 'budget' | 'actual', idx: number, newAed: number) => {
+    const updated = {
+      ...state,
+      months: state.months.map(mo => {
+        if (mo.id !== monthId) return mo;
+        if (section === 'budget') {
+          const arr = [...(mo.budget || [])];
+          arr[idx] = { ...(arr[idx] || { aed: 0, eur: null }), aed: newAed };
+          return { ...mo, budget: arr };
+        }
+        const arr = [...(mo.actual || [])];
+        arr[idx] = { ...(arr[idx] || { aed: 0, eur: null, txns: [] }), aed: newAed };
+        return { ...mo, actual: arr };
+      }),
+    };
+    setState(updated);
+    save();
+  };
+
   // Trim m.budget / m.actual à la longueur de state.postes (retire les orphelins en queue uniquement)
   const trimOrphansTail = (monthId: string) => {
     if (!confirm(`Trim les rows orphelines en queue de ${monthId} ? (Garde seulement les ${postes.length} premières entrées de budget/actual, équivalentes aux ${postes.length} postes courants)`)) return;
@@ -353,9 +373,11 @@ export default function DataAudit() {
             <div className="bg-bg-2 border border-border rounded-md p-3 space-y-3">
               <div className="text-[12px] font-bold tracking-tight">Détail — {detailMonth.id}</div>
 
-              {/* budget par index */}
+              {/* budget par index — éditable */}
               <details open>
-                <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">budget[] ({(detailMonth.budget || []).length} entrées) — devraient correspondre aux postes par index</summary>
+                <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">
+                  budget[] ({(detailMonth.budget || []).length} entrées) — clic sur la valeur AED pour éditer
+                </summary>
                 <div className="space-y-0.5 text-[11px] font-mono mt-1">
                   {(detailMonth.budget || []).map((row, i) => {
                     const expectedName = postes[i]?.name;
@@ -364,17 +386,29 @@ export default function DataAudit() {
                       <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded ${isOrphan ? 'bg-danger/10 text-danger' : ''}`}>
                         <span className="text-t-4 w-6">{i}.</span>
                         <span className="flex-1">{expectedName || '⚠ ORPHELIN'}</span>
-                        <span className="text-t-3">AED {f0(row?.aed || 0)}</span>
-                        <span className="text-t-3">EUR {row?.eur != null ? f$(row.eur) : '—'}</span>
+                        <input
+                          type="number"
+                          defaultValue={row?.aed || 0}
+                          onBlur={e => {
+                            const v = parseFloat(e.target.value) || 0;
+                            if (v !== (row?.aed || 0)) setRowAed(detailMonth.id, 'budget', i, v);
+                          }}
+                          className="w-24 bg-bg-3 border border-border rounded px-2 py-0.5 text-right text-[11px] mono-value focus:border-accent outline-none"
+                          step="0.01"
+                          title="Édite m.budget[i].aed directement"
+                        />
+                        <span className="text-t-4 text-[10px]">AED · EUR {row?.eur != null ? f$(row.eur) : '—'}</span>
                       </div>
                     );
                   })}
                 </div>
               </details>
 
-              {/* actual par index */}
+              {/* actual par index — éditable */}
               <details open>
-                <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">actual[] ({(detailMonth.actual || []).length} entrées) — montre les txns par index</summary>
+                <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">
+                  actual[] ({(detailMonth.actual || []).length} entrées) — clic sur la valeur AED pour éditer
+                </summary>
                 <div className="space-y-1 text-[11px] font-mono mt-1">
                   {(detailMonth.actual || []).map((row, i) => {
                     const expectedName = postes[i]?.name;
@@ -385,8 +419,19 @@ export default function DataAudit() {
                         <div className="flex items-center gap-2">
                           <span className="text-t-4 w-6">{i}.</span>
                           <span className="flex-1 font-semibold">{expectedName || '⚠ ORPHELIN'}</span>
-                          <span className="text-t-3">{txns.length} txns</span>
-                          <span className="text-t-3">AED {f0(row?.aed || 0)}</span>
+                          <span className="text-t-3 text-[10px]">{txns.length} txns</span>
+                          <input
+                            type="number"
+                            defaultValue={row?.aed || 0}
+                            onBlur={e => {
+                              const v = parseFloat(e.target.value) || 0;
+                              if (v !== (row?.aed || 0)) setRowAed(detailMonth.id, 'actual', i, v);
+                            }}
+                            className="w-24 bg-bg-3 border border-border rounded px-2 py-0.5 text-right text-[11px] mono-value focus:border-accent outline-none"
+                            step="0.01"
+                            title="Édite m.actual[i].aed directement"
+                          />
+                          <span className="text-t-4 text-[10px]">AED</span>
                         </div>
                         {txns.length > 0 && (
                           <div className="ml-8 mt-1 space-y-0.5 text-[10px] text-t-3">
