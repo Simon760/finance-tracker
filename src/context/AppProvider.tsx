@@ -556,15 +556,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const rate = params.localIn > 0 ? params.aedOut / params.localIn : 0;
 
     setStateRaw(prev => {
-      // Trouve ou crée le poste VOYAGES
-      let postes = prev.postes;
-      let posteIdx = postes.findIndex(p => p.name.trim().toUpperCase() === 'VOYAGES');
-      if (posteIdx < 0) {
-        postes = [...postes, { name: 'VOYAGES', cat: 'lifestyle', isAed: true }];
-        posteIdx = postes.length - 1;
-      }
-
-      // Crée la swap-tx dans le mois cible
+      // Crée la swap-tx dans le mois cible — DANS UN EXTRA (per-month, pas global)
       const swapTxn: Transaction = {
         label: `Swap → ${params.name}`,
         amount: params.aedOut,
@@ -578,20 +570,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const months = prev.months.map(mo => {
         if (mo.id !== params.monthId) return mo;
-        const actual = [...mo.actual];
-        const row = { ...(actual[posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        // Find or create VOYAGES extra in this month
+        const extraActual = [...(mo.extraActual || [])];
+        const extraBudget = [...(mo.extraBudget || [])];
+        let extraIdx = extraActual.findIndex(r => r.name.trim().toUpperCase() === 'VOYAGES');
+        if (extraIdx < 0) {
+          extraActual.push({ name: 'VOYAGES', cat: 'lifestyle', aed: 0, eur: 0, txns: [] });
+          extraBudget.push({ name: 'VOYAGES', cat: 'lifestyle', aed: 0, eur: 0 });
+          extraIdx = extraActual.length - 1;
+        }
+        const row = { ...extraActual[extraIdx] };
         const txns = [...(row.txns || []), swapTxn];
         row.txns = txns;
         row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
         row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
-        actual[posteIdx] = row;
-        return { ...mo, actual };
+        extraActual[extraIdx] = row;
+        return { ...mo, extraActual, extraBudget };
       });
 
       const newTrip: Trip = {
         id, name: params.name, country: params.country, currency: params.currency,
         startDate: params.startDate, endDate: params.endDate,
-        swap: { aedOut: params.aedOut, localIn: params.localIn, rate, date: params.startDate, posteIdx, monthId: params.monthId },
+        // posteIdx = -1 sentinel : la swap-tx est dans extraActual['VOYAGES'] du monthId
+        swap: { aedOut: params.aedOut, localIn: params.localIn, rate, date: params.startDate, posteIdx: -1, monthId: params.monthId },
         status: 'ongoing',
         createdAt: new Date().toISOString(),
       };
@@ -604,7 +605,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const updated = {
         ...prev,
-        postes,
         months,
         trips: [...(prev.trips || []), newTrip],
         history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP),
@@ -630,7 +630,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteTrip = useCallback((id: string) => {
     setStateRaw(prev => {
       const before = (prev.trips || []).find(t => t.id === id);
-      // Compte les tx qui vont être supprimées
+      // Compte les tx qui vont être supprimées (actual + extraActual)
       let swapCount = 0;
       let expenseCount = 0;
       let totalAedRemoved = 0;
@@ -644,24 +644,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
           });
         });
+        (mo.extraActual || []).forEach(row => {
+          (row.txns || []).forEach(t => {
+            if (t.tripId === id) {
+              if (t.tripKind === 'swap') swapCount++;
+              else expenseCount++;
+              totalAedRemoved += t.amount || 0;
+            }
+          });
+        });
       });
       if (!confirm(`Supprimer ce voyage et TOUTES ses transactions ?\n\n• ${swapCount} swap-tx + ${expenseCount} dépense(s)\n• ${Math.round(totalAedRemoved)} AED retirés du tracker (ton compte AED retrouvera son état d'avant le swap)\n\nCette action est irréversible.`)) return prev;
 
       const list = (prev.trips || []).filter(t => t.id !== id);
-      // Supprime physiquement les tx tagged tripId
-      const months = prev.months.map(mo => ({
-        ...mo,
-        actual: (mo.actual || []).map(row => {
+      // Supprime physiquement les tx tagged tripId — actual + extras
+      const months = prev.months.map(mo => {
+        // Regular actual
+        const newActual = (mo.actual || []).map(row => {
           const oldTxns = row.txns || [];
           const newTxns = oldTxns.filter(t => t.tripId !== id);
           if (newTxns.length === oldTxns.length) return row;
-          // Recalcule aed/eur de la row
           const rate = mo.rate;
           const newAed = Math.round(newTxns.reduce((s, t) => s + (t.amount || 0), 0) * 100) / 100;
           const newEur = Math.round(newTxns.reduce((s, t) => s + (t.eur || (t.amount / (t.rate || rate))), 0) * 100) / 100;
           return { ...row, txns: newTxns, aed: newAed, eur: newEur };
-        }),
-      }));
+        });
+        // Extras: filter + remove extras whose txns become empty (= row VOYAGES vidée)
+        let newExtraActual = (mo.extraActual || []).map(row => {
+          const oldTxns = row.txns || [];
+          const newTxns = oldTxns.filter(t => t.tripId !== id);
+          if (newTxns.length === oldTxns.length) return row;
+          const rate = mo.rate;
+          const newAed = Math.round(newTxns.reduce((s, t) => s + (t.amount || 0), 0) * 100) / 100;
+          const newEur = Math.round(newTxns.reduce((s, t) => s + (t.eur || (t.amount / (t.rate || rate))), 0) * 100) / 100;
+          return { ...row, txns: newTxns, aed: newAed, eur: newEur };
+        });
+        let newExtraBudget = mo.extraBudget || [];
+        // Si une row d'extra était dédiée au voyage (créée par createTrip et plus aucune txns dedans), on la retire
+        // (pas seulement VOYAGES : on retire toute row extra qui est devenue 0 txns ET aed=0 ET eur=0)
+        const extrasToKeep: number[] = [];
+        newExtraActual.forEach((row, i) => {
+          const isEmpty = (!row.txns || row.txns.length === 0) && (row.aed || 0) === 0 && (row.eur || 0) === 0;
+          // Heuristic: retire seulement si nom === 'VOYAGES' (pour ne pas tuer d'autres extras vides du user)
+          if (isEmpty && row.name.trim().toUpperCase() === 'VOYAGES') return;
+          extrasToKeep.push(i);
+        });
+        if (extrasToKeep.length < newExtraActual.length) {
+          newExtraActual = extrasToKeep.map(i => newExtraActual[i]);
+          // Sync extraBudget: retire les rows VOYAGES vides en correspondance par nom
+          newExtraBudget = newExtraBudget.filter(b => {
+            if (b.name.trim().toUpperCase() !== 'VOYAGES') return true;
+            return newExtraActual.some(a => a.name.trim().toUpperCase() === 'VOYAGES');
+          });
+        }
+        return { ...mo, actual: newActual, extraActual: newExtraActual, extraBudget: newExtraBudget };
+      });
       const hist: HistoryEntry = {
         ts: new Date().toISOString(),
         action: 'trip.delete',
