@@ -23,10 +23,17 @@ export function rowEur(row: BudgetRow | ActualRow, rate: number): number {
   return toEur(row.aed || 0, rate);
 }
 
+// Helper: poste name in hidden list for ce mois
+function isHidden(m: Month, name?: string): boolean {
+  if (!name || !m.hiddenPostes || m.hiddenPostes.length === 0) return false;
+  return m.hiddenPostes.includes(name);
+}
+
 // Budget sums
-export function sumEurBudget(m: Month, postes: { isAed: boolean }[], liveRate: number): number {
+export function sumEurBudget(m: Month, postes: { isAed: boolean; name?: string }[], liveRate: number): number {
   let total = 0;
   postes.forEach((p, i) => {
+    if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
     total += p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
@@ -37,9 +44,10 @@ export function sumEurBudget(m: Month, postes: { isAed: boolean }[], liveRate: n
   return total;
 }
 
-export function sumAedBudget(m: Month, postes: { isAed: boolean }[], liveRate: number): number {
+export function sumAedBudget(m: Month, postes: { isAed: boolean; name?: string }[], liveRate: number): number {
   let total = 0;
   postes.forEach((p, i) => {
+    if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
     total += p.isAed ? (row.aed || 0) : toAed(row.eur || 0, liveRate);
@@ -55,9 +63,10 @@ export function sumAedBudget(m: Month, postes: { isAed: boolean }[], liveRate: n
 // laissées dans m.actual après la suppression d'un poste.
 // Les save handlers de transaction gardent row.aed / row.eur synchronisés
 // avec la somme des txns, donc on lit directement ces champs.
-export function sumEur(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
+export function sumEur(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[]): number {
   let total = 0;
-  postes.forEach((_, i) => {
+  postes.forEach((p, i) => {
+    if (isHidden(m, p.name)) return;
     const row = m.actual?.[i];
     if (!row) return;
     total += rowEur(row, m.rate);
@@ -73,9 +82,10 @@ export function sumEur(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]
  * Utilisé pour calculer la balance AED du compte bancaire :
  * les expenses voyage n'impactent pas l'AED bank car le swap initial l'a déjà débité.
  */
-export function sumAedBank(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
+export function sumAedBank(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[]): number {
   let total = 0;
   postes.forEach((p, i) => {
+    if (isHidden(m, p.name)) return;
     const row = m.actual?.[i];
     if (!row) return;
     // Si la row a des txns, on les somme en excluant les expense-voyage
@@ -103,9 +113,10 @@ export function sumAedBank(m: Month, postes: { isAed: boolean }[], extra: ExtraR
   return total;
 }
 
-export function sumAed(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
+export function sumAed(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[]): number {
   let total = 0;
   postes.forEach((p, i) => {
+    if (isHidden(m, p.name)) return;
     const row = m.actual?.[i];
     if (!row) return;
     if (p.isAed) {

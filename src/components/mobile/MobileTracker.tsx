@@ -7,7 +7,7 @@ import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt, EyeOff } from 'lucide-react';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -279,15 +279,36 @@ export default function MobileTracker() {
     );
   }
 
-  const posteRows = state.postes.map((p, i) => {
-    const bRow = m.budget[i] || { aed: 0, eur: null };
-    const aRow = m.actual[i] || { aed: 0, eur: null };
-    const budgetEur = bRow.eur ?? (p.isAed ? toEur(bRow.aed || 0, liveRate) : 0);
-    const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
-    const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
-    const txnsCount = (aRow.txns || []).length;
-    return { i, p, budgetEur, actualEur, pct, txnsCount };
-  });
+  const hidden = m.hiddenPostes || [];
+  const posteRows = state.postes
+    .map((p, i) => {
+      if (hidden.includes(p.name)) return null;
+      const bRow = m.budget[i] || { aed: 0, eur: null };
+      const aRow = m.actual[i] || { aed: 0, eur: null };
+      const budgetEur = bRow.eur ?? (p.isAed ? toEur(bRow.aed || 0, liveRate) : 0);
+      const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
+      const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
+      const txnsCount = (aRow.txns || []).length;
+      return { i, p, budgetEur, actualEur, pct, txnsCount };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  const hidePosteMobile = (posteName: string) => {
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const cur = mo.hiddenPostes || [];
+      if (cur.includes(posteName)) return mo;
+      return { ...mo, hiddenPostes: [...cur, posteName] };
+    });
+    setState({ ...state, months });
+    save();
+  };
+
+  const restoreAllHiddenMobile = () => {
+    const months = state.months.map(mo => mo.id === m.id ? { ...mo, hiddenPostes: [] } : mo);
+    setState({ ...state, months });
+    save();
+  };
 
   return (
     <div className="pb-20">
@@ -330,9 +351,20 @@ export default function MobileTracker() {
         </div>
       </div>
 
+      {/* Banner masqués */}
+      {hidden.length > 0 && (
+        <div className="flex items-center justify-between gap-2 mb-3 px-3 py-2 bg-bg-3 border border-warning/30 rounded-lg text-[11px]">
+          <span className="text-t-3 truncate flex items-center gap-1.5">
+            <EyeOff size={11} className="text-warning shrink-0" />
+            {hidden.length} masqué{hidden.length > 1 ? 's' : ''} : <span className="text-t-2">{hidden.join(', ')}</span>
+          </span>
+          <button onClick={restoreAllHiddenMobile} className="text-[11px] text-accent font-semibold whitespace-nowrap active:opacity-60">Restaurer</button>
+        </div>
+      )}
+
       {/* Postes list */}
       <div className="flex items-center justify-between mb-2.5 px-1">
-        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Postes ({state.postes.length})</span>
+        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Postes ({posteRows.length}{hidden.length > 0 && ` / ${state.postes.length}`})</span>
         <span className="text-[10px] text-t-4 font-mono">Budget · Réel</span>
       </div>
       <div className="space-y-2">
@@ -409,6 +441,13 @@ export default function MobileTracker() {
                   <div className={`text-[15px] font-bold mono-value ${actualEur > budgetEur && budgetEur > 0 ? 'text-danger' : 'text-t-1'}`}>{f$(actualEur)} €</div>
                 </div>
               </div>
+
+              <button
+                onClick={() => { hidePosteMobile(state.postes[detailIdx].name); setDetailIdx(null); }}
+                className="w-full mb-3 py-2.5 text-[12px] font-semibold text-warning bg-warning/10 border border-warning/25 rounded-lg active:bg-warning/20 flex items-center justify-center gap-2"
+              >
+                <EyeOff size={13} /> Masquer ce poste dans {m.id}
+              </button>
 
               <div className="flex items-center justify-between mb-2 px-1">
                 <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Transactions ({txns.length})</span>

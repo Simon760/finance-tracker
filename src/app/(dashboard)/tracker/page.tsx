@@ -11,6 +11,7 @@ import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
+import { EyeOff } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
 
@@ -468,6 +469,27 @@ export default function TrackerPage() {
     save();
   };
 
+  // Masque un poste régulier pour ce mois (pas globalement)
+  const hidePosteThisMonth = (posteName: string) => {
+    if (!m) return;
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const cur = mo.hiddenPostes || [];
+      if (cur.includes(posteName)) return mo;
+      return { ...mo, hiddenPostes: [...cur, posteName] };
+    });
+    setState({ ...state, months });
+    save();
+    logChange?.('poste.hide', `Masqué « ${posteName} » dans ${m.id}`);
+  };
+
+  const restoreAllHidden = () => {
+    if (!m) return;
+    const months = state.months.map(mo => mo.id === m.id ? { ...mo, hiddenPostes: [] } : mo);
+    setState({ ...state, months });
+    save();
+  };
+
   const addCustomRow = () => {
     if (!m) return;
     const name = arName.trim().toUpperCase() || 'AUTRE';
@@ -748,6 +770,17 @@ export default function TrackerPage() {
             <KpiCard label="Dépenses du mois" value={`${f$(aE)} €`} sub={`${f0(aA)} AED`} accentColor="#f59e0b" />
           </div>
 
+          {/* Bannière postes masqués */}
+          {(m.hiddenPostes || []).length > 0 && (
+            <div className="flex items-center justify-between gap-3 mb-3 px-3.5 py-2 bg-bg-3 border border-warning/30 rounded-md text-[11px]">
+              <span className="text-t-3 flex items-center gap-1.5">
+                <EyeOff size={12} className="text-warning shrink-0" />
+                {(m.hiddenPostes || []).length} poste{(m.hiddenPostes || []).length > 1 ? 's' : ''} masqué{(m.hiddenPostes || []).length > 1 ? 's' : ''} dans {m.id} : <span className="text-t-2 font-mono">{(m.hiddenPostes || []).join(', ')}</span>
+              </span>
+              <button onClick={restoreAllHidden} className="text-[11px] text-accent hover:underline cursor-pointer font-semibold whitespace-nowrap">Tout restaurer</button>
+            </div>
+          )}
+
           {/* Budget Table */}
           <TableSection title="Budget Prévisionnel" subtitle="Estimations du mois">
             <thead>
@@ -760,12 +793,20 @@ export default function TrackerPage() {
             </thead>
             <tbody>
               {state.postes.map((p, i) => {
+                if ((m.hiddenPostes || []).includes(p.name)) return null;
                 const row = m.budget[i] || { aed: 0, eur: null };
                 const eur = p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
                 const pct = bE > 0 ? ((eur / bE) * 100).toFixed(1) : '0.0';
                 return (
-                  <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors">
-                    <td className="px-4 py-2.5 text-[13px] font-semibold">{p.name}</td>
+                  <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors group">
+                    <td className="px-4 py-2.5 text-[13px] font-semibold">
+                      {p.name}
+                      <button
+                        onClick={() => hidePosteThisMonth(p.name)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 inline-flex items-center text-warning hover:text-danger cursor-pointer"
+                        title={`Masquer « ${p.name} » dans ${m.id} (juste ce mois)`}
+                      ><EyeOff size={11} /></button>
+                    </td>
                     <td className="px-4 py-2.5 text-right">
                       {p.isAed ? (
                         <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
@@ -838,6 +879,7 @@ export default function TrackerPage() {
             </thead>
             <tbody>
               {state.postes.map((p, i) => {
+                if ((m.hiddenPostes || []).includes(p.name)) return null;
                 const row = m.actual[i] || { aed: 0, eur: null };
                 const brow = m.budget[i] || { aed: 0, eur: null };
                 const eur = rowEur(row, m.rate);
@@ -849,7 +891,7 @@ export default function TrackerPage() {
                 const ecartZero = beur > 0 && Math.abs(ecart) < 0.5;
                 const ecartCls = ecartZero ? 'text-t-3 opacity-60' : ecart >= 0 ? 'text-accent' : 'text-danger';
                 return (
-                  <tr key={i} className="border-b border-border hover:bg-white/[.02]">
+                  <tr key={i} className="border-b border-border hover:bg-white/[.02] group">
                     <td className="px-4 py-2.5 text-[13px] font-semibold">
                       <button onClick={() => setSlidePoste({ name: p.name, idx: i, section: 'actual' })} className="hover:text-accent transition-colors cursor-pointer text-left">{p.name}</button>
                       <button onClick={() => openTxnAdd(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
@@ -858,6 +900,11 @@ export default function TrackerPage() {
                           <span>👁</span>{(m.actual[i]?.txns || []).length}
                         </button>
                       )}
+                      <button
+                        onClick={() => hidePosteThisMonth(p.name)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 inline-flex items-center text-warning hover:text-danger cursor-pointer align-middle"
+                        title={`Masquer « ${p.name} » dans ${m.id} (juste ce mois)`}
+                      ><EyeOff size={11} /></button>
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {p.isAed
