@@ -68,6 +68,41 @@ export function sumEur(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]
   return total;
 }
 
+/**
+ * Comme sumAed mais EXCLUT les transactions taggées `tripKind === 'expense'`.
+ * Utilisé pour calculer la balance AED du compte bancaire :
+ * les expenses voyage n'impactent pas l'AED bank car le swap initial l'a déjà débité.
+ */
+export function sumAedBank(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
+  let total = 0;
+  postes.forEach((p, i) => {
+    const row = m.actual?.[i];
+    if (!row) return;
+    // Si la row a des txns, on les somme en excluant les expense-voyage
+    if (row.txns && row.txns.length > 0) {
+      const bankTxns = row.txns.filter(t => t.tripKind !== 'expense');
+      const totalAed = bankTxns.reduce((s, t) => s + (t.amount || 0), 0);
+      if (p.isAed) total += totalAed;
+      else total += toAed(bankTxns.reduce((s, t) => s + (t.eur || (t.amount / (t.rate || m.rate))), 0), m.rate);
+    } else {
+      // Pas de txns détaillées : lit row.aed comme avant
+      if (p.isAed) total += row.aed || 0;
+      else total += toAed(rowEur(row, m.rate), m.rate);
+    }
+  });
+  (extra || []).forEach(r => {
+    if (r.txns && r.txns.length > 0) {
+      const bankTxns = r.txns.filter(t => t.tripKind !== 'expense');
+      const aed = bankTxns.reduce((s, t) => s + (t.amount || 0), 0);
+      total += aed;
+    } else {
+      if (r.aed && r.aed > 0) total += r.aed;
+      else if (r.eur && r.eur > 0) total += toAed(r.eur, m.rate);
+    }
+  });
+  return total;
+}
+
 export function sumAed(m: Month, postes: { isAed: boolean }[], extra: ExtraRow[]): number {
   let total = 0;
   postes.forEach((p, i) => {

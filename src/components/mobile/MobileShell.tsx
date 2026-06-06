@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutGrid, DollarSign, Globe, MapPin, MoreHorizontal,
-  Eye, EyeOff, RefreshCw, LogOut, BarChart3, TrendingUp, Home, Settings, ChevronRight, X,
+  Eye, EyeOff, RefreshCw, LogOut, BarChart3, TrendingUp, Home, Settings, ChevronRight, X, Plane,
 } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
 import { setForceDesktop } from '@/lib/useIsMobile';
@@ -20,6 +20,7 @@ const TABS = [
 const MORE_ITEMS = [
   { href: '/dashboard', label: 'Dashboard du space', icon: BarChart3 },
   { href: '/networth', label: 'Net Worth', icon: TrendingUp },
+  { href: '/trips', label: 'Voyages', icon: Plane },
   { href: '/setup', label: 'Setup', icon: Home },
   { href: '/settings', label: 'Paramètres', icon: Settings },
 ];

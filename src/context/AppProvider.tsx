@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
-import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry } from '@/lib/types';
+import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry, Trip, Transaction } from '@/lib/types';
 import { DEFAULT_POSTES, MOIS_LIST } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate } from '@/lib/utils';
@@ -99,6 +99,28 @@ interface AppContextType {
   addResidencyEntry: (e: Omit<ResidencyEntry, 'id'>) => void;
   updateResidencyEntry: (id: string, updates: Partial<ResidencyEntry>) => void;
   deleteResidencyEntry: (id: string) => void;
+
+  // Voyages
+  trips: Trip[];
+  /** Crée un voyage + ajoute la swap-tx dans le tracker (poste VOYAGES auto-créé si manquant) */
+  createTrip: (params: {
+    name: string; country: string; currency: string;
+    startDate: string; endDate: string | null;
+    aedOut: number; localIn: number;
+    monthId: string; // mois cible pour la swap-tx
+  }) => string; // returns trip id
+  updateTrip: (id: string, updates: Partial<Trip>) => void;
+  deleteTrip: (id: string) => void;
+  /** Ajoute une dépense voyage (tx dans un poste régulier avec tripId+tripKind=expense) */
+  addTripExpense: (params: {
+    tripId: string;
+    posteIdx: number;
+    monthId: string;
+    label: string;
+    eur: number;
+    date: string;
+  }) => void;
+  deleteTripExpense: (tripId: string, monthId: string, posteIdx: number, txIdx: number) => void;
 }
 
 const HISTORY_CAP = 200;
@@ -521,6 +543,185 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase]);
 
+  // ─── VOYAGES ───
+  const trips = useMemo(() => state.trips || [], [state.trips]);
+
+  const createTrip = useCallback((params: {
+    name: string; country: string; currency: string;
+    startDate: string; endDate: string | null;
+    aedOut: number; localIn: number;
+    monthId: string;
+  }): string => {
+    const id = `trip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const rate = params.localIn > 0 ? params.aedOut / params.localIn : 0;
+
+    setStateRaw(prev => {
+      // Trouve ou crée le poste VOYAGES
+      let postes = prev.postes;
+      let posteIdx = postes.findIndex(p => p.name.trim().toUpperCase() === 'VOYAGES');
+      if (posteIdx < 0) {
+        postes = [...postes, { name: 'VOYAGES', cat: 'lifestyle', isAed: true }];
+        posteIdx = postes.length - 1;
+      }
+
+      // Crée la swap-tx dans le mois cible
+      const swapTxn: Transaction = {
+        label: `Swap → ${params.name}`,
+        amount: params.aedOut,
+        currency: 'AED',
+        rate: prev.rate,
+        eur: params.aedOut / prev.rate,
+        date: params.startDate,
+        tripId: id,
+        tripKind: 'swap',
+      };
+
+      const months = prev.months.map(mo => {
+        if (mo.id !== params.monthId) return mo;
+        const actual = [...mo.actual];
+        const row = { ...(actual[posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        const txns = [...(row.txns || []), swapTxn];
+        row.txns = txns;
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+        actual[posteIdx] = row;
+        return { ...mo, actual };
+      });
+
+      const newTrip: Trip = {
+        id, name: params.name, country: params.country, currency: params.currency,
+        startDate: params.startDate, endDate: params.endDate,
+        swap: { aedOut: params.aedOut, localIn: params.localIn, rate, date: params.startDate, posteIdx, monthId: params.monthId },
+        status: 'ongoing',
+        createdAt: new Date().toISOString(),
+      };
+
+      const hist: HistoryEntry = {
+        ts: new Date().toISOString(),
+        action: 'trip.create',
+        detail: `Voyage ${params.name} (${params.country}) — swap ${params.aedOut} AED → ${params.localIn} ${params.currency}`,
+      };
+
+      const updated = {
+        ...prev,
+        postes,
+        months,
+        trips: [...(prev.trips || []), newTrip],
+        history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP),
+        lastUpdate: new Date().toISOString(),
+      };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+    return id;
+  }, [userId, persistToFirebase]);
+
+  const updateTrip = useCallback((id: string, updates: Partial<Trip>) => {
+    setStateRaw(prev => {
+      const list = (prev.trips || []).map(t => t.id === id ? { ...t, ...updates } : t);
+      const updated = { ...prev, trips: list, lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
+  const deleteTrip = useCallback((id: string) => {
+    if (!confirm('Supprimer ce voyage ?\n\nLes transactions associées (swap + dépenses) seront détaguées (tripId enlevé) mais conservées dans les postes.')) return;
+    setStateRaw(prev => {
+      const before = (prev.trips || []).find(t => t.id === id);
+      const list = (prev.trips || []).filter(t => t.id !== id);
+      // Détague les txns
+      const months = prev.months.map(mo => ({
+        ...mo,
+        actual: (mo.actual || []).map(row => ({
+          ...row,
+          txns: (row.txns || []).map(t => {
+            if (t.tripId === id) {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { tripId, tripKind, ...rest } = t;
+              return rest as Transaction;
+            }
+            return t;
+          }),
+        })),
+      }));
+      const hist: HistoryEntry = {
+        ts: new Date().toISOString(),
+        action: 'trip.delete',
+        detail: `Suppr voyage ${before?.name || id}`,
+      };
+      const updated = {
+        ...prev, months, trips: list,
+        history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP),
+        lastUpdate: new Date().toISOString(),
+      };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
+  const addTripExpense = useCallback((params: {
+    tripId: string; posteIdx: number; monthId: string;
+    label: string; eur: number; date: string;
+  }) => {
+    setStateRaw(prev => {
+      const trip = (prev.trips || []).find(t => t.id === params.tripId);
+      if (!trip) return prev;
+      const rate = trip.swap.rate; // utilise le taux du swap pour cohérence
+      const txn: Transaction = {
+        label: params.label || '—',
+        amount: Math.round(params.eur * rate * 100) / 100,
+        currency: 'EUR',
+        rate,
+        eur: params.eur,
+        date: params.date,
+        tripId: params.tripId,
+        tripKind: 'expense',
+      };
+      const months = prev.months.map(mo => {
+        if (mo.id !== params.monthId) return mo;
+        const actual = [...mo.actual];
+        const row = { ...(actual[params.posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        const txns = [...(row.txns || []), txn];
+        row.txns = txns;
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+        actual[params.posteIdx] = row;
+        return { ...mo, actual };
+      });
+      const updated = { ...prev, months, lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
+  const deleteTripExpense = useCallback((tripId: string, monthId: string, posteIdx: number, txIdx: number) => {
+    setStateRaw(prev => {
+      const months = prev.months.map(mo => {
+        if (mo.id !== monthId) return mo;
+        const actual = [...mo.actual];
+        const row = { ...(actual[posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        const txns = [...(row.txns || [])];
+        // Sanity check: la tx doit avoir le bon tripId
+        if (txns[txIdx]?.tripId !== tripId) return mo;
+        txns.splice(txIdx, 1);
+        row.txns = txns;
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+        actual[posteIdx] = row;
+        return { ...mo, actual };
+      });
+      const updated = { ...prev, months, lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
   const updateMonth = useCallback((id: string, field: keyof Month, val: number) => {
     setStateRaw(prev => {
       const months = prev.months.map(m => m.id === id ? { ...m, [field]: val } : m);
@@ -552,6 +753,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       history: state.history || [],
       logChange, clearHistory,
       residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry,
+      trips, createTrip, updateTrip, deleteTrip, addTripExpense, deleteTripExpense,
     }}>
       <div className={hiddenMode ? 'amounts-hidden' : ''}>
         {children}

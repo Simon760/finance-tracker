@@ -20,6 +20,10 @@ export interface Transaction {
   rate: number;
   eur?: number;
   date?: string;
+  /** Si défini, cette tx fait partie d'un voyage. tripKind=swap : débite l'AED bank (normal).
+   * tripKind=expense (défaut si tripId set) : NE débite PAS l'AED bank (le swap initial l'a déjà fait). */
+  tripId?: string;
+  tripKind?: 'swap' | 'expense';
 }
 
 export interface ExtraRow {
@@ -111,6 +115,29 @@ export interface ResidencyState {
 }
 
 // Ce qui est stocké en Firebase (backward compatible)
+export interface Trip {
+  id: string;
+  name: string;
+  country: string;        // ex "France", "Italie"
+  currency: string;       // devise locale (ex "EUR")
+  startDate: string;      // YYYY-MM-DD
+  endDate: string | null; // null = ongoing
+  /** Le swap initial qui débite l'AED bank */
+  swap: {
+    aedOut: number;       // montant AED swappé
+    localIn: number;      // montant local reçu (ex 250 EUR)
+    rate: number;         // dérivé : aedOut / localIn
+    date: string;
+    /** Index du poste dans state.postes où la swap-tx a été créée (typiquement 'VOYAGES') */
+    posteIdx: number;
+    /** Mois du tracker où la swap-tx a été ajoutée */
+    monthId: string;
+  };
+  /** Status: ongoing si on est entre start et end, ended sinon */
+  status: 'ongoing' | 'ended';
+  createdAt: string;
+}
+
 export interface AppState {
   rate: number;
   postes: Poste[];
@@ -125,4 +152,6 @@ export interface AppState {
   history?: HistoryEntry[];
   // Résidence fiscale (global, hors spaces)
   residency?: ResidencyState;
+  // Voyages (global, hors spaces) — modules optionnel
+  trips?: Trip[];
 }

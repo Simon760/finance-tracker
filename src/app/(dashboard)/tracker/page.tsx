@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
@@ -555,12 +555,15 @@ export default function TrackerPage() {
   const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
   const aE = m ? sumEur(m, state.postes, m.extraActual) : 0;
   const aA = m ? sumAed(m, state.postes, m.extraActual) : 0;
+  // sumAedBank exclut les txns tagged comme tripKind=expense (déjà débitées via le swap)
+  const aABank = m ? sumAedBank(m, state.postes, m.extraActual) : 0;
 
   const synced = m ? isRevSynced(m.id) : false;
   const earnEur = m ? (synced ? getMonthRevEur(m.id) : (m.earn || 0)) : 0;
   const earnAed = m ? (synced ? getMonthRevAed(m.id) : toAed(m.earn || 0, m.rate)) : 0;
   const diff = earnEur - aE;
-  const prevCompte = m ? ((m.soldeStart || 0) + earnAed - aA) : 0;
+  // Prévisionnel compte = solde + revenus - dépenses (en excluant expenses voyage)
+  const prevCompte = m ? ((m.soldeStart || 0) + earnAed - aABank) : 0;
 
   // Prévisionnel (optimiste) — adds preview/non-confirmed revenues to confirmed forecast
   const previewEur = m && synced
