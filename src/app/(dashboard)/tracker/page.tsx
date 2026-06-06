@@ -436,18 +436,24 @@ export default function TrackerPage() {
     logChange?.('month.delete', `Suppression du mois ${removed}`);
   };
 
-  // IMPORTANT: quand on édite l'AED, on RESET le eur à null (et inversement).
-  // Sinon rowEur() privilégie l'ancien eur stocké et ignore le nouvel aed,
-  // ce qui crée une incohérence (le user a edit AED=290 mais le ratio reste calculé avec l'ancien eur=271).
+  // Édite le budget en gardant AED et EUR synchronisés au taux live.
+  // Si user édite AED → eur = aed / liveRate. Si user édite EUR → aed = eur * liveRate.
+  // Les 2 valeurs restent cohérentes, donc Budget table et Réel table (rowEur) sont d'accord.
   const updateBudget = (idx: number, val: number, isEur = false) => {
     if (!m) return;
     const months = state.months.map(mo => {
       if (mo.id !== m.id) return mo;
       const budget = [...mo.budget];
       const prev = budget[idx] || { aed: 0, eur: null };
-      budget[idx] = isEur
-        ? { ...prev, eur: val, aed: 0 }      // édite EUR: reset AED
-        : { ...prev, aed: val, eur: null };  // édite AED: reset EUR (sera recalculé via toEur)
+      if (isEur) {
+        const eur = val;
+        const aed = Math.round(eur * liveRate * 100) / 100;
+        budget[idx] = { ...prev, eur, aed };
+      } else {
+        const aed = val;
+        const eur = liveRate > 0 ? Math.round((aed / liveRate) * 100) / 100 : 0;
+        budget[idx] = { ...prev, aed, eur };
+      }
       return { ...mo, budget };
     });
     setState({ ...state, months });
@@ -808,18 +814,10 @@ export default function TrackerPage() {
                       ><EyeOff size={11} /></button>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {p.isAed ? (
-                        <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
-                      ) : (
-                        <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{(row.eur || 0) > 0 ? f0(toAed(row.eur || 0, liveRate)) : '—'}</span>
-                      )}
+                      <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {!p.isAed ? (
-                        <CellInput value={row.eur || 0} onChange={v => updateBudget(i, v, true)} />
-                      ) : (
-                        <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{f$(eur)}</span>
-                      )}
+                      <CellInput value={row.eur ?? eur} onChange={v => updateBudget(i, v, true)} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="font-mono text-[11px]">{pct}%</span>
