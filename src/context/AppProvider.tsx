@@ -628,29 +628,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [userId, persistToFirebase]);
 
   const deleteTrip = useCallback((id: string) => {
-    if (!confirm('Supprimer ce voyage ?\n\nLes transactions associées (swap + dépenses) seront détaguées (tripId enlevé) mais conservées dans les postes.')) return;
     setStateRaw(prev => {
       const before = (prev.trips || []).find(t => t.id === id);
+      // Compte les tx qui vont être supprimées
+      let swapCount = 0;
+      let expenseCount = 0;
+      let totalAedRemoved = 0;
+      prev.months.forEach(mo => {
+        (mo.actual || []).forEach(row => {
+          (row.txns || []).forEach(t => {
+            if (t.tripId === id) {
+              if (t.tripKind === 'swap') swapCount++;
+              else expenseCount++;
+              totalAedRemoved += t.amount || 0;
+            }
+          });
+        });
+      });
+      if (!confirm(`Supprimer ce voyage et TOUTES ses transactions ?\n\n• ${swapCount} swap-tx + ${expenseCount} dépense(s)\n• ${Math.round(totalAedRemoved)} AED retirés du tracker (ton compte AED retrouvera son état d'avant le swap)\n\nCette action est irréversible.`)) return prev;
+
       const list = (prev.trips || []).filter(t => t.id !== id);
-      // Détague les txns
+      // Supprime physiquement les tx tagged tripId
       const months = prev.months.map(mo => ({
         ...mo,
-        actual: (mo.actual || []).map(row => ({
-          ...row,
-          txns: (row.txns || []).map(t => {
-            if (t.tripId === id) {
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
-              const { tripId, tripKind, ...rest } = t;
-              return rest as Transaction;
-            }
-            return t;
-          }),
-        })),
+        actual: (mo.actual || []).map(row => {
+          const oldTxns = row.txns || [];
+          const newTxns = oldTxns.filter(t => t.tripId !== id);
+          if (newTxns.length === oldTxns.length) return row;
+          // Recalcule aed/eur de la row
+          const rate = mo.rate;
+          const newAed = Math.round(newTxns.reduce((s, t) => s + (t.amount || 0), 0) * 100) / 100;
+          const newEur = Math.round(newTxns.reduce((s, t) => s + (t.eur || (t.amount / (t.rate || rate))), 0) * 100) / 100;
+          return { ...row, txns: newTxns, aed: newAed, eur: newEur };
+        }),
       }));
       const hist: HistoryEntry = {
         ts: new Date().toISOString(),
         action: 'trip.delete',
-        detail: `Suppr voyage ${before?.name || id}`,
+        detail: `Suppr voyage ${before?.name || id} + ${swapCount + expenseCount} tx (${Math.round(totalAedRemoved)} AED)`,
       };
       const updated = {
         ...prev, months, trips: list,
