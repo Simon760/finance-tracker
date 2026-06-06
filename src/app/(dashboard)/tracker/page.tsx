@@ -489,6 +489,17 @@ export default function TrackerPage() {
     logChange?.('poste.hide', `Masqué « ${posteName} » dans ${m.id}`);
   };
 
+  const restoreOneHidden = (posteName: string) => {
+    if (!m) return;
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const cur = mo.hiddenPostes || [];
+      return { ...mo, hiddenPostes: cur.filter(n => n !== posteName) };
+    });
+    setState({ ...state, months });
+    save();
+  };
+
   const restoreAllHidden = () => {
     if (!m) return;
     const months = state.months.map(mo => mo.id === m.id ? { ...mo, hiddenPostes: [] } : mo);
@@ -778,12 +789,27 @@ export default function TrackerPage() {
 
           {/* Bannière postes masqués */}
           {(m.hiddenPostes || []).length > 0 && (
-            <div className="flex items-center justify-between gap-3 mb-3 px-3.5 py-2 bg-bg-3 border border-warning/30 rounded-md text-[11px]">
-              <span className="text-t-3 flex items-center gap-1.5">
-                <EyeOff size={12} className="text-warning shrink-0" />
-                {(m.hiddenPostes || []).length} poste{(m.hiddenPostes || []).length > 1 ? 's' : ''} masqué{(m.hiddenPostes || []).length > 1 ? 's' : ''} dans {m.id} : <span className="text-t-2 font-mono">{(m.hiddenPostes || []).join(', ')}</span>
-              </span>
-              <button onClick={restoreAllHidden} className="text-[11px] text-accent hover:underline cursor-pointer font-semibold whitespace-nowrap">Tout restaurer</button>
+            <div className="flex items-start justify-between gap-3 mb-3 px-3.5 py-2.5 bg-bg-3 border border-warning/30 rounded-md text-[11px]">
+              <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                <span className="text-t-3 flex items-center gap-1.5 shrink-0">
+                  <EyeOff size={12} className="text-warning" />
+                  Masqué{(m.hiddenPostes || []).length > 1 ? 's' : ''} dans {m.id} :
+                </span>
+                {(m.hiddenPostes || []).map(name => (
+                  <button
+                    key={name}
+                    onClick={() => restoreOneHidden(name)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-warning/10 text-warning border border-warning/30 rounded-full text-[10px] font-semibold hover:bg-accent/15 hover:text-accent hover:border-accent/30 cursor-pointer transition-colors group"
+                    title={`Restaurer ${name}`}
+                  >
+                    {name}
+                    <span className="text-[12px] leading-none opacity-60 group-hover:opacity-100">×</span>
+                  </button>
+                ))}
+              </div>
+              {(m.hiddenPostes || []).length > 1 && (
+                <button onClick={restoreAllHidden} className="text-[11px] text-accent hover:underline cursor-pointer font-semibold whitespace-nowrap shrink-0">Tout restaurer</button>
+              )}
             </div>
           )}
 
