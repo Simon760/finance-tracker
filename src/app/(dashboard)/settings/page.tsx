@@ -83,21 +83,55 @@ export default function SettingsPage() {
     logChange?.(editIdx !== null ? 'poste.update' : 'poste.create', `${editIdx !== null ? 'Modif' : 'Création'} poste « ${p.name} » (${p.cat})`);
   };
 
+  // Padding helper : étend un array m.budget ou m.actual jusqu'à la longueur min
+  // avec des entries par défaut, pour gérer cleanly les données héritées où m.budget.length < postes.length
+  const padTo = <T,>(arr: T[], len: number, def: T): T[] => {
+    const out = [...arr];
+    while (out.length < len) out.push({ ...def } as T);
+    return out;
+  };
+
   const deletePoste = (idx: number) => {
     const removed = postes[idx];
-    if (!confirm(`Supprimer ${removed.name} ?`)) return;
-    setState({ ...state, postes: postes.filter((_, i) => i !== idx) });
+    if (!confirm(`Supprimer ${removed.name} ?\n\nLes valeurs de budget et de dépenses associées dans TOUS les mois seront aussi retirées (splice propre pour préserver l'alignement des autres postes).`)) return;
+
+    const newPostes = postes.filter((_, i) => i !== idx);
+
+    // Splice les m.budget[idx] et m.actual[idx] de chaque mois pour garder l'alignement
+    const newMonths = state.months.map(mo => {
+      const budget = [...(mo.budget || [])];
+      const actual = [...(mo.actual || [])];
+      if (idx < budget.length) budget.splice(idx, 1);
+      if (idx < actual.length) actual.splice(idx, 1);
+      return { ...mo, budget, actual };
+    });
+
+    setState({ ...state, postes: newPostes, months: newMonths });
     save();
-    logChange?.('poste.delete', `Suppression poste « ${removed.name} »`);
+    logChange?.('poste.delete', `Suppression poste « ${removed.name} » (+ valeurs associées de ${state.months.length} mois)`);
   };
 
   const movePoste = (idx: number, dir: -1 | 1) => {
     const nIdx = idx + dir;
     if (nIdx < 0 || nIdx >= postes.length) return;
-    const arr = [...postes];
-    [arr[idx], arr[nIdx]] = [arr[nIdx], arr[idx]];
-    setState({ ...state, postes: arr });
+
+    // Swap state.postes
+    const newPostes = [...postes];
+    [newPostes[idx], newPostes[nIdx]] = [newPostes[nIdx], newPostes[idx]];
+
+    // Swap m.budget[idx] ↔ m.budget[nIdx] ET m.actual[idx] ↔ m.actual[nIdx] dans chaque mois
+    const minLen = Math.max(idx, nIdx) + 1;
+    const newMonths = state.months.map(mo => {
+      const budget = padTo(mo.budget || [], minLen, { aed: 0, eur: null });
+      const actual = padTo(mo.actual || [], minLen, { aed: 0, eur: null, txns: [] });
+      [budget[idx], budget[nIdx]] = [budget[nIdx], budget[idx]];
+      [actual[idx], actual[nIdx]] = [actual[nIdx], actual[idx]];
+      return { ...mo, budget, actual };
+    });
+
+    setState({ ...state, postes: newPostes, months: newMonths });
     save();
+    logChange?.('poste.update', `Réordre poste « ${newPostes[nIdx].name} » ↔ « ${newPostes[idx].name} »`);
   };
 
   const exportData = () => {
