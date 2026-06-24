@@ -76,6 +76,8 @@ interface AppContextType {
   refreshRate: () => Promise<void>;
   setRateManually: (rate: number) => void;
   rateRefreshing: boolean;
+  /** Timestamp ms du dernier fetch réussi du taux (null si pas encore fetch dans cette session) */
+  lastRateFetch: number | null;
 
   // UI
   syncStatus: 'ok' | 'saving' | 'off';
@@ -208,6 +210,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dashCur, setDashCur] = useState<'EUR' | 'AED'>('EUR');
   const [liveRate, setLiveRate] = useState(4.3284);
   const [rateRefreshing, setRateRefreshing] = useState(false);
+  const [lastRateFetch, setLastRateFetch] = useState<number | null>(null);
   const [activeSpaceId, setActiveSpaceIdRaw] = useState<string>('dubai');
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -248,6 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (r > 0) {
             console.log('[fdxb] auto-fetched rate:', r);
             setLiveRate(r);
+            setLastRateFetch(Date.now());
             setStateRaw(prev => ({ ...prev, rate: r }));
           }
         }).catch(() => {});
@@ -424,6 +428,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const rate = await fetchRate();
       setLiveRate(rate);
+      setLastRateFetch(Date.now());
       setStateRaw(prev => {
         const u = { ...prev, rate };
         localStorage.setItem('fdxb_state', JSON.stringify(u));
@@ -434,6 +439,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRateRefreshing(false);
     }
   }, [userId, persistToFirebase]);
+
+  // Auto-refresh toutes les 10 minutes (TwelveData 800 req/jour suffit largement = ~144 req/jour avec 10min interval)
+  useEffect(() => {
+    if (!userId) return; // ne tourne pas avant login
+    const interval = setInterval(() => {
+      refreshRate().catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [userId, refreshRate]);
 
   const setRateManually = useCallback((rate: number) => {
     if (!isFinite(rate) || rate <= 0) return;
@@ -795,7 +809,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createSpace, updateSpace, deleteSpace,
       userId, setUserId, isLoggedIn: !!userId,
       login, logout,
-      liveRate, refreshRate, setRateManually, rateRefreshing,
+      liveRate, refreshRate, setRateManually, rateRefreshing, lastRateFetch,
       syncStatus,
       hiddenMode, toggleHidden,
       curMonth, setCurMonth,

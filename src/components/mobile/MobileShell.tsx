@@ -29,7 +29,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const {
-    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing, setRateManually,
+    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing, setRateManually, lastRateFetch,
     hiddenMode, toggleHidden, logout, userId,
   } = useApp();
 
@@ -141,7 +141,20 @@ export default function MobileShell({ children }: { children: React.ReactNode })
             </div>
             <div className="border-t border-border pt-3 space-y-2">
               <div className="flex items-center justify-between px-1 text-[11px] text-t-3">
-                <span>Taux EUR/{activeSpace?.localCurrency || '—'}</span>
+                <span>
+                  Taux EUR/{activeSpace?.localCurrency || '—'}
+                  {lastRateFetch != null && (
+                    <span className="text-t-4 ml-1.5">
+                      · maj {(() => {
+                        const ageMs = Date.now() - lastRateFetch;
+                        const min = Math.floor(ageMs / 60000);
+                        if (min < 1) return 'à l\'instant';
+                        if (min < 60) return `${min}min`;
+                        return `${Math.floor(min / 60)}h`;
+                      })()}
+                    </span>
+                  )}
+                </span>
                 <div className="flex items-center gap-2">
                   {rateEditing ? (
                     <input

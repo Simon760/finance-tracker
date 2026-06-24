@@ -155,16 +155,22 @@ async function tryRateEndpoint(url: string, target: string, parse: RateParser): 
   }
 }
 
+// TwelveData API key — gratuit (800 req/jour). À remplacer plus tard via env var ou state.
+const TWELVEDATA_KEY = process.env.NEXT_PUBLIC_TWELVEDATA_KEY || '5b11afcc9b3047c0ba34864f1c88fd37';
+
 export async function fetchRate(target = 'AED'): Promise<number> {
   const T = target.toUpperCase();
 
   // Sources racées en parallèle, du plus "live marché" au plus "interbank/ECB" :
-  // - Wise: prix marché temps réel (mid-market), updates multiples/seconde — match exactement ce qu'on voit sur Google/XE
-  // - Yahoo Finance: prix marché chart, temps réel pendant les heures de trading
-  // - currency-api (fawazahmed0): community, multi-updates/jour, taux moyens — peut être en retard de 1-2h
-  // - open-er-api: daily, mid-market
-  // - frankfurter: BCE officielle, 1 update/jour vers 16h CET
+  // - TwelveData: temps réel via API officielle (800 req/jour gratuit, clef API requise)
+  // - Wise / Yahoo: souvent bloqués par CORS depuis le browser, gardés en best-effort
+  // - currency-api (fawazahmed0): community, multi-updates/jour, taux moyens
+  // - open-er-api / frankfurter: daily/ECB, fallback
   const endpoints: { url: string; parse: RateParser }[] = [
+    {
+      url: `https://api.twelvedata.com/exchange_rate?symbol=EUR/${T}&apikey=${TWELVEDATA_KEY}`,
+      parse: d => (d as { rate?: number; code?: number })?.rate ?? null,
+    },
     {
       url: `https://wise.com/rates/live?source=EUR&target=${T}`,
       parse: d => (d as { value?: number })?.value ?? null,

@@ -31,7 +31,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const {
-    liveRate, refreshRate, rateRefreshing, setRateManually, syncStatus, hiddenMode, toggleHidden, logout, userId,
+    liveRate, refreshRate, rateRefreshing, setRateManually, lastRateFetch, syncStatus, hiddenMode, toggleHidden, logout, userId,
     spaces, activeSpace, activeSpaceId, setActiveSpaceId, createSpace,
   } = useApp();
 
@@ -280,6 +280,18 @@ export default function Sidebar() {
         <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-accent font-bold tracking-[0.14em]">
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-slow shadow-glow-sm" />
           LIVE
+          {lastRateFetch != null && (
+            <span className="text-t-4 font-normal tracking-tight ml-1">
+              · maj {(() => {
+                const ageMs = Date.now() - lastRateFetch;
+                const min = Math.floor(ageMs / 60000);
+                if (min < 1) return 'à l\'instant';
+                if (min < 60) return `${min}min`;
+                const h = Math.floor(min / 60);
+                return `${h}h`;
+              })()}
+            </span>
+          )}
         </div>
         {syncStatus !== 'off' && (
           <div className={`flex items-center gap-1.5 mt-1 text-[9px] font-bold tracking-[0.14em] ${syncStatus === 'ok' ? 'text-accent' : 'text-warning'}`}>
