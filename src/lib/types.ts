@@ -46,6 +46,8 @@ export interface Month {
   extraActual: ExtraRow[];
   /** Noms de postes réguliers masqués pour ce mois uniquement (display + sums) */
   hiddenPostes?: string[];
+  /** Ajustement manuel (AED signé) ajouté au prévisionnel — sert à régulariser les écarts compte réel vs calculé */
+  adjustment?: number;
   _year?: number;
 }
 

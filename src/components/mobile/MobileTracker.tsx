@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumEurBudget, sumAedBudget } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -32,6 +32,8 @@ export default function MobileTracker() {
   // Add new month sheet
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [nmName, setNmName] = useState('');
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileInput, setReconcileInput] = useState('');
   const [nmSolde, setNmSolde] = useState(0);
 
   // Reset detail if month changes
@@ -55,9 +57,11 @@ export default function MobileTracker() {
   const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
   const aA = m ? sumAed(m, state.postes, m.extraActual || []) : 0;
   const aE = m ? sumEur(m, state.postes, m.extraActual || []) : 0;
+  const aABank = m ? sumAedBank(m, state.postes, m.extraActual || []) : 0;
   const diff = earnEur - aE;
   const earnAed = m ? earnEur * m.rate : 0;
-  const prevCompte = m ? (m.soldeStart || 0) + earnAed - aA : 0;
+  const adjustment = m?.adjustment || 0;
+  const prevCompte = m ? (m.soldeStart || 0) + earnAed - aABank + adjustment : 0;
 
   // Suggestions de libellés pour le poste courant — mois courant uniquement
   const labelSuggestions = useMemo<{ label: string; count: number }[]>(() => {
@@ -304,6 +308,25 @@ export default function MobileTracker() {
     save();
   };
 
+  const applyReconciliationMobile = (realBalance: number) => {
+    if (!m) return;
+    if (!isFinite(realBalance)) return;
+    const prevWithoutAdj = (m.soldeStart || 0) + earnAed - aABank;
+    const newAdjustment = Math.round((realBalance - prevWithoutAdj) * 100) / 100;
+    const months = state.months.map(mo =>
+      mo.id === m.id ? { ...mo, adjustment: newAdjustment === 0 ? undefined : newAdjustment } : mo
+    );
+    setState({ ...state, months });
+    save();
+  };
+
+  const clearAdjustmentMobile = () => {
+    if (!m || !m.adjustment) return;
+    const months = state.months.map(mo => mo.id === m.id ? { ...mo, adjustment: undefined } : mo);
+    setState({ ...state, months });
+    save();
+  };
+
   const restoreOneHiddenMobile = (posteName: string) => {
     const months = state.months.map(mo => {
       if (mo.id !== m.id) return mo;
@@ -344,7 +367,10 @@ export default function MobileTracker() {
       </div>
 
       {/* Solde card */}
-      <div className="bg-bg-3 border border-border rounded-xl p-4 mb-5">
+      <button
+        onClick={() => { setReconcileInput(prevCompte.toFixed(0)); setReconcileOpen(true); }}
+        className="w-full bg-bg-3 border border-border rounded-xl p-4 mb-5 active:bg-bg-4 text-left"
+      >
         <div className="flex items-center justify-between mb-2">
           <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Prévisionnel (AED)</span>
           <span className={`text-[15px] font-bold mono-value ${prevCompte >= 0 ? 'text-accent' : 'text-danger'}`}>{f0(prevCompte)} AED</span>
@@ -359,7 +385,13 @@ export default function MobileTracker() {
             <div className="text-t-2 font-mono mono-value">{f$(bE)} €</div>
           </div>
         </div>
-      </div>
+        {adjustment !== 0 && (
+          <div className={`text-[10px] mt-2 font-mono mono-value ${adjustment > 0 ? 'text-accent' : 'text-warning'}`}>
+            Ajusté {adjustment > 0 ? '+' : ''}{f0(adjustment)} AED
+          </div>
+        )}
+        <div className="text-[10px] text-t-4 mt-1.5">Tap pour régulariser avec la balance réelle</div>
+      </button>
 
       {/* Banner masqués */}
       {hidden.length > 0 && (
@@ -699,6 +731,57 @@ export default function MobileTracker() {
 
       {/* New month sheet */}
       <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} />
+
+      {/* Régul sheet */}
+      <BottomSheet open={reconcileOpen} onClose={() => setReconcileOpen(false)} title="Régulariser le prévisionnel">
+        <div className="space-y-3.5 pt-1">
+          <div className="bg-bg-4 rounded-lg p-3 text-[12px] text-t-3 space-y-1">
+            <div className="flex justify-between"><span>Solde début</span><span className="font-mono text-t-2">{f0(m.soldeStart || 0)} AED</span></div>
+            <div className="flex justify-between"><span>+ Revenus</span><span className="font-mono text-accent">+{f0(earnAed)} AED</span></div>
+            <div className="flex justify-between"><span>− Dépenses</span><span className="font-mono text-danger">−{f0(aABank)} AED</span></div>
+            {adjustment !== 0 && (
+              <div className="flex justify-between border-t border-border pt-1 mt-1"><span>Ajustement actuel</span><span className={`font-mono ${adjustment > 0 ? 'text-accent' : 'text-warning'}`}>{adjustment > 0 ? '+' : ''}{f0(adjustment)} AED</span></div>
+            )}
+            <div className="flex justify-between border-t border-border pt-1 mt-1 font-bold"><span className="text-t-2">Prévisionnel actuel</span><span className={`font-mono mono-value ${prevCompte >= 0 ? 'text-accent' : 'text-danger'}`}>{f0(prevCompte)} AED</span></div>
+          </div>
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Balance réelle (AED)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              className="fi !h-11 mono-value"
+              value={reconcileInput}
+              onChange={e => setReconcileInput(e.target.value)}
+              autoFocus
+              placeholder="Ex: 11500"
+            />
+          </div>
+          {reconcileInput && !isNaN(parseFloat(reconcileInput)) && (() => {
+            const real = parseFloat(reconcileInput);
+            const diff = real - prevCompte;
+            return (
+              <div className="text-[11px] bg-bg-4 rounded-lg p-2.5 flex justify-between items-center">
+                <span className="text-t-3">Δ ajustement</span>
+                <span className={`font-mono mono-value font-bold ${Math.abs(diff) < 0.5 ? 'text-t-3' : diff > 0 ? 'text-accent' : 'text-warning'}`}>{diff >= 0 ? '+' : ''}{f0(diff)} AED</span>
+              </div>
+            );
+          })()}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => { const real = parseFloat(reconcileInput); if (isFinite(real)) { applyReconciliationMobile(real); setReconcileOpen(false); } }}
+              disabled={!reconcileInput || isNaN(parseFloat(reconcileInput))}
+              className="flex-1 py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30"
+            >Appliquer</button>
+            {adjustment !== 0 && (
+              <button
+                onClick={() => { clearAdjustmentMobile(); setReconcileOpen(false); }}
+                className="px-4 py-3 border border-warning/30 text-warning text-[12px] font-semibold rounded-full active:bg-warning/10"
+              >Effacer</button>
+            )}
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

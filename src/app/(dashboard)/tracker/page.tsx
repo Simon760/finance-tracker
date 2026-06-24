@@ -21,6 +21,8 @@ export default function TrackerPage() {
   const isMobile = useIsMobile();
   const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange } = useApp();
   const [newMonthOpen, setNewMonthOpen] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileInput, setReconcileInput] = useState('');
   const [nmName, setNmName] = useState('');
   const [nmRate, setNmRate] = useState(liveRate);
   const [nmSolde, setNmSolde] = useState(0);
@@ -475,6 +477,29 @@ export default function TrackerPage() {
     save();
   };
 
+  // Régule le prévisionnel: l'user entre la balance réelle de son compte AED,
+  // on calcule l'adjustment = realBalance - prevCompte(sans ajustement), on stocke ça.
+  // Les futurs calculs (txns ajoutées etc.) restent corrects car l'adjustment est statique.
+  const applyReconciliation = (realBalance: number) => {
+    if (!m) return;
+    if (!isFinite(realBalance)) return;
+    const prevWithoutAdj = (m.soldeStart || 0) + earnAed - aABank;
+    const newAdjustment = Math.round((realBalance - prevWithoutAdj) * 100) / 100;
+    const months = state.months.map(mo =>
+      mo.id === m.id ? { ...mo, adjustment: newAdjustment === 0 ? undefined : newAdjustment } : mo
+    );
+    setState({ ...state, months });
+    save();
+    logChange?.('month.update', `Régul ${m.id}: balance réelle ${f0(realBalance)} AED, ajustement ${newAdjustment >= 0 ? '+' : ''}${f0(newAdjustment)} AED`);
+  };
+
+  const clearAdjustment = () => {
+    if (!m || !m.adjustment) return;
+    const months = state.months.map(mo => mo.id === m.id ? { ...mo, adjustment: undefined } : mo);
+    setState({ ...state, months });
+    save();
+  };
+
   // Masque un poste régulier pour ce mois (pas globalement)
   const hidePosteThisMonth = (posteName: string) => {
     if (!m) return;
@@ -602,7 +627,8 @@ export default function TrackerPage() {
   const earnAed = m ? (synced ? getMonthRevAed(m.id) : toAed(m.earn || 0, m.rate)) : 0;
   const diff = earnEur - aE;
   // Prévisionnel compte = solde + revenus - dépenses (en excluant expenses voyage)
-  const prevCompte = m ? ((m.soldeStart || 0) + earnAed - aABank) : 0;
+  const adjustment = m?.adjustment || 0;
+  const prevCompte = m ? ((m.soldeStart || 0) + earnAed - aABank + adjustment) : 0;
 
   // Prévisionnel (optimiste) — adds preview/non-confirmed revenues to confirmed forecast
   const previewEur = m && synced
@@ -759,14 +785,29 @@ export default function TrackerPage() {
           <div className="flex gap-2.5 mb-5 flex-wrap">
             <SoldeCard icon="🏦" label="Solde début (AED)" value={m.soldeStart} onChange={v => updateMonth(m.id, 'soldeStart', v)} />
             <SoldeCard icon="🏦" label="Solde fin (AED)" value={m.soldeEnd} onChange={v => updateMonth(m.id, 'soldeEnd', v)} />
-            {synced && previewEur > 0 ? (
-              <>
-                <SoldeDisplay icon="📊" label="Prévisionnel (Confirmé)" value={`${f0(prevCompte)} AED`} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} />
-                <SoldeDisplay icon="🔮" label="Prévisionnel (Optimiste)" value={`${f0(prevOpti)} AED`} color="text-info" sub={`si ${f$(previewEur)} € confirmés`} tone="info" />
-              </>
-            ) : (
-              <SoldeDisplay icon="📊" label="Prévisionnel compte (AED)" value={`${f0(prevCompte)} AED`} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} />
-            )}
+            {(() => {
+              const regulButton = (
+                <button
+                  onClick={() => { setReconcileInput(prevCompte.toFixed(0)); setReconcileOpen(true); }}
+                  className="text-[9px] text-t-3 hover:text-accent bg-bg-2/80 border border-border rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                  title="Régulariser avec la balance réelle de ton compte"
+                >Régul</button>
+              );
+              const adjSub = adjustment !== 0
+                ? <span className={`text-[10px] mt-0.5 mono-value font-medium ${adjustment > 0 ? 'text-accent' : 'text-warning'}`}>Ajusté {adjustment > 0 ? '+' : ''}{f0(adjustment)} AED</span>
+                : undefined;
+              if (synced && previewEur > 0) {
+                return (
+                  <>
+                    <SoldeDisplay icon="📊" label="Prévisionnel (Confirmé)" value={`${f0(prevCompte)} AED`} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} sub={adjSub} action={regulButton} />
+                    <SoldeDisplay icon="🔮" label="Prévisionnel (Optimiste)" value={`${f0(prevOpti)} AED`} color="text-info" sub={`si ${f$(previewEur)} € confirmés`} tone="info" />
+                  </>
+                );
+              }
+              return (
+                <SoldeDisplay icon="📊" label="Prévisionnel compte (AED)" value={`${f0(prevCompte)} AED`} color={prevCompte >= 0 ? 'text-accent' : 'text-danger'} sub={adjSub} action={regulButton} />
+              );
+            })()}
             {synced ? (
               <SoldeDisplay
                 icon="💵"
@@ -1458,6 +1499,64 @@ export default function TrackerPage() {
       </Modal>
 
       {/* Period Filter Modal */}
+      {/* Modal régularisation prévisionnel */}
+      <Modal open={reconcileOpen} onClose={() => setReconcileOpen(false)} title="Régulariser le prévisionnel">
+        <div className="space-y-3.5">
+          {m && (
+            <div className="bg-bg-4 rounded-md p-3 text-[12px] text-t-3 space-y-1">
+              <div className="flex justify-between"><span>Solde début</span><span className="font-mono text-t-2">{f0(m.soldeStart || 0)} AED</span></div>
+              <div className="flex justify-between"><span>+ Revenus confirmés</span><span className="font-mono text-accent">+{f0(earnAed)} AED</span></div>
+              <div className="flex justify-between"><span>− Dépenses (hors voyage)</span><span className="font-mono text-danger">−{f0(aABank)} AED</span></div>
+              {adjustment !== 0 && (
+                <div className="flex justify-between border-t border-border pt-1 mt-1"><span>Ajustement actuel</span><span className={`font-mono ${adjustment > 0 ? 'text-accent' : 'text-warning'}`}>{adjustment > 0 ? '+' : ''}{f0(adjustment)} AED</span></div>
+              )}
+              <div className="flex justify-between border-t border-border pt-1 mt-1 font-bold"><span className="text-t-2">Prévisionnel actuel</span><span className={`font-mono mono-value ${prevCompte >= 0 ? 'text-accent' : 'text-danger'}`}>{f0(prevCompte)} AED</span></div>
+            </div>
+          )}
+          <FormField label="Balance réelle de ton compte (AED)">
+            <input
+              className="fi mono-value"
+              type="number"
+              step="0.01"
+              value={reconcileInput}
+              onChange={e => setReconcileInput(e.target.value)}
+              autoFocus
+              placeholder="Ex: 11500"
+            />
+          </FormField>
+          {reconcileInput && !isNaN(parseFloat(reconcileInput)) && m && (() => {
+            const real = parseFloat(reconcileInput);
+            const diff = real - prevCompte;
+            return (
+              <div className="text-[11px] bg-bg-2 rounded-md p-2.5 flex justify-between items-center">
+                <span className="text-t-3">Δ ajustement à appliquer</span>
+                <span className={`font-mono mono-value font-bold ${Math.abs(diff) < 0.5 ? 'text-t-3' : diff > 0 ? 'text-accent' : 'text-warning'}`}>{diff >= 0 ? '+' : ''}{f0(diff)} AED</span>
+              </div>
+            );
+          })()}
+          <div className="flex gap-2.5 mt-5">
+            <button
+              onClick={() => {
+                const real = parseFloat(reconcileInput);
+                if (isFinite(real)) {
+                  applyReconciliation(real);
+                  setReconcileOpen(false);
+                }
+              }}
+              disabled={!reconcileInput || isNaN(parseFloat(reconcileInput))}
+              className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40"
+            >Appliquer</button>
+            {adjustment !== 0 && (
+              <button
+                onClick={() => { clearAdjustment(); setReconcileOpen(false); }}
+                className="px-4 py-2 border border-warning/30 text-warning text-sm rounded-sm cursor-pointer hover:bg-warning/10"
+              >Effacer l&apos;ajustement</button>
+            )}
+            <button onClick={() => setReconcileOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3 ml-auto">Annuler</button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={periodOpen} onClose={() => setPeriodOpen(false)} title="Filtrer par période">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -1512,10 +1611,11 @@ function SoldeCard({ icon, label, value, onChange }: { icon: string; label: stri
 }
 
 function SoldeDisplay({
-  icon, label, value, color = 'text-t-1', sub, tone,
+  icon, label, value, color = 'text-t-1', sub, tone, action,
 }: {
   icon: string; label: string; value: string; color?: string;
-  sub?: string; tone?: 'info' | 'accent' | 'warning';
+  sub?: string | React.ReactNode; tone?: 'info' | 'accent' | 'warning';
+  action?: React.ReactNode;
 }) {
   const toneClass = tone === 'info'
     ? 'border-info/40 bg-info/5'
@@ -1525,13 +1625,18 @@ function SoldeDisplay({
     ? 'border-warning/40 bg-warning/5'
     : 'border-border';
   return (
-    <div className={`flex-1 min-w-[160px] bg-bg-3 border ${toneClass} rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all hover:border-border-2 shadow-inset-border relative overflow-hidden`}>
+    <div className={`flex-1 min-w-[160px] bg-bg-3 border ${toneClass} rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all hover:border-border-2 shadow-inset-border relative overflow-hidden group`}>
       <span className="text-[17px] leading-none flex-shrink-0">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
         <div className={`text-[15px] mt-0.5 mono-value ${color}`}>{value}</div>
         {sub && <div className="text-[10px] text-t-3 mt-0.5 mono-value font-medium">{sub}</div>}
       </div>
+      {action && (
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {action}
+        </div>
+      )}
     </div>
   );
 }
