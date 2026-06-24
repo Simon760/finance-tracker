@@ -161,16 +161,23 @@ const TWELVEDATA_KEY = process.env.NEXT_PUBLIC_TWELVEDATA_KEY || '5b11afcc9b3047
 export async function fetchRate(target = 'AED'): Promise<number> {
   const T = target.toUpperCase();
 
-  // Sources racées en parallèle, du plus "live marché" au plus "interbank/ECB" :
-  // - TwelveData: temps réel via API officielle (800 req/jour gratuit, clef API requise)
-  // - Wise / Yahoo: souvent bloqués par CORS depuis le browser, gardés en best-effort
-  // - currency-api (fawazahmed0): community, multi-updates/jour, taux moyens
-  // - open-er-api / frankfurter: daily/ECB, fallback
+  // Stratégie : TwelveData EN PRIORITÉ ABSOLUE (séquentiel, timeout court).
+  // Si TwelveData répond avec un taux valide, on retourne directement — pas de race
+  // qui pourrait être gagnée par un CDN plus rapide mais moins frais.
+  // Si TwelveData fail/timeout → fallback sur Promise.any des autres sources.
+  try {
+    const tdRate = await tryRateEndpoint(
+      `https://api.twelvedata.com/exchange_rate?symbol=EUR/${T}&apikey=${TWELVEDATA_KEY}`,
+      target,
+      d => (d as { rate?: number; code?: number })?.rate ?? null,
+    );
+    if (tdRate > 0) return tdRate;
+  } catch {
+    // TwelveData KO → on tombe sur le fallback parallèle ci-dessous
+  }
+
+  // Fallback en parallèle (CDN ou autres APIs)
   const endpoints: { url: string; parse: RateParser }[] = [
-    {
-      url: `https://api.twelvedata.com/exchange_rate?symbol=EUR/${T}&apikey=${TWELVEDATA_KEY}`,
-      parse: d => (d as { rate?: number; code?: number })?.rate ?? null,
-    },
     {
       url: `https://wise.com/rates/live?source=EUR&target=${T}`,
       parse: d => (d as { value?: number })?.value ?? null,
