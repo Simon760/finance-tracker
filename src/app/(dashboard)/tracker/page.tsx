@@ -869,7 +869,7 @@ export default function TrackerPage() {
               {state.postes.map((p, i) => {
                 if ((m.hiddenPostes || []).includes(p.name)) return null;
                 const row = m.budget[i] || { aed: 0, eur: null };
-                const eur = p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
+                const eur = rowEur(row, liveRate);
                 const pct = bE > 0 ? ((eur / bE) * 100).toFixed(1) : '0.0';
                 return (
                   <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors group">

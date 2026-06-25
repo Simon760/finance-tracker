@@ -5,111 +5,108 @@ export interface PosteDelta {
   name: string;
   budgetEur: number;
   actualEur: number;
-  delta: number; // budget - actual : >0 = marge, <0 = dépassement
+  delta: number;       // budget - actual : >0 = marge, <0 = dépassement
+  isExtra?: boolean;   // true si c'est un extra budgété (pas un poste régulier)
 }
 
-export interface ExtraDelta {
+export interface NonPrevuItem {
   name: string;
-  budgetEur: number;   // 0 si pas de ligne budget correspondante
   actualEur: number;
-  delta: number;       // budget - actual
-  planned: boolean;    // true si une ligne extraBudget porte le même nom
 }
 
 export interface BudgetBalance {
-  // Postes prévisionnels (state.postes non masqués)
-  regBudgetEur: number;
-  regActualEur: number;
-  regNet: number;            // regBudget - regActual : >0 = marge globale sur le prévu
-  overruns: PosteDelta[];    // postes en dépassement (actual > budget), triés desc par ampleur
-  margins: PosteDelta[];     // postes avec marge (actual < budget), triés desc
-  overrunTotal: number;      // somme des dépassements (valeur positive)
-  marginTotal: number;       // somme des marges (valeur positive)
+  // Prévu = postes réguliers (non masqués) + extras BUDGÉTÉS (ligne extraBudget)
+  prevuBudgetEur: number;
+  prevuActualEur: number;
+  prevuNet: number;          // prevuBudget - prevuActual : >0 = marge sur le prévu
+  overruns: PosteDelta[];    // dépassements (actual > budget), triés desc par ampleur
+  margins: PosteDelta[];     // marges (actual < budget), triés desc
+  overrunTotal: number;      // somme des dépassements (positif)
+  marginTotal: number;       // somme des marges (positif)
 
-  // Extras (postes ajoutés en cours de mois)
-  extras: ExtraDelta[];      // chaque extraActual avec son éventuel budget, triés desc par actual
-  extraBudgetEur: number;
-  extraActualEur: number;
-  extraNet: number;          // extraBudget - extraActual : <0 = coût net des extras
+  // Non prévu = extraActual SANS ligne extraBudget (ajoutés sans budget)
+  nonPrevu: NonPrevuItem[];  // triés desc par montant
+  nonPrevuActualEur: number;
+  nonPrevuNet: number;       // = -nonPrevuActualEur (coût pur)
 
   // Global
-  globalNet: number;         // regNet + extraNet === bE - aE (réconcilie avec la ligne TOTAL)
-  hasExtras: boolean;
+  globalNet: number;         // prevuNet + nonPrevuNet === bE - aE (réconcilie avec la ligne TOTAL)
+  hasNonPrevu: boolean;
 }
 
-/** EUR d'une ligne budget — réplique exacte de la logique de sumEurBudget par poste. */
-function budgetRowEur(row: { aed: number; eur: number | null }, isAed: boolean, liveRate: number): number {
-  return isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
+/** EUR d'une ligne extra — réplique exacte de sumEurBudget/sumEur pour les extras. */
+function extraEur(row: { aed: number; eur: number }, rate: number): number {
+  return row.eur > 0 ? row.eur : toEur(row.aed, rate);
 }
 
 export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number): BudgetBalance {
   const hidden = m.hiddenPostes || [];
 
-  let regBudgetEur = 0;
-  let regActualEur = 0;
+  let prevuBudgetEur = 0;
+  let prevuActualEur = 0;
   const overruns: PosteDelta[] = [];
   const margins: PosteDelta[] = [];
 
+  const classify = (name: string, budgetEur: number, actualEur: number, isExtra: boolean) => {
+    const delta = budgetEur - actualEur;
+    if (budgetEur <= 0 && actualEur <= 0) return;
+    const entry: PosteDelta = { name, budgetEur, actualEur, delta, isExtra };
+    if (delta < -0.005) overruns.push(entry);
+    else if (delta > 0.005) margins.push(entry);
+  };
+
+  // 1. Postes réguliers (non masqués) — budget via rowEur (cohérent avec la colonne Écart du tableau)
   postes.forEach((p, i) => {
     if (hidden.includes(p.name)) return;
     const brow = m.budget?.[i] || { aed: 0, eur: null };
     const arow = m.actual?.[i] || { aed: 0, eur: null };
-    const budgetEur = budgetRowEur(brow, p.isAed, liveRate);
+    const budgetEur = rowEur(brow, liveRate);
     const actualEur = rowEur(arow, m.rate);
-    regBudgetEur += budgetEur;
-    regActualEur += actualEur;
-    const delta = budgetEur - actualEur;
-    // On ne liste que les postes qui ont une activité (budget ou réel non nul)
-    if (budgetEur <= 0 && actualEur <= 0) return;
-    const entry: PosteDelta = { name: p.name, budgetEur, actualEur, delta };
-    if (delta < -0.005) overruns.push(entry);
-    else if (delta > 0.005) margins.push(entry);
+    prevuBudgetEur += budgetEur;
+    prevuActualEur += actualEur;
+    classify(p.name, budgetEur, actualEur, false);
   });
 
-  overruns.sort((a, b) => a.delta - b.delta);    // plus gros dépassement d'abord (delta le plus négatif)
-  margins.sort((a, b) => b.delta - a.delta);     // plus grosse marge d'abord
-
-  const overrunTotal = overruns.reduce((s, p) => s - p.delta, 0); // -delta = montant dépassé (positif)
-  const marginTotal = margins.reduce((s, p) => s + p.delta, 0);
-  const regNet = Math.round((regBudgetEur - regActualEur) * 100) / 100;
-
-  // Extras : on part de extraActual (les dépenses réelles ajoutées), et on cherche un budget par nom
+  // 2. Extras BUDGÉTÉS (toute ligne extraBudget) → comptent dans le "prévu"
   const extraBudgets = m.extraBudget || [];
-  const extras: ExtraDelta[] = [];
-  let extraActualEur = 0;
-  (m.extraActual || []).forEach(r => {
-    const actualEur = r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
-    const bRow = extraBudgets.find(b => b.name === r.name);
-    const budgetEur = bRow ? (bRow.eur > 0 ? bRow.eur : toEur(bRow.aed, liveRate)) : 0;
-    extraActualEur += actualEur;
-    if (actualEur <= 0 && budgetEur <= 0) return;
-    extras.push({ name: r.name, budgetEur, actualEur, delta: budgetEur - actualEur, planned: !!bRow });
-  });
-  // Extras budgétés mais SANS dépense réelle (présents dans extraBudget, absents d'extraActual) :
-  // ils comptent dans extraNet, donc on les liste aussi pour que le compte/détail soit cohérent
-  // avec le headline (sinon "+500 € · 0 poste ajouté · 0 € dépensés").
-  const actualNames = new Set((m.extraActual || []).map(r => r.name));
+  const extraActuals = m.extraActual || [];
+  const budgetedNames = new Set(extraBudgets.map(b => b.name));
   extraBudgets.forEach(b => {
-    if (actualNames.has(b.name)) return;
-    const budgetEur = b.eur > 0 ? b.eur : toEur(b.aed, liveRate);
-    if (budgetEur <= 0) return;
-    extras.push({ name: b.name, budgetEur, actualEur: 0, delta: budgetEur, planned: true });
+    const budgetEur = extraEur(b, liveRate);
+    const aRow = extraActuals.find(a => a.name === b.name);
+    const actualEur = aRow ? extraEur(aRow, m.rate) : 0;
+    prevuBudgetEur += budgetEur;
+    prevuActualEur += actualEur;
+    classify(b.name, budgetEur, actualEur, true);
   });
-  // extraBudgetEur = somme de TOUS les extraBudget (réconcilie avec sumEurBudget)
-  const extraBudgetEur = extraBudgets.reduce((s, b) => s + (b.eur > 0 ? b.eur : toEur(b.aed, liveRate)), 0);
-  extras.sort((a, b) => b.actualEur - a.actualEur);
 
-  const extraNet = Math.round((extraBudgetEur - extraActualEur) * 100) / 100;
-  // globalNet dérivé des totaux BRUTS (pas des deux moitiés déjà arrondies) pour
-  // matcher exactement round(bE - aE) affiché par la ligne TOTAL — sinon ±0.01 de divergence.
-  const globalNet = Math.round(((regBudgetEur + extraBudgetEur) - (regActualEur + extraActualEur)) * 100) / 100;
+  // 3. Extras NON budgétés (extraActual sans extraBudget homonyme) → "non prévu"
+  const nonPrevu: NonPrevuItem[] = [];
+  let nonPrevuActualEur = 0;
+  extraActuals.forEach(a => {
+    if (budgetedNames.has(a.name)) return; // déjà compté dans le prévu
+    const actualEur = extraEur(a, m.rate);
+    nonPrevuActualEur += actualEur;
+    if (actualEur > 0.005) nonPrevu.push({ name: a.name, actualEur });
+  });
+
+  overruns.sort((a, b) => a.delta - b.delta);   // dépassement le plus fort d'abord (delta le + négatif)
+  margins.sort((a, b) => b.delta - a.delta);    // marge la plus forte d'abord
+  nonPrevu.sort((a, b) => b.actualEur - a.actualEur);
+
+  const overrunTotal = overruns.reduce((s, p) => s - p.delta, 0);
+  const marginTotal = margins.reduce((s, p) => s + p.delta, 0);
+  const prevuNet = Math.round((prevuBudgetEur - prevuActualEur) * 100) / 100;
+  const nonPrevuNet = Math.round((-nonPrevuActualEur) * 100) / 100;
+  // globalNet dérivé des totaux BRUTS pour matcher exactement round(bE - aE) de la ligne TOTAL
+  const globalNet = Math.round((prevuBudgetEur - (prevuActualEur + nonPrevuActualEur)) * 100) / 100;
 
   return {
-    regBudgetEur, regActualEur, regNet,
+    prevuBudgetEur, prevuActualEur, prevuNet,
     overruns, margins, overrunTotal, marginTotal,
-    extras, extraBudgetEur, extraActualEur, extraNet,
+    nonPrevu, nonPrevuActualEur, nonPrevuNet,
     globalNet,
-    hasExtras: extras.length > 0 || extraBudgetEur > 0,
+    hasNonPrevu: nonPrevu.length > 0,
   };
 }
 
@@ -117,32 +114,29 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
 export function budgetBalanceMessage(b: BudgetBalance): { tone: 'good' | 'warn' | 'bad'; text: string } {
   const fmt = (n: number) => `${Math.abs(n).toFixed(0)} €`;
   if (b.globalNet >= -0.5) {
-    // Dans le budget global
-    if (b.hasExtras && b.extraNet < -0.5) {
+    if (b.hasNonPrevu) {
       return {
         tone: 'good',
-        text: `Tu es dans ton budget global (+${fmt(b.globalNet)} de marge), malgré ${fmt(b.extraNet)} d'extras absorbés par tes marges sur les postes prévus.`,
+        text: `Tu es dans ton budget global (+${fmt(b.globalNet)} de marge), malgré ${fmt(b.nonPrevuActualEur)} d'imprévus absorbés par tes marges sur les postes prévus.`,
       };
     }
     return { tone: 'good', text: `Tu es dans ton budget global avec +${fmt(b.globalNet)} de marge.` };
   }
   // Dépassement global
-  if (b.regNet >= -0.5) {
-    // Le prévu est OK, c'est les extras qui font dépasser
+  if (b.prevuNet >= -0.5) {
     return {
       tone: 'warn',
-      text: `Sur tes postes prévus tu serais à +${fmt(b.regNet)}. Le dépassement de ${fmt(b.globalNet)} vient entièrement des extras (${fmt(b.extraNet)}).`,
+      text: `Sur tes postes prévus tu serais à +${fmt(b.prevuNet)}. Le dépassement de ${fmt(b.globalNet)} vient entièrement des imprévus (−${fmt(b.nonPrevuActualEur)}).`,
     };
   }
-  // Le prévu dépasse aussi
-  if (b.extraNet >= -0.5) {
+  if (!b.hasNonPrevu) {
     return {
       tone: 'bad',
-      text: `Tu dépasses de ${fmt(b.globalNet)}, dû à tes postes prévus (−${fmt(b.regNet)}). Les extras n'aggravent pas.`,
+      text: `Tu dépasses de ${fmt(b.globalNet)}, dû à tes postes prévus eux-mêmes (−${fmt(b.prevuNet)}).`,
     };
   }
   return {
     tone: 'bad',
-    text: `Tu dépasses de ${fmt(b.globalNet)} : −${fmt(b.regNet)} sur tes postes prévus ET −${fmt(b.extraNet)} d'extras non prévus.`,
+    text: `Tu dépasses de ${fmt(b.globalNet)} : −${fmt(b.prevuNet)} sur tes postes prévus ET −${fmt(b.nonPrevuActualEur)} d'imprévus non budgétés.`,
   };
 }

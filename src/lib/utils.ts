@@ -30,13 +30,17 @@ function isHidden(m: Month, name?: string): boolean {
 }
 
 // Budget sums
+// NOTE: on utilise rowEur (privilégie l'EUR stocké, fallback toEur(aed)) pour que le
+// TOTAL corresponde EXACTEMENT à la colonne EUR affichée et à la colonne Écart du
+// tableau Réel (qui utilisent aussi rowEur). Sinon désaccord sur les postes AED dont
+// le eur stocké date d'un ancien taux.
 export function sumEurBudget(m: Month, postes: { isAed: boolean; name?: string }[], liveRate: number): number {
   let total = 0;
   postes.forEach((p, i) => {
     if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
-    total += p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
+    total += rowEur(row, liveRate);
   });
   (m.extraBudget || []).forEach(r => {
     total += r.eur > 0 ? r.eur : toEur(r.aed, liveRate);

@@ -15,7 +15,7 @@ interface Props {
 
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${f$(n)} €`;
 
-export default function BudgetBalanceCard({ month, postes, liveRate, compact = false }: Props) {
+export default function BudgetBalanceCard({ month, postes, liveRate }: Props) {
   const b = computeBudgetBalance(month, postes, liveRate);
   const msg = budgetBalanceMessage(b);
   const [open, setOpen] = useState(false);
@@ -27,7 +27,7 @@ export default function BudgetBalanceCard({ month, postes, liveRate, compact = f
   return (
     <div className={`bg-bg-3 border ${toneBorder} rounded-md mb-5 overflow-hidden`}>
       {/* Header */}
-      <div className={`flex items-center justify-between gap-3 px-4 ${compact ? 'py-3' : 'py-3'}`}>
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-2 min-w-0">
           <Target size={15} className={toneColor} />
           <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Bilan vs prévisionnel</span>
@@ -44,11 +44,11 @@ export default function BudgetBalanceCard({ month, postes, liveRate, compact = f
       </div>
 
       {/* Breakdown 2 colonnes */}
-      <div className={`grid grid-cols-2 gap-px bg-border ${compact ? '' : ''}`}>
-        {/* Postes prévisionnels */}
+      <div className="grid grid-cols-2 gap-px bg-border">
+        {/* Postes prévus */}
         <div className="bg-bg-3 px-4 py-3">
           <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1.5">Postes prévus</div>
-          <div className={`text-[15px] font-bold mono-value ${b.regNet >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(b.regNet)}</div>
+          <div className={`text-[15px] font-bold mono-value ${b.prevuNet >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(b.prevuNet)}</div>
           <div className="mt-1.5 space-y-0.5 text-[10px]">
             {b.overrunTotal > 0.5 && (
               <div className="flex justify-between text-t-3">
@@ -65,24 +65,24 @@ export default function BudgetBalanceCard({ month, postes, liveRate, compact = f
           </div>
         </div>
 
-        {/* Extras */}
+        {/* Non prévus */}
         <div className="bg-bg-3 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1.5">Extras du mois</div>
-          {b.hasExtras ? (
+          <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1.5">Extras non prévus</div>
+          {b.hasNonPrevu ? (
             <>
-              <div className={`text-[15px] font-bold mono-value ${b.extraNet >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(b.extraNet)}</div>
+              <div className="text-[15px] font-bold mono-value text-danger">{signed(b.nonPrevuNet)}</div>
               <div className="text-[10px] text-t-3 mt-1.5">
-                {b.extras.length} poste{b.extras.length > 1 ? 's' : ''} ajouté{b.extras.length > 1 ? 's' : ''} · {f$(b.extraActualEur)} € dépensés
+                {b.nonPrevu.length} poste{b.nonPrevu.length > 1 ? 's' : ''} sans budget · {f$(b.nonPrevuActualEur)} € dépensés
               </div>
             </>
           ) : (
-            <div className="text-[13px] text-t-4 mt-1">Aucun extra ce mois</div>
+            <div className="text-[13px] text-t-4 mt-1">Aucun imprévu ce mois</div>
           )}
         </div>
       </div>
 
       {/* Détail collapsible */}
-      {(b.overruns.length > 0 || b.margins.length > 0 || b.extras.length > 0) && (
+      {(b.overruns.length > 0 || b.margins.length > 0 || b.nonPrevu.length > 0) && (
         <>
           <button
             onClick={() => setOpen(o => !o)}
@@ -99,7 +99,10 @@ export default function BudgetBalanceCard({ month, postes, liveRate, compact = f
                   <div className="space-y-0.5">
                     {b.overruns.map(p => (
                       <div key={p.name} className="flex justify-between text-[11px]">
-                        <span className="text-t-2 truncate pr-2">{p.name}</span>
+                        <span className="text-t-2 truncate pr-2">
+                          {p.name}
+                          {p.isExtra && <span className="text-t-4 ml-1 text-[9px]">(extra budgété)</span>}
+                        </span>
                         <span className="text-danger font-mono mono-value shrink-0">{signed(p.delta)}</span>
                       </div>
                     ))}
@@ -112,26 +115,24 @@ export default function BudgetBalanceCard({ month, postes, liveRate, compact = f
                   <div className="space-y-0.5">
                     {b.margins.map(p => (
                       <div key={p.name} className="flex justify-between text-[11px]">
-                        <span className="text-t-2 truncate pr-2">{p.name}</span>
+                        <span className="text-t-2 truncate pr-2">
+                          {p.name}
+                          {p.isExtra && <span className="text-t-4 ml-1 text-[9px]">(extra budgété)</span>}
+                        </span>
                         <span className="text-accent font-mono mono-value shrink-0">{signed(p.delta)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              {b.extras.length > 0 && (
+              {b.nonPrevu.length > 0 && (
                 <div className="col-span-2 max-md:col-span-1">
-                  <div className="text-[10px] uppercase tracking-wider text-warning font-semibold mb-1">Extras (non prévus)</div>
+                  <div className="text-[10px] uppercase tracking-wider text-warning font-semibold mb-1">Imprévus (sans budget)</div>
                   <div className="space-y-0.5">
-                    {b.extras.map(e => (
+                    {b.nonPrevu.map(e => (
                       <div key={e.name} className="flex justify-between text-[11px]">
-                        <span className="text-t-2 truncate pr-2">
-                          {e.name}
-                          {e.planned && <span className="text-t-4 ml-1 text-[9px]">(budgété)</span>}
-                        </span>
-                        <span className="text-t-3 font-mono mono-value shrink-0">
-                          {f$(e.actualEur)} €{e.planned && e.budgetEur > 0 ? ` / ${f$(e.budgetEur)} €` : ''}
-                        </span>
+                        <span className="text-t-2 truncate pr-2">{e.name}</span>
+                        <span className="text-danger font-mono mono-value shrink-0">−{f$(e.actualEur)} €</span>
                       </div>
                     ))}
                   </div>
