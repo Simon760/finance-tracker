@@ -8,6 +8,7 @@ import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt, EyeOff } from 'lucide-react';
+import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -452,6 +453,11 @@ export default function MobileTracker() {
             )}
           </button>
         ))}
+      </div>
+
+      {/* Bilan vs prévisionnel */}
+      <div className="mt-5">
+        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact />
       </div>
 
       {/* Stats du mois — à retravailler */}

@@ -12,6 +12,7 @@ import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget,
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff } from 'lucide-react';
+import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
 
@@ -1058,6 +1059,9 @@ export default function TrackerPage() {
               </tr>
             </tfoot>
           </TableSection>
+
+          {/* Bilan vs prévisionnel */}
+          <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} />
 
           {/* Stats du mois — à retravailler */}
           {/* <MonthStatsCard month={m} postes={state.postes} /> */}
