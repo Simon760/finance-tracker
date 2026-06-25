@@ -886,7 +886,7 @@ export default function TrackerPage() {
                       <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <CellInput value={p.isAed ? eur : (row.eur ?? eur)} onChange={v => updateBudget(i, v, true)} />
+                      <CellInput value={Math.round((p.isAed ? eur : (row.eur ?? eur)) * 100) / 100} onChange={v => updateBudget(i, v, true)} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="font-mono text-[11px]">{pct}%</span>
