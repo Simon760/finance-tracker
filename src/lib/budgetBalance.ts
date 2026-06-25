@@ -29,14 +29,26 @@ export interface BudgetBalance {
   nonPrevuActualEur: number;
   nonPrevuNet: number;       // = -nonPrevuActualEur (coût pur)
 
-  // Global
-  globalNet: number;         // prevuNet + nonPrevuNet === bE - aE (réconcilie avec la ligne TOTAL)
+  // Global (hors charges fixes — donc PAS forcément === bE - aE)
+  globalNet: number;         // prevuNet + nonPrevuNet sur le périmètre pilotable
   hasNonPrevu: boolean;
+  excludedFixed: string[];   // noms des charges fixes exclues du bilan
 }
 
 /** EUR d'une ligne extra — réplique exacte de sumEurBudget/sumEur pour les extras. */
 function extraEur(row: { aed: number; eur: number }, rate: number): number {
   return row.eur > 0 ? row.eur : toEur(row.aed, rate);
+}
+
+/** Postes considérés "charges fixes" par défaut (si le flag fixed n'est pas explicite). */
+const DEFAULT_FIXED = new Set(['WIFI', 'FORFAIT MOBILE', 'LOYER', 'DEWA']);
+function normName(s: string): string {
+  return s.trim().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase();
+}
+/** Un poste est "fixe" (exclu du Bilan) si fixed===true, ou par défaut selon son nom. */
+export function isPosteFixed(p: Poste): boolean {
+  if (typeof p.fixed === 'boolean') return p.fixed;
+  return DEFAULT_FIXED.has(normName(p.name));
 }
 
 export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number): BudgetBalance {
@@ -55,11 +67,15 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
     else if (delta > 0.005) margins.push(entry);
   };
 
-  // 1. Postes réguliers (non masqués)
+  // 1. Postes réguliers (non masqués, hors charges fixes)
   //    Budget EUR = AED converti au taux live pour les postes AED (= base de bE et de
   //    la colonne Écart du tableau). Réel = EUR réellement enregistré (rowEur, non repricé).
+  //    Les charges fixes (loyer, abos...) sont exclues : payées quoi qu'il arrive,
+  //    elles fausseraient la marge pilotable.
+  const excludedFixed: string[] = [];
   postes.forEach((p, i) => {
     if (hidden.includes(p.name)) return;
+    if (isPosteFixed(p)) { excludedFixed.push(p.name); return; }
     const brow = m.budget?.[i] || { aed: 0, eur: null };
     const arow = m.actual?.[i] || { aed: 0, eur: null };
     const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
@@ -109,6 +125,7 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
     nonPrevu, nonPrevuActualEur, nonPrevuNet,
     globalNet,
     hasNonPrevu: nonPrevu.length > 0,
+    excludedFixed,
   };
 }
 

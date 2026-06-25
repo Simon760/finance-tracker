@@ -2,6 +2,9 @@ export interface Poste {
   name: string;
   cat: 'vital' | 'lifestyle' | 'finance' | 'logement';
   isAed: boolean;
+  /** Charge fixe (loyer, abos...) payée quoi qu'il arrive → exclue du Bilan vs prévisionnel.
+   * Si undefined, un défaut par nom s'applique (cf. isPosteFixed). */
+  fixed?: boolean;
 }
 
 export interface BudgetRow {

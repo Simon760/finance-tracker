@@ -6,6 +6,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Poste } from '@/lib/types';
 import DataAudit from '@/components/DataAudit';
+import { isPosteFixed } from '@/lib/budgetBalance';
 
 const CAT_OPTIONS = ['vital', 'lifestyle', 'finance', 'logement'] as const;
 const CAT_STYLES: Record<string, string> = {
@@ -341,6 +342,15 @@ export default function SettingsPage() {
               <option value="EUR">EUR (saisie directe)</option>
             </select>
           </div>
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.fixed ?? isPosteFixed(form)}
+              onChange={e => setForm({ ...form, fixed: e.target.checked })}
+              className="w-4 h-4 accent-accent cursor-pointer"
+            />
+            <span className="text-[12px] text-t-2">Charge fixe <span className="text-t-4">(payée quoi qu'il arrive — exclue du Bilan vs prévisionnel)</span></span>
+          </label>
           <div className="flex gap-2.5 mt-5">
             <button onClick={savePoste} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">{editIdx !== null ? 'Modifier' : 'Créer'}</button>
             <button onClick={() => setAddOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>

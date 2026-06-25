@@ -31,6 +31,7 @@ export default function BudgetBalanceCard({ month, postes, liveRate }: Props) {
         <div className="flex items-center gap-2 min-w-0">
           <Target size={15} className={toneColor} />
           <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Bilan vs prévisionnel</span>
+          {b.excludedFixed.length > 0 && <span className="text-[9px] text-t-4 normal-case tracking-normal">hors charges fixes</span>}
         </div>
         <div className="text-right shrink-0">
           <div className="text-[9px] uppercase tracking-wider text-t-4 font-semibold leading-none">Solde global</div>
@@ -41,6 +42,9 @@ export default function BudgetBalanceCard({ month, postes, liveRate }: Props) {
       {/* Message */}
       <div className="px-4 pb-3">
         <p className={`text-[12px] leading-relaxed ${toneColor}`}>{msg.text}</p>
+        {b.excludedFixed.length > 0 && (
+          <p className="text-[10px] text-t-4 mt-1">Exclus (payés quoi qu'il arrive) : {b.excludedFixed.join(', ')}</p>
+        )}
       </div>
 
       {/* Breakdown 2 colonnes */}
