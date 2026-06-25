@@ -55,12 +55,14 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
     else if (delta > 0.005) margins.push(entry);
   };
 
-  // 1. Postes réguliers (non masqués) — budget via rowEur (cohérent avec la colonne Écart du tableau)
+  // 1. Postes réguliers (non masqués)
+  //    Budget EUR = AED converti au taux live pour les postes AED (= base de bE et de
+  //    la colonne Écart du tableau). Réel = EUR réellement enregistré (rowEur, non repricé).
   postes.forEach((p, i) => {
     if (hidden.includes(p.name)) return;
     const brow = m.budget?.[i] || { aed: 0, eur: null };
     const arow = m.actual?.[i] || { aed: 0, eur: null };
-    const budgetEur = rowEur(brow, liveRate);
+    const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
     const actualEur = rowEur(arow, m.rate);
     prevuBudgetEur += budgetEur;
     prevuActualEur += actualEur;

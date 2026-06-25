@@ -869,7 +869,8 @@ export default function TrackerPage() {
               {state.postes.map((p, i) => {
                 if ((m.hiddenPostes || []).includes(p.name)) return null;
                 const row = m.budget[i] || { aed: 0, eur: null };
-                const eur = rowEur(row, liveRate);
+                // Budget EUR = AED converti au taux live pour les postes AED (ignore le eur figé)
+                const eur = p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
                 const pct = bE > 0 ? ((eur / bE) * 100).toFixed(1) : '0.0';
                 return (
                   <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors group">
@@ -885,7 +886,7 @@ export default function TrackerPage() {
                       <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <CellInput value={row.eur ?? eur} onChange={v => updateBudget(i, v, true)} />
+                      <CellInput value={p.isAed ? eur : (row.eur ?? eur)} onChange={v => updateBudget(i, v, true)} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="font-mono text-[11px]">{pct}%</span>
@@ -949,7 +950,8 @@ export default function TrackerPage() {
                 const row = m.actual[i] || { aed: 0, eur: null };
                 const brow = m.budget[i] || { aed: 0, eur: null };
                 const eur = rowEur(row, m.rate);
-                const beur = rowEur(brow, liveRate);
+                // Budget EUR = AED converti au taux live (cohérent avec le total et la carte)
+                const beur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
                 const ratio = beur > 0 ? eur / beur : 0;
                 const ecart = beur - eur;
                 const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';
