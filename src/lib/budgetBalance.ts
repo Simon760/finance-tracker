@@ -1,5 +1,5 @@
 import { Month, Poste } from './types';
-import { toEur, rowEur } from './utils';
+import { toEur } from './utils';
 
 export interface PosteDelta {
   name: string;
@@ -35,11 +35,6 @@ export interface BudgetBalance {
   excludedFixed: string[];   // noms des charges fixes exclues du bilan
 }
 
-/** EUR d'une ligne extra — réplique exacte de sumEurBudget/sumEur pour les extras. */
-function extraEur(row: { aed: number; eur: number }, rate: number): number {
-  return row.eur > 0 ? row.eur : toEur(row.aed, rate);
-}
-
 /** Postes considérés "charges fixes" par défaut (si le flag fixed n'est pas explicite). */
 const DEFAULT_FIXED = new Set(['WIFI', 'FORFAIT MOBILE', 'LOYER', 'DEWA']);
 function normName(s: string): string {
@@ -68,8 +63,8 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
   };
 
   // 1. Postes réguliers (non masqués, hors charges fixes)
-  //    Budget EUR = AED converti au taux live pour les postes AED (= base de bE et de
-  //    la colonne Écart du tableau). Réel = EUR réellement enregistré (rowEur, non repricé).
+  //    Budget ET réel convertis au taux live (postes AED) → la comparaison est en AED,
+  //    l'EUR n'est qu'un affichage au taux du jour (dynamique + cohérent).
   //    Les charges fixes (loyer, abos...) sont exclues : payées quoi qu'il arrive,
   //    elles fausseraient la marge pilotable.
   const excludedFixed: string[] = [];
@@ -78,8 +73,9 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
     if (isPosteFixed(p)) { excludedFixed.push(p.name); return; }
     const brow = m.budget?.[i] || { aed: 0, eur: null };
     const arow = m.actual?.[i] || { aed: 0, eur: null };
+    // Budget ET réel au taux live → comparaison en AED, EUR = AED/taux du jour (cohérent)
     const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
-    const actualEur = rowEur(arow, m.rate);
+    const actualEur = p.isAed ? toEur(arow.aed, liveRate) : (arow.eur || 0);
     prevuBudgetEur += budgetEur;
     prevuActualEur += actualEur;
     classify(p.name, budgetEur, actualEur, false);
@@ -90,9 +86,9 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
   const extraActuals = m.extraActual || [];
   const budgetedNames = new Set(extraBudgets.map(b => b.name));
   extraBudgets.forEach(b => {
-    const budgetEur = extraEur(b, liveRate);
+    const budgetEur = b.aed > 0 ? toEur(b.aed, liveRate) : (b.eur || 0);
     const aRow = extraActuals.find(a => a.name === b.name);
-    const actualEur = aRow ? extraEur(aRow, m.rate) : 0;
+    const actualEur = aRow ? (aRow.aed > 0 ? toEur(aRow.aed, liveRate) : (aRow.eur || 0)) : 0;
     prevuBudgetEur += budgetEur;
     prevuActualEur += actualEur;
     classify(b.name, budgetEur, actualEur, true);
@@ -103,7 +99,7 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
   let nonPrevuActualEur = 0;
   extraActuals.forEach(a => {
     if (budgetedNames.has(a.name)) return; // déjà compté dans le prévu
-    const actualEur = extraEur(a, m.rate);
+    const actualEur = a.aed > 0 ? toEur(a.aed, liveRate) : (a.eur || 0);
     nonPrevuActualEur += actualEur;
     if (actualEur > 0.005) nonPrevu.push({ name: a.name, actualEur });
   });

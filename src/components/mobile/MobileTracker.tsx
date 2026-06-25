@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget } from '@/lib/utils';
+import { f$, f0, toEur, sumEurLive, sumAed, sumAedBank, sumEurBudget, sumAedBudget } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -57,7 +57,7 @@ export default function MobileTracker() {
   const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
   const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
   const aA = m ? sumAed(m, state.postes, m.extraActual || []) : 0;
-  const aE = m ? sumEur(m, state.postes, m.extraActual || []) : 0;
+  const aE = m ? sumEurLive(m, state.postes, m.extraActual || [], liveRate) : 0;
   const aABank = m ? sumAedBank(m, state.postes, m.extraActual || []) : 0;
   const diff = earnEur - aE;
   const earnAed = m ? earnEur * m.rate : 0;
@@ -290,8 +290,9 @@ export default function MobileTracker() {
       if (hidden.includes(p.name)) return null;
       const bRow = m.budget[i] || { aed: 0, eur: null };
       const aRow = m.actual[i] || { aed: 0, eur: null };
-      const budgetEur = bRow.eur ?? (p.isAed ? toEur(bRow.aed || 0, liveRate) : 0);
-      const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
+      // Budget + réel au taux live (comparaison AED, EUR au taux du jour)
+      const budgetEur = p.isAed ? toEur(bRow.aed || 0, liveRate) : (bRow.eur || 0);
+      const actualEur = p.isAed ? toEur(aRow.aed || 0, liveRate) : (aRow.eur || 0);
       const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
       const txnsCount = (aRow.txns || []).length;
       return { i, p, budgetEur, actualEur, pct, txnsCount };
@@ -491,8 +492,8 @@ export default function MobileTracker() {
           const row = m.actual[detailIdx];
           const bRow = m.budget[detailIdx];
           const txns = row?.txns || [];
-          const budgetEur = bRow?.eur ?? (state.postes[detailIdx].isAed ? toEur(bRow?.aed || 0, liveRate) : 0);
-          const actualEur = row?.eur ?? (state.postes[detailIdx].isAed ? toEur(row?.aed || 0, m.rate) : 0);
+          const budgetEur = state.postes[detailIdx].isAed ? toEur(bRow?.aed || 0, liveRate) : (bRow?.eur || 0);
+          const actualEur = state.postes[detailIdx].isAed ? toEur(row?.aed || 0, liveRate) : (row?.eur || 0);
           return (
             <div className="pt-1">
               <div className="grid grid-cols-2 gap-2 mb-4">

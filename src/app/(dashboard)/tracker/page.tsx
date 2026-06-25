@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, sumEur, sumEurLive, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff } from 'lucide-react';
@@ -618,7 +618,8 @@ export default function TrackerPage() {
   // Computed values
   const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
   const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
-  const aE = m ? sumEur(m, state.postes, m.extraActual) : 0;
+  // aE au taux LIVE (cohérent avec le budget) : la compa est en AED, l'EUR = AED/taux du jour
+  const aE = m ? sumEurLive(m, state.postes, m.extraActual, liveRate) : 0;
   const aA = m ? sumAed(m, state.postes, m.extraActual) : 0;
   // sumAedBank exclut les txns tagged comme tripKind=expense (déjà débitées via le swap)
   const aABank = m ? sumAedBank(m, state.postes, m.extraActual) : 0;
@@ -949,8 +950,8 @@ export default function TrackerPage() {
                 if ((m.hiddenPostes || []).includes(p.name)) return null;
                 const row = m.actual[i] || { aed: 0, eur: null };
                 const brow = m.budget[i] || { aed: 0, eur: null };
-                const eur = rowEur(row, m.rate);
-                // Budget EUR = AED converti au taux live (cohérent avec le total et la carte)
+                // Réel ET budget au taux live → la compa est en AED, l'EUR suit le taux du jour
+                const eur = p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
                 const beur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
                 const ratio = beur > 0 ? eur / beur : 0;
                 const ecart = beur - eur;
@@ -996,10 +997,11 @@ export default function TrackerPage() {
                 );
               })}
               {(m.extraActual || []).map((r, i) => {
-                const eur = r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
+                // Réel + budget au taux live (cohérent avec les postes réguliers)
+                const eur = r.aed > 0 ? toEur(r.aed, liveRate) : (r.eur || 0);
                 // Cherche le budget correspondant dans extraBudget par nom
                 const bRow = (m.extraBudget || []).find(b => b.name === r.name);
-                const beur = bRow ? (bRow.eur > 0 ? bRow.eur : toEur(bRow.aed, liveRate)) : 0;
+                const beur = bRow ? (bRow.aed > 0 ? toEur(bRow.aed, liveRate) : (bRow.eur || 0)) : 0;
                 const ratio = beur > 0 ? eur / beur : 0;
                 const ecart = beur - eur;
                 const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';

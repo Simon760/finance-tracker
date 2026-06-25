@@ -116,6 +116,23 @@ export function sumAedBank(m: Month, postes: { isAed: boolean; name?: string }[]
   return total;
 }
 
+// Dépenses réelles EUR au taux LIVE (vue tracker dynamique & cohérente avec le budget).
+// Postes AED → aed / liveRate. Postes EUR → eur. NE PAS utiliser pour le Dashboard
+// (qui doit garder le taux historique de chaque mois — pas de reprice quotidien).
+export function sumEurLive(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[], liveRate: number): number {
+  let total = 0;
+  postes.forEach((p, i) => {
+    if (isHidden(m, p.name)) return;
+    const row = m.actual?.[i];
+    if (!row) return;
+    total += p.isAed ? toEur(row.aed || 0, liveRate) : (row.eur || 0);
+  });
+  (extra || []).forEach(r => {
+    total += r.aed > 0 ? toEur(r.aed, liveRate) : (r.eur || 0);
+  });
+  return total;
+}
+
 export function sumAed(m: Month, postes: { isAed: boolean; name?: string }[], extra: ExtraRow[]): number {
   let total = 0;
   postes.forEach((p, i) => {
