@@ -113,7 +113,8 @@ interface AppContextType {
   }) => string; // returns trip id
   updateTrip: (id: string, updates: Partial<Trip>) => void;
   deleteTrip: (id: string) => void;
-  /** Ajoute une dépense voyage (tx dans un poste régulier avec tripId+tripKind=expense) */
+  /** Ajoute une dépense voyage (tx tripId+tripKind=expense). Cible un poste régulier
+   * (posteIdx) OU un extra du mois (extraName si fourni). */
   addTripExpense: (params: {
     tripId: string;
     posteIdx: number;
@@ -121,8 +122,9 @@ interface AppContextType {
     label: string;
     eur: number;
     date: string;
+    extraName?: string;
   }) => void;
-  deleteTripExpense: (tripId: string, monthId: string, posteIdx: number, txIdx: number) => void;
+  deleteTripExpense: (tripId: string, monthId: string, posteIdx: number, txIdx: number, extraName?: string) => void;
 }
 
 const HISTORY_CAP = 200;
@@ -736,6 +738,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addTripExpense = useCallback((params: {
     tripId: string; posteIdx: number; monthId: string;
     label: string; eur: number; date: string;
+    extraName?: string; // si défini, la dépense va dans l'extra (poste du mois) de ce nom
   }) => {
     setStateRaw(prev => {
       const trip = (prev.trips || []).find(t => t.id === params.tripId);
@@ -751,14 +754,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         tripId: params.tripId,
         tripKind: 'expense',
       };
-      const months = prev.months.map(mo => {
-        if (mo.id !== params.monthId) return mo;
-        const actual = [...mo.actual];
-        const row = { ...(actual[params.posteIdx] || { aed: 0, eur: null, txns: [] }) };
-        const txns = [...(row.txns || []), txn];
-        row.txns = txns;
+      const recompute = (row: { aed?: number; eur?: number | null; txns?: Transaction[] }) => {
+        const txns = row.txns || [];
         row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
         row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+      };
+      const months = prev.months.map(mo => {
+        if (mo.id !== params.monthId) return mo;
+        // Cible un extra (poste du mois) si extraName fourni, sinon un poste régulier
+        if (params.extraName) {
+          const extraActual = [...(mo.extraActual || [])];
+          const idx = extraActual.findIndex(r => r.name === params.extraName);
+          if (idx < 0) return mo; // extra introuvable ce mois → no-op
+          const row = { ...extraActual[idx] };
+          row.txns = [...(row.txns || []), txn];
+          recompute(row);
+          extraActual[idx] = row;
+          return { ...mo, extraActual };
+        }
+        const actual = [...mo.actual];
+        const row = { ...(actual[params.posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        row.txns = [...(row.txns || []), txn];
+        recompute(row);
         actual[params.posteIdx] = row;
         return { ...mo, actual };
       });
@@ -769,19 +786,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase]);
 
-  const deleteTripExpense = useCallback((tripId: string, monthId: string, posteIdx: number, txIdx: number) => {
+  const deleteTripExpense = useCallback((tripId: string, monthId: string, posteIdx: number, txIdx: number, extraName?: string) => {
     setStateRaw(prev => {
+      const recompute = (row: { aed?: number; eur?: number | null; txns?: Transaction[] }) => {
+        const txns = row.txns || [];
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+      };
       const months = prev.months.map(mo => {
         if (mo.id !== monthId) return mo;
+        if (extraName) {
+          const extraActual = [...(mo.extraActual || [])];
+          const idx = extraActual.findIndex(r => r.name === extraName);
+          if (idx < 0) return mo;
+          const row = { ...extraActual[idx] };
+          const txns = [...(row.txns || [])];
+          if (txns[txIdx]?.tripId !== tripId) return mo;
+          txns.splice(txIdx, 1);
+          row.txns = txns;
+          recompute(row);
+          extraActual[idx] = row;
+          return { ...mo, extraActual };
+        }
         const actual = [...mo.actual];
         const row = { ...(actual[posteIdx] || { aed: 0, eur: null, txns: [] }) };
         const txns = [...(row.txns || [])];
-        // Sanity check: la tx doit avoir le bon tripId
         if (txns[txIdx]?.tripId !== tripId) return mo;
         txns.splice(txIdx, 1);
         row.txns = txns;
-        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+        recompute(row);
         actual[posteIdx] = row;
         return { ...mo, actual };
       });

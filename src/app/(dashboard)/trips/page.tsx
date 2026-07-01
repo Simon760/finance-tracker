@@ -23,8 +23,9 @@ export default function TripsPage() {
     aedOut: 0, localIn: 0,
     monthId: curMonth || '',
   });
+  // target encode la cible: "p:<idx>" = poste régulier, "x:<nom>" = extra (poste du mois)
   const [eForm, setEForm] = useState({
-    posteIdx: 0, label: '', eur: 0, date: todayStr(), monthId: curMonth || '',
+    target: 'p:0', label: '', eur: 0, date: todayStr(), monthId: curMonth || '',
   });
 
   const sortedTrips = useMemo(() => {
@@ -37,15 +38,24 @@ export default function TripsPage() {
   const selectedTrip = selectedTripId ? trips.find(t => t.id === selectedTripId) : null;
 
   // Pour le trip sélectionné, collecte toutes les expenses (txns tagged tripId+expense)
+  // — dans les postes réguliers ET les extras (postes du mois)
+  type TripExp = { monthId: string; posteIdx: number; posteName: string; txIdx: number; t: Transaction; extraName?: string };
   const tripExpenses = useMemo(() => {
-    if (!selectedTrip) return [] as Array<{ monthId: string; posteIdx: number; posteName: string; txIdx: number; t: Transaction }>;
-    const out: Array<{ monthId: string; posteIdx: number; posteName: string; txIdx: number; t: Transaction }> = [];
+    if (!selectedTrip) return [] as TripExp[];
+    const out: TripExp[] = [];
     state.months.forEach(mo => {
       (mo.actual || []).forEach((row, posteIdx) => {
         const posteName = state.postes[posteIdx]?.name || '—';
         (row.txns || []).forEach((t, txIdx) => {
           if (t.tripId === selectedTrip.id && t.tripKind === 'expense') {
             out.push({ monthId: mo.id, posteIdx, posteName, txIdx, t });
+          }
+        });
+      });
+      (mo.extraActual || []).forEach(row => {
+        (row.txns || []).forEach((t, txIdx) => {
+          if (t.tripId === selectedTrip.id && t.tripKind === 'expense') {
+            out.push({ monthId: mo.id, posteIdx: -1, posteName: row.name, txIdx, t, extraName: row.name });
           }
         });
       });
@@ -81,16 +91,18 @@ export default function TripsPage() {
 
   const handleAddExpense = () => {
     if (!selectedTrip || eForm.eur <= 0 || !eForm.monthId) return;
+    const isExtra = eForm.target.startsWith('x:');
     addTripExpense({
       tripId: selectedTrip.id,
-      posteIdx: eForm.posteIdx,
+      posteIdx: isExtra ? -1 : parseInt(eForm.target.slice(2)),
+      extraName: isExtra ? eForm.target.slice(2) : undefined,
       monthId: eForm.monthId,
       label: eForm.label,
       eur: eForm.eur,
       date: eForm.date,
     });
     setExpenseOpen(false);
-    setEForm({ posteIdx: eForm.posteIdx, label: '', eur: 0, date: todayStr(), monthId: eForm.monthId });
+    setEForm({ target: eForm.target, label: '', eur: 0, date: todayStr(), monthId: eForm.monthId });
   };
 
   return (
@@ -210,7 +222,7 @@ export default function TripsPage() {
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Dépenses ({tripExpenses.length})</span>
-            <button onClick={() => { setEForm({ ...eForm, monthId: curMonth || '', date: todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
+            <button onClick={() => { setEForm({ ...eForm, monthId: selectedTrip.swap.monthId || curMonth || '', date: todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
           </div>
 
           {tripExpenses.length === 0 ? (
@@ -224,7 +236,7 @@ export default function TripsPage() {
                   <div className="text-[12px] font-semibold flex-1 min-w-0 truncate">{e.t.label || '—'}</div>
                   <div className="text-[12px] font-bold mono-value text-warning shrink-0">{f$(e.t.eur || 0)} {selectedTrip.currency}</div>
                   <div className="text-[10px] text-t-4 font-mono shrink-0">{f0(e.t.amount)} AED</div>
-                  <button onClick={() => deleteTripExpense(selectedTrip.id, e.monthId, e.posteIdx, e.txIdx)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">
+                  <button onClick={() => deleteTripExpense(selectedTrip.id, e.monthId, e.posteIdx, e.txIdx, e.extraName)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">
                     ✕
                   </button>
                 </div>
@@ -292,8 +304,19 @@ export default function TripsPage() {
             </div>
           )}
           <FormField label="Poste cible (dans tracker)">
-            <select className="fi" value={eForm.posteIdx} onChange={e => setEForm({ ...eForm, posteIdx: parseInt(e.target.value) })}>
-              {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+            <select className="fi" value={eForm.target} onChange={e => setEForm({ ...eForm, target: e.target.value })}>
+              {state.postes.map((p, i) => <option key={`p${i}`} value={`p:${i}`}>{p.name}</option>)}
+              {(() => {
+                const mo = state.months.find(x => x.id === eForm.monthId);
+                const extraNames = Array.from(new Set((mo?.extraActual || []).map(r => r.name)))
+                  .filter(n => n.trim().toUpperCase() !== 'VOYAGES');
+                if (extraNames.length === 0) return null;
+                return (
+                  <optgroup label="Postes du mois">
+                    {extraNames.map(n => <option key={`x${n}`} value={`x:${n}`}>{n}</option>)}
+                  </optgroup>
+                );
+              })()}
             </select>
           </FormField>
           <FormField label="Libellé">
