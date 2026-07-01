@@ -571,12 +571,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setStateRaw(prev => {
       // Crée la swap-tx dans le mois cible — DANS UN EXTRA (per-month, pas global)
+      // La tx représente la réalité économique du swap : aedOut sortis du compte AED,
+      // localIn EUR réellement reçus (frais inclus dans le taux effectif). On NE recalcule
+      // PAS l'EUR au taux du jour (sinon on ignore les frais et on prend un taux qui peut
+      // être le fallback si le fetch a échoué).
       const swapTxn: Transaction = {
         label: `Swap → ${params.name}`,
         amount: params.aedOut,
         currency: 'AED',
-        rate: prev.rate,
-        eur: params.aedOut / prev.rate,
+        rate: rate,              // taux effectif du swap = aedOut / localIn (frais inclus)
+        eur: params.localIn,     // EUR réellement reçus
         date: params.startDate,
         tripId: id,
         tripKind: 'swap',
