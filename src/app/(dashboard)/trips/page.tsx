@@ -232,12 +232,19 @@ export default function TripsPage() {
               </div>
             </div>
             <div className="flex gap-2">
-              {selectedTrip.status !== 'ended' && (
+              {selectedTrip.status !== 'ended' ? (
                 <button
                   onClick={() => updateTrip(selectedTrip.id, { status: 'ended', endDate: selectedTrip.endDate || todayStr() })}
                   className="text-[11px] text-info bg-info/10 border border-info/25 px-2.5 py-1 rounded-md cursor-pointer hover:bg-info/20"
                 >
                   Marquer terminé
+                </button>
+              ) : (
+                <button
+                  onClick={() => updateTrip(selectedTrip.id, { status: 'ongoing', endDate: null })}
+                  className="text-[11px] text-accent bg-accent/10 border border-accent/25 px-2.5 py-1 rounded-md cursor-pointer hover:bg-accent/20"
+                >
+                  Réouvrir
                 </button>
               )}
               <button onClick={() => { deleteTrip(selectedTrip.id); setSelectedTripId(null); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2.5 py-1 rounded-md cursor-pointer hover:bg-danger/20 flex items-center gap-1">
