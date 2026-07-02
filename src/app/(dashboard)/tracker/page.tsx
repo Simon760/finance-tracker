@@ -997,6 +997,8 @@ export default function TrackerPage() {
               })}
               {(m.extraActual || []).map((r, i) => {
                 const eur = r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
+                // Row de swap (VOYAGES) = transfert AED→EUR, exclue du total (pas une dépense)
+                const isSwapRow = !!(r.txns && r.txns.length > 0 && r.txns.every(t => t.tripKind === 'swap'));
                 // Cherche le budget correspondant dans extraBudget par nom
                 const bRow = (m.extraBudget || []).find(b => b.name === r.name);
                 const beur = bRow ? (bRow.eur > 0 ? bRow.eur : toEur(bRow.aed, liveRate)) : 0;
@@ -1009,6 +1011,7 @@ export default function TrackerPage() {
                   <tr key={`ea${i}`} className="border-b border-border hover:bg-white/[.02] group">
                     <td className="px-4 py-2.5 text-[13px] font-semibold">
                       {r.name}
+                      {isSwapRow && <span className="text-[9px] text-t-4 font-normal ml-1.5 uppercase tracking-wider">transfert · hors total</span>}
                       <button onClick={() => openTxnAddExtra(i)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-accent/20 ml-1.5 font-bold">+</button>
                       {(r.txns || []).length > 0 && (
                         <button onClick={() => setSlidePoste({ name: r.name, idx: i, section: 'actual', isExtra: true })} className="inline-flex items-center gap-1 text-[9px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-info/20 ml-1 font-bold" title="Voir les transactions">

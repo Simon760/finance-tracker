@@ -85,13 +85,18 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
     classify(p.name, budgetEur, actualEur, false);
   });
 
+  // Un extra qui ne contient que des swaps (conteneur VOYAGES) = transfert, pas une conso
+  const isSwap = (r?: { txns?: { tripKind?: string }[] }) =>
+    !!(r?.txns && r.txns.length > 0 && r.txns.every(t => t.tripKind === 'swap'));
+
   // 2. Extras BUDGÉTÉS (toute ligne extraBudget) → comptent dans le "prévu"
   const extraBudgets = m.extraBudget || [];
   const extraActuals = m.extraActual || [];
   const budgetedNames = new Set(extraBudgets.map(b => b.name));
   extraBudgets.forEach(b => {
-    const budgetEur = extraEur(b, liveRate);
     const aRow = extraActuals.find(a => a.name === b.name);
+    if (isSwap(aRow)) return; // VOYAGES (swap) = transfert, exclu du bilan
+    const budgetEur = extraEur(b, liveRate);
     const actualEur = aRow ? extraEur(aRow, m.rate) : 0;
     prevuBudgetEur += budgetEur;
     prevuActualEur += actualEur;
@@ -103,6 +108,7 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
   let nonPrevuActualEur = 0;
   extraActuals.forEach(a => {
     if (budgetedNames.has(a.name)) return; // déjà compté dans le prévu
+    if (isSwap(a)) return; // transfert, pas une conso
     const actualEur = extraEur(a, m.rate);
     nonPrevuActualEur += actualEur;
     if (actualEur > 0.005) nonPrevu.push({ name: a.name, actualEur });

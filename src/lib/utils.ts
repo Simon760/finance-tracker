@@ -29,6 +29,13 @@ function isHidden(m: Month, name?: string): boolean {
   return m.hiddenPostes.includes(name);
 }
 
+// Helper: une row extra qui ne contient QUE des swaps (conteneur VOYAGES) est un
+// TRANSFERT (AED → cash EUR), pas une consommation → exclue des totaux de dépenses.
+// Le swap débite quand même le compte AED via sumAedBank (le solde reste juste).
+function isSwapContainer(r: ExtraRow): boolean {
+  return !!(r.txns && r.txns.length > 0 && r.txns.every(t => t.tripKind === 'swap'));
+}
+
 // Budget sums
 // Modèle: pour un poste en AED, le budget est FIXE en AED, l'EUR = aed / taux live
 // (varie avec le taux). On ignore le eur stocké (figé à un ancien taux). Pour un poste
@@ -75,6 +82,7 @@ export function sumEur(m: Month, postes: { isAed: boolean; name?: string }[], ex
     total += rowEur(row, m.rate);
   });
   (extra || []).forEach(r => {
+    if (isSwapContainer(r)) return; // swap = transfert, pas une dépense
     total += r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
   });
   return total;
@@ -129,6 +137,7 @@ export function sumAed(m: Month, postes: { isAed: boolean; name?: string }[], ex
     }
   });
   (extra || []).forEach(r => {
+    if (isSwapContainer(r)) return; // swap = transfert, pas une dépense
     if (r.aed && r.aed > 0) total += r.aed;
     else if (r.eur && r.eur > 0) total += toAed(r.eur, m.rate);
   });
