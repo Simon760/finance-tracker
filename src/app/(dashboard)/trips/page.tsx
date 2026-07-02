@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { f$, f0 } from '@/lib/utils';
 import { Trip, Transaction } from '@/lib/types';
-import { Plus, Plane, ArrowRight, Calendar, Trash2 } from 'lucide-react';
+import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
+// Formate un YYYY-MM-DD en libellé lisible FR (ex: "jeudi 2 juillet")
+const fmtDay = (ds: string) => new Date(ds + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
 export default function TripsPage() {
-  const { state, trips, createTrip, deleteTrip, addTripExpense, deleteTripExpense, addTripSwap, updateTrip, curMonth } = useApp();
+  const { state, trips, createTrip, deleteTrip, addTripExpense, deleteTripExpense, updateTripExpense, addTripSwap, updateTrip, curMonth } = useApp();
 
   const [newOpen, setNewOpen] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
@@ -29,6 +31,13 @@ export default function TripsPage() {
   const [eForm, setEForm] = useState({
     target: 'p:0', label: '', eur: 0, date: todayStr(), monthId: curMonth || '',
   });
+  const [showLabelSugg, setShowLabelSugg] = useState(false);
+  // Édition d'une dépense existante : emplacement d'origine (null = mode ajout)
+  const [editing, setEditing] = useState<{ monthId: string; posteIdx: number; txIdx: number; extraName?: string } | null>(null);
+  // Calendrier des dépenses : jour sélectionné (filtre la liste) + mois affiché (null = auto)
+  const [selDay, setSelDay] = useState<string | null>(null);
+  const [calYM, setCalYM] = useState<{ y: number; m: number } | null>(null);
+  useEffect(() => { setSelDay(null); setCalYM(null); }, [selectedTripId]);
 
   const sortedTrips = useMemo(() => {
     return [...trips].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
@@ -91,6 +100,104 @@ export default function TripsPage() {
     return { budget, spent, remaining, pct };
   }, [selectedTrip, tripExpenses, tripSwaps]);
 
+  // Suggestions de libellés pour la CATÉGORIE cible sélectionnée : quel nom de tx
+  // ressort le + souvent (comme sur l'ajout de dépense régulière). Agrège sur tous les
+  // mois, exclut les swaps (transferts) et les placeholders.
+  const labelSuggestions = useMemo<{ label: string; count: number; lastDate: string }[]>(() => {
+    const map = new Map<string, { label: string; count: number; lastDate: string }>();
+    const collect = (txns: Transaction[] | undefined) => {
+      (txns || []).forEach(t => {
+        if (t.tripKind === 'swap') return; // transfert, pas une dépense
+        const raw = (t.label || '').trim();
+        if (!raw || raw === '---' || raw === '—') return;
+        const key = raw.toLowerCase();
+        const cur = map.get(key);
+        if (cur) {
+          cur.count++;
+          if ((t.date || '') > cur.lastDate) cur.lastDate = t.date || '';
+        } else {
+          map.set(key, { label: raw, count: 1, lastDate: t.date || '' });
+        }
+      });
+    };
+    if (eForm.target.startsWith('x:')) {
+      const name = eForm.target.slice(2);
+      state.months.forEach(mo => (mo.extraActual || []).forEach(r => { if (r.name === name) collect(r.txns); }));
+    } else {
+      const idx = parseInt(eForm.target.slice(2));
+      if (idx >= 0) state.months.forEach(mo => collect(mo.actual?.[idx]?.txns));
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || (b.lastDate || '').localeCompare(a.lastDate || ''));
+  }, [eForm.target, state.months]);
+
+  const filteredSuggestions = useMemo(() => {
+    const q = (eForm.label || '').trim().toLowerCase();
+    const arr = q ? labelSuggestions.filter(s => s.label.toLowerCase().includes(q) && s.label.toLowerCase() !== q) : labelSuggestions;
+    return arr.slice(0, 8);
+  }, [labelSuggestions, eForm.label]);
+
+  // ── Calendrier des dépenses ──────────────────────────────────────────────
+  // Agrège par jour (YYYY-MM-DD) : nb de tx + total dépensé (devise locale)
+  const expensesByDay = useMemo(() => {
+    const map = new Map<string, { count: number; total: number }>();
+    tripExpenses.forEach(e => {
+      const d = e.t.date || '';
+      if (!d) return;
+      const cur = map.get(d) || { count: 0, total: 0 };
+      cur.count++;
+      cur.total += e.t.eur || 0;
+      map.set(d, cur);
+    });
+    return map;
+  }, [tripExpenses]);
+
+  // Mois affiché : auto = mois de la dépense la + récente, sinon début du voyage
+  const effCalYM = useMemo(() => {
+    if (calYM) return calYM;
+    const base = tripExpenses[0]?.t.date || selectedTrip?.startDate || todayStr();
+    const [y, m] = base.split('-').map(Number);
+    return { y, m: (m || 1) - 1 };
+  }, [calYM, tripExpenses, selectedTrip]);
+
+  // Grille du mois (lundi en 1re colonne), null = case de remplissage
+  const calCells = useMemo(() => {
+    const { y, m } = effCalYM;
+    const firstWeekday = (new Date(y, m, 1).getDay() + 6) % 7; // lundi = 0
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells: (string | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      cells.push(`${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [effCalYM]);
+
+  // Résumé du mois affiché : nb de jours actifs + plus gros jour
+  const calSummary = useMemo(() => {
+    const prefix = `${effCalYM.y}-${String(effCalYM.m + 1).padStart(2, '0')}`;
+    let daysActive = 0;
+    let best = { day: '', total: 0 };
+    expensesByDay.forEach((v, k) => {
+      if (!k.startsWith(prefix)) return;
+      daysActive++;
+      if (v.total > best.total) best = { day: k, total: v.total };
+    });
+    return { daysActive, best };
+  }, [expensesByDay, effCalYM]);
+
+  // Liste affichée sous le calendrier : tout, ou filtrée sur le jour sélectionné
+  const shownExpenses = useMemo(
+    () => (selDay ? tripExpenses.filter(e => e.t.date === selDay) : tripExpenses),
+    [selDay, tripExpenses],
+  );
+
+  const shiftMonth = (delta: number) => {
+    const nm = effCalYM.m + delta;
+    setCalYM({ y: effCalYM.y + Math.floor(nm / 12), m: ((nm % 12) + 12) % 12 });
+    setSelDay(null);
+  };
+
   const handleCreate = () => {
     if (!nForm.name.trim() || nForm.aedOut <= 0 || nForm.localIn <= 0 || !nForm.monthId) return;
     const id = createTrip({
@@ -111,17 +218,36 @@ export default function TripsPage() {
   const handleAddExpense = () => {
     if (!selectedTrip || eForm.eur <= 0 || !eForm.monthId) return;
     const isExtra = eForm.target.startsWith('x:');
-    addTripExpense({
-      tripId: selectedTrip.id,
+    const common = {
       posteIdx: isExtra ? -1 : parseInt(eForm.target.slice(2)),
       extraName: isExtra ? eForm.target.slice(2) : undefined,
       monthId: eForm.monthId,
       label: eForm.label,
       eur: eForm.eur,
       date: eForm.date,
-    });
+    };
+    if (editing) {
+      updateTripExpense({ tripId: selectedTrip.id, orig: editing, ...common });
+    } else {
+      addTripExpense({ tripId: selectedTrip.id, ...common });
+    }
     setExpenseOpen(false);
+    setEditing(null);
     setEForm({ target: eForm.target, label: '', eur: 0, date: todayStr(), monthId: eForm.monthId });
+  };
+
+  // Ouvre le modal pré-rempli pour modifier une dépense existante
+  const startEdit = (e: TripExp) => {
+    setEditing({ monthId: e.monthId, posteIdx: e.posteIdx, txIdx: e.txIdx, extraName: e.extraName });
+    setEForm({
+      target: e.extraName ? `x:${e.extraName}` : `p:${e.posteIdx}`,
+      label: e.t.label === '—' ? '' : (e.t.label || ''),
+      eur: e.t.eur || 0,
+      date: e.t.date || todayStr(),
+      monthId: e.monthId,
+    });
+    setShowLabelSugg(false);
+    setExpenseOpen(true);
   };
 
   const handleRecharge = () => {
@@ -205,7 +331,7 @@ export default function TripsPage() {
                   </div>
                   <div className="bg-bg-2 rounded-md px-2 py-1.5">
                     <div className="text-t-4 text-[9px] uppercase tracking-wider">Dépensé</div>
-                    <div className={`font-bold mono-value ${pct > 100 ? 'text-danger' : 'text-warning'}`}>{f$(spent)} {trip.currency}</div>
+                    <div className={`font-bold mono-value ${pct > 100 ? 'text-danger' : 'text-t-1'}`}>{f$(spent)} {trip.currency}</div>
                   </div>
                   <div className="bg-bg-2 rounded-md px-2 py-1.5">
                     <div className="text-t-4 text-[9px] uppercase tracking-wider">Restant</div>
@@ -255,7 +381,7 @@ export default function TripsPage() {
 
           <div className="grid grid-cols-4 gap-3 mb-5 max-md:grid-cols-2">
             <KpiBox label="Budget" value={`${f$(tripStats.budget)} ${selectedTrip.currency}`} color="text-t-1" />
-            <KpiBox label="Dépensé" value={`${f$(tripStats.spent)} ${selectedTrip.currency}`} color={tripStats.pct > 100 ? 'text-danger' : 'text-warning'} />
+            <KpiBox label="Dépensé" value={`${f$(tripStats.spent)} ${selectedTrip.currency}`} color={tripStats.pct > 100 ? 'text-danger' : 'text-t-1'} />
             <KpiBox label="Restant" value={`${f$(tripStats.remaining)} ${selectedTrip.currency}`} color={tripStats.remaining < 0 ? 'text-danger' : 'text-accent'} />
             <KpiBox label="Consommé" value={`${tripStats.pct.toFixed(0)}%`} color={tripStats.pct > 100 ? 'text-danger' : 'text-info'} />
           </div>
@@ -278,27 +404,98 @@ export default function TripsPage() {
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Dépenses ({tripExpenses.length})</span>
-            <button onClick={() => { setEForm({ ...eForm, monthId: selectedTrip.swap.monthId || curMonth || '', date: todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
+            <button onClick={() => { setEditing(null); setEForm({ ...eForm, monthId: selectedTrip.swap.monthId || curMonth || '', date: todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
           </div>
 
-          {tripExpenses.length === 0 ? (
-            <div className="text-center py-6 text-t-4 text-[12px]">Aucune dépense — clique + pour en ajouter</div>
-          ) : (
-            <div className="space-y-1.5">
-              {tripExpenses.map((e, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-2 bg-bg-2 border border-border rounded-md">
-                  <div className="text-[10px] text-t-4 font-mono w-20 shrink-0">{e.t.date || '—'}</div>
-                  <div className="text-[10px] text-t-3 uppercase tracking-wider w-24 shrink-0 truncate">{e.posteName}</div>
-                  <div className="text-[12px] font-semibold flex-1 min-w-0 truncate">{e.t.label || '—'}</div>
-                  <div className="text-[12px] font-bold mono-value text-warning shrink-0">{f$(e.t.eur || 0)} {selectedTrip.currency}</div>
-                  <div className="text-[10px] text-t-4 font-mono shrink-0">{f0(e.t.amount)} AED</div>
-                  <button onClick={() => deleteTripExpense(selectedTrip.id, e.monthId, e.posteIdx, e.txIdx, e.extraName)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">
-                    ✕
-                  </button>
-                </div>
+          {/* Calendrier mensuel des dépenses */}
+          <div className="bg-bg-2 border border-border rounded-xl p-3 max-md:p-2">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <button onClick={() => shiftMonth(-1)} className="p-1 rounded-md text-t-3 hover:text-t-1 hover:bg-bg-4 cursor-pointer"><ChevronLeft size={16} /></button>
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] font-semibold tracking-tight capitalize">
+                  {new Date(effCalYM.y, effCalYM.m, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                </span>
+                {calSummary.daysActive > 0 && (
+                  <span className="text-[10px] text-t-4 max-md:hidden">
+                    {calSummary.daysActive} jour{calSummary.daysActive > 1 ? 's' : ''} · plus gros {f$(calSummary.best.total)} {selectedTrip.currency}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => shiftMonth(1)} className="p-1 rounded-md text-t-3 hover:text-t-1 hover:bg-bg-4 cursor-pointer"><ChevronRight size={16} /></button>
+            </div>
+            <div className="grid grid-cols-7 gap-1.5 max-md:gap-1 mb-1.5">
+              {['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'].map((d, i) => (
+                <div key={i} className="text-center text-[9px] max-md:text-[8px] font-semibold uppercase tracking-wider text-t-4">{d}</div>
               ))}
             </div>
-          )}
+            <div className="grid grid-cols-7 gap-1.5 max-md:gap-1">
+              {calCells.map((ds, i) => {
+                if (!ds) return <div key={i} />;
+                const info = expensesByDay.get(ds);
+                const day = parseInt(ds.slice(8), 10);
+                const isSel = selDay === ds;
+                const isToday = ds === todayStr();
+                if (!info) {
+                  return (
+                    <div key={i} className={`rounded-lg border border-border/40 bg-bg-3/30 min-h-[58px] max-md:min-h-[46px] p-1.5 ${isToday ? 'ring-1 ring-border-2' : ''}`}>
+                      <div className="text-[10px] text-t-4">{day}</div>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSelDay(isSel ? null : ds)}
+                    className={`rounded-lg border text-left min-h-[58px] max-md:min-h-[46px] p-1.5 transition-all cursor-pointer bg-bg-4 ${isSel ? 'border-accent ring-1 ring-accent/50' : 'border-border-2 hover:border-border-active'}`}
+                  >
+                    <div className="text-[10px] text-t-3 font-medium">{day}</div>
+                    <div className="text-[11px] max-md:text-[9px] font-bold mono-value text-t-1 leading-tight mt-1 truncate">{f$(info.total)}</div>
+                    <div className="text-[8px] text-t-4 mt-0.5">{info.count} tx</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Liste des dépenses — récent → ancien, filtrée si un jour est sélectionné */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] uppercase tracking-wider text-t-4 font-semibold capitalize">
+                {selDay ? fmtDay(selDay) : 'Toutes les dépenses'} · {shownExpenses.length}
+              </span>
+              {selDay && (
+                <button onClick={() => setSelDay(null)} className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded-md cursor-pointer hover:bg-accent/20">Tout afficher</button>
+              )}
+            </div>
+            {shownExpenses.length === 0 ? (
+              <div className="text-center py-6 text-t-4 text-[12px]">{selDay ? 'Aucune dépense ce jour' : 'Aucune dépense — clique + pour en ajouter'}</div>
+            ) : (
+              <div className="space-y-1.5">
+                {shownExpenses.map((e, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2 bg-bg-2 border border-border rounded-md">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] font-semibold truncate">{e.t.label || '—'}</div>
+                      <div className="text-[10px] text-t-4 mt-0.5 flex items-center gap-2">
+                        <span className="uppercase tracking-wider text-t-3 truncate">{e.posteName}</span>
+                        <span className="font-mono shrink-0">{e.t.date || '—'}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[12px] font-bold mono-value text-t-1">{f$(e.t.eur || 0)} {selectedTrip.currency}</div>
+                      <div className="text-[10px] text-t-4 font-mono mt-0.5">{f0(e.t.amount)} AED</div>
+                    </div>
+                    <button onClick={() => startEdit(e)} className="text-t-3 hover:text-t-1 bg-bg-3 border border-border hover:border-border-active p-1 rounded shrink-0 cursor-pointer transition-colors" title="Modifier">
+                      <Pencil size={12} />
+                    </button>
+                    <button onClick={() => deleteTripExpense(selectedTrip.id, e.monthId, e.posteIdx, e.txIdx, e.extraName)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded shrink-0 cursor-pointer" title="Supprimer">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -351,8 +548,8 @@ export default function TripsPage() {
         </div>
       </Modal>
 
-      {/* Add expense modal */}
-      <Modal open={expenseOpen} onClose={() => setExpenseOpen(false)} title="Dépense voyage">
+      {/* Add / edit expense modal */}
+      <Modal open={expenseOpen} onClose={() => { setExpenseOpen(false); setEditing(null); }} title={editing ? 'Modifier la dépense' : 'Dépense voyage'}>
         <div className="space-y-3.5">
           {selectedTrip && (
             <div className="text-[11px] text-t-3 bg-bg-4 rounded-md p-2">
@@ -376,7 +573,32 @@ export default function TripsPage() {
             </select>
           </FormField>
           <FormField label="Libellé">
-            <input className="fi" value={eForm.label} onChange={e => setEForm({ ...eForm, label: e.target.value })} placeholder="Ex: Restaurant Le Marais" />
+            <div className="relative">
+              <input
+                className="fi"
+                value={eForm.label}
+                onChange={e => { setEForm({ ...eForm, label: e.target.value }); setShowLabelSugg(true); }}
+                onFocus={() => setShowLabelSugg(true)}
+                onBlur={() => setTimeout(() => setShowLabelSugg(false), 150)}
+                placeholder="Ex: Restaurant Le Marais"
+                autoComplete="off"
+              />
+              {showLabelSugg && filteredSuggestions.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 bg-bg-3 border border-border-2 rounded-md shadow-lg max-h-56 overflow-y-auto">
+                  {filteredSuggestions.map(s => (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onMouseDown={e => { e.preventDefault(); setEForm(f => ({ ...f, label: s.label })); setShowLabelSugg(false); }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-[13px] text-t-1 hover:bg-bg-4 cursor-pointer transition-colors"
+                    >
+                      <span className="truncate">{s.label}</span>
+                      <span className="text-[10px] text-t-3 shrink-0">×{s.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label={`Montant (${selectedTrip?.currency || 'EUR'})`}>
@@ -399,8 +621,8 @@ export default function TripsPage() {
             </div>
           )}
           <div className="flex gap-2.5 mt-5">
-            <button onClick={handleAddExpense} disabled={eForm.eur <= 0 || !eForm.monthId} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40">Ajouter</button>
-            <button onClick={() => setExpenseOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+            <button onClick={handleAddExpense} disabled={eForm.eur <= 0 || !eForm.monthId} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40">{editing ? 'Enregistrer' : 'Ajouter'}</button>
+            <button onClick={() => { setExpenseOpen(false); setEditing(null); }} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>

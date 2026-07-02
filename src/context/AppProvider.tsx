@@ -125,6 +125,18 @@ interface AppContextType {
     extraName?: string;
   }) => void;
   deleteTripExpense: (tripId: string, monthId: string, posteIdx: number, txIdx: number, extraName?: string) => void;
+  /** Modifie une dépense voyage déjà enregistrée : la retire de son emplacement d'origine
+   * (orig) et la ré-ajoute à la nouvelle cible avec les valeurs mises à jour. */
+  updateTripExpense: (params: {
+    tripId: string;
+    orig: { monthId: string; posteIdx: number; txIdx: number; extraName?: string };
+    monthId: string;
+    posteIdx: number;
+    label: string;
+    eur: number;
+    date: string;
+    extraName?: string;
+  }) => void;
   /** Recharge le compte EUR d'un voyage (nouveau swap AED→EUR dans la même pocket) */
   addTripSwap: (params: { tripId: string; monthId: string; aedOut: number; localIn: number; date: string }) => void;
 }
@@ -827,6 +839,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase]);
 
+  const updateTripExpense = useCallback((params: {
+    tripId: string;
+    orig: { monthId: string; posteIdx: number; txIdx: number; extraName?: string };
+    monthId: string; posteIdx: number; label: string; eur: number; date: string; extraName?: string;
+  }) => {
+    setStateRaw(prev => {
+      const trip = (prev.trips || []).find(t => t.id === params.tripId);
+      if (!trip) return prev;
+      const rate = trip.swap.rate;
+      const recompute = (row: { aed?: number; eur?: number | null; txns?: Transaction[] }) => {
+        const txns = row.txns || [];
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+      };
+      // 1) retirer la tx d'origine (même logique que deleteTripExpense)
+      const o = params.orig;
+      let months = prev.months.map(mo => {
+        if (mo.id !== o.monthId) return mo;
+        if (o.extraName) {
+          const extraActual = [...(mo.extraActual || [])];
+          const idx = extraActual.findIndex(r => r.name === o.extraName);
+          if (idx < 0) return mo;
+          const row = { ...extraActual[idx] };
+          const txns = [...(row.txns || [])];
+          if (txns[o.txIdx]?.tripId !== params.tripId) return mo;
+          txns.splice(o.txIdx, 1);
+          row.txns = txns; recompute(row); extraActual[idx] = row;
+          return { ...mo, extraActual };
+        }
+        const actual = [...mo.actual];
+        const row = { ...(actual[o.posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        const txns = [...(row.txns || [])];
+        if (txns[o.txIdx]?.tripId !== params.tripId) return mo;
+        txns.splice(o.txIdx, 1);
+        row.txns = txns; recompute(row); actual[o.posteIdx] = row;
+        return { ...mo, actual };
+      });
+      // 2) ré-ajouter la tx mise à jour à la nouvelle cible
+      const txn: Transaction = {
+        label: params.label || '—',
+        amount: Math.round(params.eur * rate * 100) / 100,
+        currency: 'EUR', rate, eur: params.eur, date: params.date,
+        tripId: params.tripId, tripKind: 'expense',
+      };
+      months = months.map(mo => {
+        if (mo.id !== params.monthId) return mo;
+        if (params.extraName) {
+          const extraActual = [...(mo.extraActual || [])];
+          const idx = extraActual.findIndex(r => r.name === params.extraName);
+          if (idx < 0) return mo;
+          const row = { ...extraActual[idx] };
+          row.txns = [...(row.txns || []), txn]; recompute(row); extraActual[idx] = row;
+          return { ...mo, extraActual };
+        }
+        const actual = [...mo.actual];
+        const row = { ...(actual[params.posteIdx] || { aed: 0, eur: null, txns: [] }) };
+        row.txns = [...(row.txns || []), txn]; recompute(row); actual[params.posteIdx] = row;
+        return { ...mo, actual };
+      });
+      const updated = { ...prev, months, lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
   // Recharge le compte EUR d'un voyage : nouveau swap AED→EUR ajouté à la même pocket.
   // Débite l'AED (swap-tx dans VOYAGES) et augmente le budget (= somme des swaps).
   const addTripSwap = useCallback((params: {
@@ -907,7 +985,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       history: state.history || [],
       logChange, clearHistory,
       residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry,
-      trips, createTrip, updateTrip, deleteTrip, addTripExpense, deleteTripExpense, addTripSwap,
+      trips, createTrip, updateTrip, deleteTrip, addTripExpense, deleteTripExpense, updateTripExpense, addTripSwap,
     }}>
       <div className={hiddenMode ? 'amounts-hidden' : ''}>
         {children}
