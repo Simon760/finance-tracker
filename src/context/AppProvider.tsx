@@ -125,6 +125,8 @@ interface AppContextType {
     extraName?: string;
   }) => void;
   deleteTripExpense: (tripId: string, monthId: string, posteIdx: number, txIdx: number, extraName?: string) => void;
+  /** Recharge le compte EUR d'un voyage (nouveau swap AED→EUR dans la même pocket) */
+  addTripSwap: (params: { tripId: string; monthId: string; aedOut: number; localIn: number; date: string }) => void;
 }
 
 const HISTORY_CAP = 200;
@@ -825,6 +827,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase]);
 
+  // Recharge le compte EUR d'un voyage : nouveau swap AED→EUR ajouté à la même pocket.
+  // Débite l'AED (swap-tx dans VOYAGES) et augmente le budget (= somme des swaps).
+  const addTripSwap = useCallback((params: {
+    tripId: string; monthId: string; aedOut: number; localIn: number; date: string;
+  }) => {
+    setStateRaw(prev => {
+      const trip = (prev.trips || []).find(t => t.id === params.tripId);
+      if (!trip) return prev;
+      const rate = params.localIn > 0 ? params.aedOut / params.localIn : prev.rate;
+      const swapTxn: Transaction = {
+        label: `Recharge → ${trip.name}`,
+        amount: params.aedOut,
+        currency: 'AED',
+        rate,
+        eur: params.localIn,
+        date: params.date,
+        tripId: params.tripId,
+        tripKind: 'swap',
+      };
+      const months = prev.months.map(mo => {
+        if (mo.id !== params.monthId) return mo;
+        const extraActual = [...(mo.extraActual || [])];
+        const extraBudget = [...(mo.extraBudget || [])];
+        let idx = extraActual.findIndex(r => r.name.trim().toUpperCase() === 'VOYAGES');
+        if (idx < 0) {
+          extraActual.push({ name: 'VOYAGES', cat: 'lifestyle', aed: 0, eur: 0, txns: [] });
+          extraBudget.push({ name: 'VOYAGES', cat: 'lifestyle', aed: 0, eur: 0 });
+          idx = extraActual.length - 1;
+        }
+        const row = { ...extraActual[idx] };
+        const txns = [...(row.txns || []), swapTxn];
+        row.txns = txns;
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || prev.rate)), 0) * 100) / 100;
+        extraActual[idx] = row;
+        return { ...mo, extraActual, extraBudget };
+      });
+      const hist: HistoryEntry = {
+        ts: new Date().toISOString(),
+        action: 'trip.recharge',
+        detail: `Recharge ${trip.name} — ${params.aedOut} AED → ${params.localIn} ${trip.currency}`,
+      };
+      const updated = { ...prev, months, history: [hist, ...(prev.history || [])].slice(0, HISTORY_CAP), lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+  }, [userId, persistToFirebase]);
+
   const updateMonth = useCallback((id: string, field: keyof Month, val: number) => {
     setStateRaw(prev => {
       const months = prev.months.map(m => m.id === id ? { ...m, [field]: val } : m);
@@ -856,7 +907,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       history: state.history || [],
       logChange, clearHistory,
       residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry,
-      trips, createTrip, updateTrip, deleteTrip, addTripExpense, deleteTripExpense,
+      trips, createTrip, updateTrip, deleteTrip, addTripExpense, deleteTripExpense, addTripSwap,
     }}>
       <div className={hiddenMode ? 'amounts-hidden' : ''}>
         {children}

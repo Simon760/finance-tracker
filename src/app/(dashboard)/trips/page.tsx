@@ -11,11 +11,13 @@ import { Plus, Plane, ArrowRight, Calendar, Trash2 } from 'lucide-react';
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function TripsPage() {
-  const { state, trips, createTrip, deleteTrip, addTripExpense, deleteTripExpense, updateTrip, curMonth } = useApp();
+  const { state, trips, createTrip, deleteTrip, addTripExpense, deleteTripExpense, addTripSwap, updateTrip, curMonth } = useApp();
 
   const [newOpen, setNewOpen] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [rForm, setRForm] = useState({ aedOut: 0, localIn: 0, date: todayStr(), monthId: curMonth || '' });
 
   const [nForm, setNForm] = useState({
     name: '', country: 'France', currency: 'EUR',
@@ -63,14 +65,31 @@ export default function TripsPage() {
     return out.sort((a, b) => (b.t.date || '').localeCompare(a.t.date || ''));
   }, [selectedTrip, state.months, state.postes]);
 
+  // Tous les swaps du voyage (initial + rechargements) — dans VOYAGES et postes réguliers
+  const tripSwaps = useMemo(() => {
+    if (!selectedTrip) return [] as Array<{ monthId: string; date: string; aed: number; eur: number }>;
+    const out: Array<{ monthId: string; date: string; aed: number; eur: number }> = [];
+    state.months.forEach(mo => {
+      [...(mo.extraActual || []), ...(mo.actual || [])].forEach(row => {
+        (row.txns || []).forEach(t => {
+          if (t.tripId === selectedTrip.id && t.tripKind === 'swap') {
+            out.push({ monthId: mo.id, date: t.date || '', aed: t.amount || 0, eur: t.eur || 0 });
+          }
+        });
+      });
+    });
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [selectedTrip, state.months]);
+
   const tripStats = useMemo(() => {
     if (!selectedTrip) return null;
-    const budget = selectedTrip.swap.localIn;
+    // budget = somme de TOUS les swaps (initial + rechargements)
+    const budget = tripSwaps.reduce((s, sw) => s + sw.eur, 0);
     const spent = tripExpenses.reduce((s, e) => s + (e.t.eur || 0), 0);
     const remaining = budget - spent;
     const pct = budget > 0 ? (spent / budget) * 100 : 0;
     return { budget, spent, remaining, pct };
-  }, [selectedTrip, tripExpenses]);
+  }, [selectedTrip, tripExpenses, tripSwaps]);
 
   const handleCreate = () => {
     if (!nForm.name.trim() || nForm.aedOut <= 0 || nForm.localIn <= 0 || !nForm.monthId) return;
@@ -103,6 +122,19 @@ export default function TripsPage() {
     });
     setExpenseOpen(false);
     setEForm({ target: eForm.target, label: '', eur: 0, date: todayStr(), monthId: eForm.monthId });
+  };
+
+  const handleRecharge = () => {
+    if (!selectedTrip || rForm.aedOut <= 0 || rForm.localIn <= 0 || !rForm.monthId) return;
+    addTripSwap({
+      tripId: selectedTrip.id,
+      monthId: rForm.monthId,
+      aedOut: rForm.aedOut,
+      localIn: rForm.localIn,
+      date: rForm.date,
+    });
+    setRechargeOpen(false);
+    setRForm({ aedOut: 0, localIn: 0, date: todayStr(), monthId: rForm.monthId });
   };
 
   return (
@@ -139,14 +171,15 @@ export default function TripsPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3 mb-5 max-md:grid-cols-1">
           {sortedTrips.map(trip => {
-            const expenses = state.months.flatMap(mo =>
-              (mo.actual || []).flatMap(row =>
-                (row.txns || []).filter(t => t.tripId === trip.id && t.tripKind === 'expense')
+            const allTxns = state.months.flatMap(mo =>
+              [...(mo.actual || []), ...(mo.extraActual || [])].flatMap(row =>
+                (row.txns || []).filter(t => t.tripId === trip.id)
               )
             );
-            const spent = expenses.reduce((s, t) => s + (t.eur || 0), 0);
-            const remaining = trip.swap.localIn - spent;
-            const pct = trip.swap.localIn > 0 ? (spent / trip.swap.localIn) * 100 : 0;
+            const budget = allTxns.filter(t => t.tripKind === 'swap').reduce((s, t) => s + (t.eur || 0), 0);
+            const spent = allTxns.filter(t => t.tripKind === 'expense').reduce((s, t) => s + (t.eur || 0), 0);
+            const remaining = budget - spent;
+            const pct = budget > 0 ? (spent / budget) * 100 : 0;
             const isActive = trip.id === activeTrip?.id;
             return (
               <div
@@ -168,7 +201,7 @@ export default function TripsPage() {
                 <div className="grid grid-cols-3 gap-2 text-[11px]">
                   <div className="bg-bg-2 rounded-md px-2 py-1.5">
                     <div className="text-t-4 text-[9px] uppercase tracking-wider">Budget</div>
-                    <div className="font-bold mono-value">{f$(trip.swap.localIn)} {trip.currency}</div>
+                    <div className="font-bold mono-value">{f$(budget)} {trip.currency}</div>
                   </div>
                   <div className="bg-bg-2 rounded-md px-2 py-1.5">
                     <div className="text-t-4 text-[9px] uppercase tracking-wider">Dépensé</div>
@@ -218,6 +251,22 @@ export default function TripsPage() {
             <KpiBox label="Dépensé" value={`${f$(tripStats.spent)} ${selectedTrip.currency}`} color={tripStats.pct > 100 ? 'text-danger' : 'text-warning'} />
             <KpiBox label="Restant" value={`${f$(tripStats.remaining)} ${selectedTrip.currency}`} color={tripStats.remaining < 0 ? 'text-danger' : 'text-accent'} />
             <KpiBox label="Consommé" value={`${tripStats.pct.toFixed(0)}%`} color={tripStats.pct > 100 ? 'text-danger' : 'text-info'} />
+          </div>
+
+          {/* Rechargements (swaps) */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Rechargements ({tripSwaps.length})</span>
+            <button onClick={() => { setRForm({ aedOut: 0, localIn: 0, date: todayStr(), monthId: selectedTrip.swap.monthId || curMonth || '' }); setRechargeOpen(true); }} className="px-3 py-1.5 bg-info/15 text-info border border-info/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Recharger le compte €</button>
+          </div>
+          <div className="space-y-1.5 mb-5">
+            {tripSwaps.map((sw, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2 bg-bg-2 border border-border rounded-md text-[12px]">
+                <span className="text-[10px] text-t-4 font-mono w-20 shrink-0">{sw.date || '—'}</span>
+                <span className="flex-1 text-t-3">{i === 0 ? 'Swap initial' : 'Recharge'} · {sw.monthId}</span>
+                <span className="font-bold mono-value text-accent shrink-0">+{f$(sw.eur)} {selectedTrip.currency}</span>
+                <span className="text-[10px] text-t-4 font-mono shrink-0">−{f0(sw.aed)} AED</span>
+              </div>
+            ))}
           </div>
 
           <div className="flex items-center justify-between mb-2">
@@ -345,6 +394,43 @@ export default function TripsPage() {
           <div className="flex gap-2.5 mt-5">
             <button onClick={handleAddExpense} disabled={eForm.eur <= 0 || !eForm.monthId} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40">Ajouter</button>
             <button onClick={() => setExpenseOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Recharge (nouveau swap) modal */}
+      <Modal open={rechargeOpen} onClose={() => setRechargeOpen(false)} title="Recharger le compte €">
+        <div className="space-y-3.5">
+          {selectedTrip && (
+            <div className="text-[11px] text-t-3 bg-bg-4 rounded-md p-2">
+              Voyage : <strong className="text-t-1">{selectedTrip.name}</strong> — ajoute un swap AED→{selectedTrip.currency} à l&apos;enveloppe (débite ton compte AED).
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="AED swappés">
+              <input className="fi" type="number" value={rForm.aedOut || ''} onChange={e => setRForm({ ...rForm, aedOut: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="3175.28" autoFocus />
+            </FormField>
+            <FormField label={`${selectedTrip?.currency || 'EUR'} reçus`}>
+              <input className="fi" type="number" value={rForm.localIn || ''} onChange={e => setRForm({ ...rForm, localIn: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="750" />
+            </FormField>
+          </div>
+          {rForm.aedOut > 0 && rForm.localIn > 0 && (
+            <div className="text-[11px] text-t-3">Taux effectif (frais inclus) : <span className="text-t-1 font-mono">{(rForm.aedOut / rForm.localIn).toFixed(4)}</span></div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Date">
+              <input className="fi" type="date" value={rForm.date} onChange={e => setRForm({ ...rForm, date: e.target.value })} />
+            </FormField>
+            <FormField label="Mois (tracker)">
+              <select className="fi" value={rForm.monthId} onChange={e => setRForm({ ...rForm, monthId: e.target.value })}>
+                <option value="">— choisir —</option>
+                {state.months.map(mo => <option key={mo.id} value={mo.id}>{mo.id}</option>)}
+              </select>
+            </FormField>
+          </div>
+          <div className="flex gap-2.5 mt-5">
+            <button onClick={handleRecharge} disabled={rForm.aedOut <= 0 || rForm.localIn <= 0 || !rForm.monthId} className="px-4 py-2 bg-info text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40">Recharger</button>
+            <button onClick={() => setRechargeOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>
