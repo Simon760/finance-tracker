@@ -142,6 +142,9 @@ export interface Trip {
   };
   /** Status: ongoing si on est entre start et end, ended sinon */
   status: 'ongoing' | 'ended';
+  /** Ajustement manuel du solde de la pocket (devise locale, signé). Réconcilie le
+   * Restant calculé (budget − dépensé) avec le cash réel. Analogue à Month.adjustment. */
+  adjustment?: number;
   createdAt: string;
 }
 

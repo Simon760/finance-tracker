@@ -6,7 +6,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { f$, f0 } from '@/lib/utils';
 import { Trip, Transaction } from '@/lib/types';
-import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, Pencil, SlidersHorizontal } from 'lucide-react';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 // Formate un YYYY-MM-DD en libellé lisible FR (ex: "jeudi 2 juillet")
@@ -20,6 +20,8 @@ export default function TripsPage() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [rForm, setRForm] = useState({ aedOut: 0, localIn: 0, date: todayStr(), monthId: curMonth || '' });
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustInput, setAdjustInput] = useState('');
 
   const [nForm, setNForm] = useState({
     name: '', country: 'France', currency: 'EUR',
@@ -95,10 +97,29 @@ export default function TripsPage() {
     // budget = somme de TOUS les swaps (initial + rechargements)
     const budget = tripSwaps.reduce((s, sw) => s + sw.eur, 0);
     const spent = tripExpenses.reduce((s, e) => s + (e.t.eur || 0), 0);
-    const remaining = budget - spent;
-    const pct = budget > 0 ? (spent / budget) * 100 : 0;
-    return { budget, spent, remaining, pct };
+    const adjustment = selectedTrip.adjustment || 0; // réconciliation manuelle du solde
+    const remaining = budget - spent + adjustment;
+    // Consommé dérivé du Restant réel (cohérent avec l'ajustement)
+    const pct = budget > 0 ? ((budget - remaining) / budget) * 100 : 0;
+    return { budget, spent, adjustment, remaining, pct };
   }, [selectedTrip, tripExpenses, tripSwaps]);
+
+  // Ajuste le solde de la pocket : l'utilisateur saisit le solde RÉEL, on en dérive
+  // l'ajustement (delta) à stocker. Analogue à la régularisation du tracker.
+  const handleAdjust = () => {
+    if (!selectedTrip || !tripStats) return;
+    const real = parseFloat(adjustInput);
+    if (isNaN(real)) return;
+    const base = tripStats.budget - tripStats.spent; // solde calculé SANS ajustement
+    const newAdj = Math.round((real - base) * 100) / 100;
+    updateTrip(selectedTrip.id, { adjustment: newAdj });
+    setAdjustOpen(false);
+  };
+  const clearAdjust = () => {
+    if (!selectedTrip) return;
+    updateTrip(selectedTrip.id, { adjustment: 0 });
+    setAdjustOpen(false);
+  };
 
   // Suggestions de libellés pour la CATÉGORIE cible sélectionnée : quel nom de tx
   // ressort le + souvent (comme sur l'ajout de dépense régulière). Agrège sur tous les
@@ -304,8 +325,8 @@ export default function TripsPage() {
             );
             const budget = allTxns.filter(t => t.tripKind === 'swap').reduce((s, t) => s + (t.eur || 0), 0);
             const spent = allTxns.filter(t => t.tripKind === 'expense').reduce((s, t) => s + (t.eur || 0), 0);
-            const remaining = budget - spent;
-            const pct = budget > 0 ? (spent / budget) * 100 : 0;
+            const remaining = budget - spent + (trip.adjustment || 0); // inclut l'ajustement manuel
+            const pct = budget > 0 ? ((budget - remaining) / budget) * 100 : 0;
             const isActive = trip.id === activeTrip?.id;
             return (
               <div
@@ -358,6 +379,13 @@ export default function TripsPage() {
               </div>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => { setAdjustInput(tripStats.remaining.toFixed(2)); setAdjustOpen(true); }}
+                className="text-[11px] text-t-2 bg-bg-2 border border-border px-2.5 py-1 rounded-md cursor-pointer hover:bg-bg-4 hover:text-t-1 flex items-center gap-1"
+                title="Ajuster manuellement le solde de la pocket"
+              >
+                <SlidersHorizontal size={11} /> Ajuster
+              </button>
               {selectedTrip.status !== 'ended' ? (
                 <button
                   onClick={() => updateTrip(selectedTrip.id, { status: 'ended', endDate: selectedTrip.endDate || todayStr() })}
@@ -382,7 +410,14 @@ export default function TripsPage() {
           <div className="grid grid-cols-4 gap-3 mb-5 max-md:grid-cols-2">
             <KpiBox label="Budget" value={`${f$(tripStats.budget)} ${selectedTrip.currency}`} color="text-t-1" />
             <KpiBox label="Dépensé" value={`${f$(tripStats.spent)} ${selectedTrip.currency}`} color={tripStats.pct > 100 ? 'text-danger' : 'text-t-1'} />
-            <KpiBox label="Restant" value={`${f$(tripStats.remaining)} ${selectedTrip.currency}`} color={tripStats.remaining < 0 ? 'text-danger' : 'text-accent'} />
+            <KpiBox
+              label="Restant"
+              value={`${f$(tripStats.remaining)} ${selectedTrip.currency}`}
+              color={tripStats.remaining < 0 ? 'text-danger' : 'text-accent'}
+              sub={tripStats.adjustment !== 0
+                ? <span className={`text-[10px] mono-value font-medium ${tripStats.adjustment > 0 ? 'text-accent' : 'text-warning'}`}>Ajusté {tripStats.adjustment > 0 ? '+' : ''}{f$(tripStats.adjustment)} {selectedTrip.currency}</span>
+                : undefined}
+            />
             <KpiBox label="Consommé" value={`${tripStats.pct.toFixed(0)}%`} color={tripStats.pct > 100 ? 'text-danger' : 'text-info'} />
           </div>
 
@@ -663,6 +698,43 @@ export default function TripsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Ajuster le solde (réconciliation manuelle) modal */}
+      <Modal open={adjustOpen} onClose={() => setAdjustOpen(false)} title="Ajuster le solde de la pocket">
+        {selectedTrip && tripStats && (() => {
+          const base = tripStats.budget - tripStats.spent; // solde calculé sans ajustement
+          const real = parseFloat(adjustInput);
+          const delta = isNaN(real) ? 0 : Math.round((real - base) * 100) / 100;
+          return (
+            <div className="space-y-3.5">
+              <div className="text-[11px] text-t-3 bg-bg-4 rounded-md p-2.5 space-y-1">
+                <div className="flex justify-between"><span>Budget (swaps)</span><span className="text-t-1 mono-value">{f$(tripStats.budget)} {selectedTrip.currency}</span></div>
+                <div className="flex justify-between"><span>− Dépensé</span><span className="text-t-1 mono-value">{f$(tripStats.spent)} {selectedTrip.currency}</span></div>
+                <div className="flex justify-between border-t border-border pt-1 mt-1"><span>= Solde calculé</span><span className="text-t-1 mono-value font-bold">{f$(base)} {selectedTrip.currency}</span></div>
+                {tripStats.adjustment !== 0 && (
+                  <div className="flex justify-between"><span>Ajustement actuel</span><span className={`mono-value ${tripStats.adjustment > 0 ? 'text-accent' : 'text-warning'}`}>{tripStats.adjustment > 0 ? '+' : ''}{f$(tripStats.adjustment)} {selectedTrip.currency}</span></div>
+                )}
+              </div>
+              <FormField label={`Solde réel de ta pocket (${selectedTrip.currency})`}>
+                <input className="fi mono-value" type="number" step="0.01" value={adjustInput} onChange={e => setAdjustInput(e.target.value)} autoFocus placeholder="Ex: 300" />
+              </FormField>
+              {!isNaN(real) && (
+                <div className="text-[11px] text-t-3 bg-bg-2 rounded-md p-2.5 flex justify-between">
+                  <span>Δ ajustement à appliquer</span>
+                  <span className={`mono-value font-bold ${delta > 0 ? 'text-accent' : delta < 0 ? 'text-warning' : 'text-t-1'}`}>{delta > 0 ? '+' : ''}{f$(delta)} {selectedTrip.currency}</span>
+                </div>
+              )}
+              <div className="flex gap-2.5 mt-5">
+                <button onClick={handleAdjust} disabled={isNaN(real)} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-40">Appliquer</button>
+                {tripStats.adjustment !== 0 && (
+                  <button onClick={clearAdjust} className="px-4 py-2 border border-warning/40 text-warning text-sm rounded-sm cursor-pointer hover:bg-warning/10">Effacer l&apos;ajustement</button>
+                )}
+                <button onClick={() => setAdjustOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }
@@ -676,11 +748,12 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function KpiBox({ label, value, color }: { label: string; value: string; color?: string }) {
+function KpiBox({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: React.ReactNode }) {
   return (
     <div className="bg-bg-2 border border-border rounded-lg p-3">
       <div className="text-[10px] text-t-3 uppercase tracking-wider font-semibold">{label}</div>
       <div className={`text-[16px] font-bold mt-1 mono-value tracking-tight ${color || 'text-t-1'}`}>{value}</div>
+      {sub && <div className="mt-0.5">{sub}</div>}
     </div>
   );
 }
