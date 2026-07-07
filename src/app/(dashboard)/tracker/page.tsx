@@ -194,18 +194,23 @@ export default function TrackerPage() {
           }
         }
 
-        // Crée la nouvelle extra row avec la tx
-        const newExtra = {
-          name: trimmedName,
-          cat: newPosteForm.cat,
-          aed: 0,
-          eur: 0,
-          txns: [txnEntry],
-        };
-        recalcExtra(newExtra);
-        extraActual = [...extraActual, newExtra];
-        // Shadow row dans extraBudget pour qu'il apparaisse aussi côté Budget Prévisionnel
-        extraBudget = [...extraBudget, { name: trimmedName, cat: newPosteForm.cat, aed: 0, eur: 0 }];
+        // Réutilise un extra du même nom s'il existe déjà ce mois (évite les doublons) ;
+        // sinon crée la nouvelle extra row avec la tx.
+        const dupIdx = extraActual.findIndex(r => (r.name || '').trim().toUpperCase() === trimmedName);
+        if (dupIdx >= 0) {
+          const row = { ...extraActual[dupIdx] };
+          row.txns = [...(row.txns || []), txnEntry];
+          recalcExtra(row);
+          extraActual[dupIdx] = row;
+        } else {
+          const newExtra = { name: trimmedName, cat: newPosteForm.cat, aed: 0, eur: 0, txns: [txnEntry] };
+          recalcExtra(newExtra);
+          extraActual = [...extraActual, newExtra];
+        }
+        // Shadow row dans extraBudget seulement s'il n'existe pas déjà
+        if (!extraBudget.some(b => (b.name || '').trim().toUpperCase() === trimmedName)) {
+          extraBudget = [...extraBudget, { name: trimmedName, cat: newPosteForm.cat, aed: 0, eur: 0 }];
+        }
 
         return { ...mo, actual: actualArr, extraActual, extraBudget };
       });

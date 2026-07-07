@@ -167,6 +167,29 @@ const defaultState: AppState = {
 };
 
 // Convert flat state to spaces array (backward compat)
+// Auto-heal : retire les extras (postes du mois) en DOUBLON et VIDES — lignes fantômes
+// laissées par d'anciennes corruptions / desyncs état↔space. Ne touche JAMAIS une ligne
+// qui a des transactions ou un montant. Appliqué au chargement (localStorage + login).
+function dedupEmptyExtras(months: Month[]): Month[] {
+  let anyChanged = false;
+  const out = months.map(mo => {
+    const ea = mo.extraActual;
+    if (!ea || ea.length < 2) return mo;
+    const seen = new Set<string>();
+    let moChanged = false;
+    const cleaned = ea.filter(r => {
+      const nm = (r.name || '').trim().toUpperCase();
+      const empty = !(r.txns && r.txns.length) && !r.aed && !r.eur;
+      if (seen.has(nm) && empty) { moChanged = true; return false; }
+      seen.add(nm);
+      return true;
+    });
+    if (moChanged) { anyChanged = true; return { ...mo, extraActual: cleaned }; }
+    return mo;
+  });
+  return anyChanged ? out : months;
+}
+
 function stateToSpaces(s: AppState): Space[] {
   if (s.spaces && s.spaces.length > 0) {
     // BUG FIX : le top-level state (postes/months/revenus/emmenagement) est la source de vérité
@@ -244,6 +267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!data.months) data.months = [];
         if (!data.revenus) data.revenus = { objectif: 5000, categories: [], months: {} };
         if (!data.emmenagement) data.emmenagement = [];
+        data.months = dedupEmptyExtras(data.months); // auto-heal des extras fantômes
         setStateRaw(data);
         setLiveRate(data.rate);
         setUserId(uid);
@@ -402,6 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!data.months) data.months = [];
         if (!data.revenus) data.revenus = { objectif: 5000, categories: [], months: {} };
         if (!data.emmenagement) data.emmenagement = [];
+        data.months = dedupEmptyExtras(data.months); // auto-heal des extras fantômes
         setState(data);
         localStorage.setItem('fdxb_state', JSON.stringify(data));
         // Set active space
