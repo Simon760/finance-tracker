@@ -439,7 +439,7 @@ export default function TripsPage() {
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Dépenses ({tripExpenses.length})</span>
-            <button onClick={() => { setEditing(null); setEForm({ ...eForm, monthId: selectedTrip.swap.monthId || curMonth || '', date: todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
+            <button onClick={() => { setEditing(null); setEForm({ ...eForm, monthId: selectedTrip.swap.monthId || curMonth || '', date: selDay || todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
           </div>
 
           {/* Calendrier mensuel des dépenses */}
