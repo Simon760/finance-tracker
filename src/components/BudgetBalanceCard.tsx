@@ -32,23 +32,25 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
   const projection = b.prevuBudgetEur + b.overrunTotal + b.nonPrevuActualEur;
   const spentSoFar = b.prevuActualEur + b.nonPrevuActualEur;
 
-  // Prévisions revenus & compte : le cash-flow réel inclut les charges fixes → on les
-  // réintègre ici (projection au max(budget, réel) ; reste à payer = budget − réel si >0).
+  // Récap fin de mois : le cash-flow réel inclut les charges fixes → on les réintègre
+  // ici (projection au max(budget, réel) ; reste à payer = budget − réel si >0).
+  // Seul ce récap les inclut — le reste de la carte reste hors fixes.
   let projFixedEur = 0;
   let remainingFixedEur = 0;
-  if (forecast) {
-    postes.forEach((p, i) => {
-      if (month.hiddenPostes?.includes(p.name)) return;
-      if (!isPosteFixed(p)) return;
-      const brow = month.budget?.[i] || { aed: 0, eur: null };
-      const arow = month.actual?.[i] || { aed: 0, eur: null };
-      const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
-      const actualEur = rowEur(arow, month.rate);
-      projFixedEur += Math.max(budgetEur, actualEur);
-      remainingFixedEur += Math.max(0, budgetEur - actualEur);
-    });
-  }
+  let spentFixedEur = 0;
+  postes.forEach((p, i) => {
+    if (month.hiddenPostes?.includes(p.name)) return;
+    if (!isPosteFixed(p)) return;
+    const brow = month.budget?.[i] || { aed: 0, eur: null };
+    const arow = month.actual?.[i] || { aed: 0, eur: null };
+    const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
+    const actualEur = rowEur(arow, month.rate);
+    projFixedEur += Math.max(budgetEur, actualEur);
+    remainingFixedEur += Math.max(0, budgetEur - actualEur);
+    spentFixedEur += actualEur;
+  });
   const projTotalEur = projection + projFixedEur;              // dépenses projetées, fixes incluses
+  const spentTotalEur = spentSoFar + spentFixedEur;            // déjà dépensé, fixes incluses
   const remainingEur = b.marginTotal + remainingFixedEur;      // reste à dépenser d'ici fin de mois
   const revDepConf = forecast ? forecast.earnEur - projTotalEur : 0;
   const revDepAll = forecast ? forecast.earnEur + forecast.previewEur - projTotalEur : 0;
@@ -120,45 +122,6 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
         </div>
       </div>
 
-      {/* Projection fin de mois */}
-      <div className="border-t border-border px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold">Projection fin de mois</div>
-            <div className="text-[10px] text-t-4 mt-0.5">budget prévu + dépassements + imprévus{b.excludedFixed.length > 0 ? ' · hors charges fixes' : ''}</div>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="text-[16px] font-bold mono-value text-t-1">≈ {f$(projection)} €</div>
-            <div className="text-[10px] text-t-4 mono-value">déjà dépensé {f$(spentSoFar)} €</div>
-          </div>
-        </div>
-        {forecast && (
-          <div className="mt-2.5 pt-2.5 border-t border-border/60 space-y-1">
-            <div className="flex justify-between gap-3 text-[11px]">
-              <span className="text-t-3">Revenus − dépenses <span className="text-t-4">(confirmés)</span></span>
-              <span className={`mono-value font-semibold shrink-0 ${revDepConf >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepConf)}</span>
-            </div>
-            {forecast.previewEur > 0 && (
-              <div className="flex justify-between gap-3 text-[11px]">
-                <span className="text-t-3">Revenus − dépenses <span className="text-t-4">(avec {f$(forecast.previewEur)} € en prévision)</span></span>
-                <span className={`mono-value font-semibold shrink-0 ${revDepAll >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepAll)}</span>
-              </div>
-            )}
-            <div className="flex justify-between gap-3 text-[11px]">
-              <span className="text-t-3">Solde compte fin de mois <span className="text-t-4">(confirmés)</span></span>
-              <span className={`mono-value font-semibold shrink-0 ${bankEndAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAed)} AED</span>
-            </div>
-            {forecast.previewEur > 0 && (
-              <div className="flex justify-between gap-3 text-[11px]">
-                <span className="text-t-3">Solde compte fin de mois <span className="text-t-4">(avec prévisions)</span></span>
-                <span className={`mono-value font-semibold shrink-0 ${bankEndAllAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAllAed)} AED</span>
-              </div>
-            )}
-            <div className="text-[9px] text-t-4 pt-0.5">Dépenses projetées totales (charges fixes incluses) : {f$(projTotalEur)} €</div>
-          </div>
-        )}
-      </div>
-
       {/* Détail collapsible */}
       {(b.overruns.length > 0 || b.margins.length > 0 || b.nonPrevu.length > 0) && (
         <>
@@ -220,6 +183,44 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
           )}
         </>
       )}
+
+      {/* Récap fin de mois — charges fixes INCLUSES (seule section de la carte à les compter) */}
+      <div className="border-t border-border-2 bg-bg-2/60 px-4 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[12px] uppercase tracking-wider text-t-2 font-bold">Récap fin de mois</div>
+            <div className="text-[11px] text-t-4 mt-0.5">budget prévu + dépassements + imprévus · charges fixes incluses</div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-[20px] font-bold mono-value text-t-1">≈ {f$(projTotalEur)} €</div>
+            <div className="text-[11px] text-t-4 mono-value">déjà dépensé {f$(spentTotalEur)} €</div>
+          </div>
+        </div>
+        {forecast && (
+          <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
+            <div className="flex justify-between gap-3 text-[13px]">
+              <span className="text-t-2">Revenus − dépenses <span className="text-t-4 text-[11px]">(confirmés)</span></span>
+              <span className={`mono-value font-bold shrink-0 ${revDepConf >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepConf)}</span>
+            </div>
+            {forecast.previewEur > 0 && (
+              <div className="flex justify-between gap-3 text-[13px]">
+                <span className="text-t-2">Revenus − dépenses <span className="text-t-4 text-[11px]">(avec {f$(forecast.previewEur)} € en prévision)</span></span>
+                <span className={`mono-value font-bold shrink-0 ${revDepAll >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepAll)}</span>
+              </div>
+            )}
+            <div className="flex justify-between gap-3 text-[13px]">
+              <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px]">(confirmés)</span></span>
+              <span className={`mono-value font-bold shrink-0 ${bankEndAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAed)} AED</span>
+            </div>
+            {forecast.previewEur > 0 && (
+              <div className="flex justify-between gap-3 text-[13px]">
+                <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px]">(avec prévisions)</span></span>
+                <span className={`mono-value font-bold shrink-0 ${bankEndAllAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAllAed)} AED</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
