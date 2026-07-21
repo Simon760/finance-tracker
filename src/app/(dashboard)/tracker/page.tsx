@@ -1071,7 +1071,7 @@ export default function TrackerPage() {
           </TableSection>
 
           {/* Bilan vs prévisionnel */}
-          <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} />
+          <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} forecast={{ earnEur, previewEur, prevCompteAed: prevCompte }} />
 
           {/* Stats du mois — à retravailler */}
           {/* <MonthStatsCard month={m} postes={state.postes} /> */}

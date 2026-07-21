@@ -457,7 +457,7 @@ export default function MobileTracker() {
 
       {/* Bilan vs prévisionnel */}
       <div className="mt-5">
-        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact />
+        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact forecast={{ earnEur, previewEur, prevCompteAed: prevCompte }} />
       </div>
 
       {/* Stats du mois — à retravailler */}

@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { Month, Poste } from '@/lib/types';
-import { f$ } from '@/lib/utils';
-import { computeBudgetBalance, budgetBalanceMessage } from '@/lib/budgetBalance';
+import { f$, f0, toEur, toAed, rowEur } from '@/lib/utils';
+import { computeBudgetBalance, budgetBalanceMessage, isPosteFixed } from '@/lib/budgetBalance';
 import { Target, ChevronDown } from 'lucide-react';
 
 interface Props {
@@ -11,14 +11,49 @@ interface Props {
   postes: Poste[];
   liveRate: number;
   compact?: boolean; // mobile
+  /** Données revenus/compte du mois (fournies par le parent) pour les prévisions fin de mois. */
+  forecast?: {
+    earnEur: number;       // revenus confirmés (EUR)
+    previewEur: number;    // revenus en prévision (EUR, status='preview')
+    prevCompteAed: number; // prévisionnel compte actuel (AED) = soldeStart + earnAed − aABank + adjustment
+  };
 }
 
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${f$(n)} €`;
 
-export default function BudgetBalanceCard({ month, postes, liveRate }: Props) {
+export default function BudgetBalanceCard({ month, postes, liveRate, forecast }: Props) {
   const b = computeBudgetBalance(month, postes, liveRate);
   const msg = budgetBalanceMessage(b);
   const [open, setOpen] = useState(false);
+
+  // Projection fin de mois : chaque poste prévu finit à son budget (les marges se
+  // consomment), les dépassements restent acquis, les imprévus s'ajoutent.
+  // = budget prévu + dépassements + non-budgétés (même périmètre que la carte : hors fixes)
+  const projection = b.prevuBudgetEur + b.overrunTotal + b.nonPrevuActualEur;
+  const spentSoFar = b.prevuActualEur + b.nonPrevuActualEur;
+
+  // Prévisions revenus & compte : le cash-flow réel inclut les charges fixes → on les
+  // réintègre ici (projection au max(budget, réel) ; reste à payer = budget − réel si >0).
+  let projFixedEur = 0;
+  let remainingFixedEur = 0;
+  if (forecast) {
+    postes.forEach((p, i) => {
+      if (month.hiddenPostes?.includes(p.name)) return;
+      if (!isPosteFixed(p)) return;
+      const brow = month.budget?.[i] || { aed: 0, eur: null };
+      const arow = month.actual?.[i] || { aed: 0, eur: null };
+      const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
+      const actualEur = rowEur(arow, month.rate);
+      projFixedEur += Math.max(budgetEur, actualEur);
+      remainingFixedEur += Math.max(0, budgetEur - actualEur);
+    });
+  }
+  const projTotalEur = projection + projFixedEur;              // dépenses projetées, fixes incluses
+  const remainingEur = b.marginTotal + remainingFixedEur;      // reste à dépenser d'ici fin de mois
+  const revDepConf = forecast ? forecast.earnEur - projTotalEur : 0;
+  const revDepAll = forecast ? forecast.earnEur + forecast.previewEur - projTotalEur : 0;
+  const bankEndAed = forecast ? forecast.prevCompteAed - toAed(remainingEur, liveRate) : 0;
+  const bankEndAllAed = forecast ? bankEndAed + toAed(forecast.previewEur, liveRate) : 0;
 
   const toneColor = msg.tone === 'good' ? 'text-accent' : msg.tone === 'warn' ? 'text-warning' : 'text-danger';
   const toneBorder = msg.tone === 'good' ? 'border-accent/30' : msg.tone === 'warn' ? 'border-warning/30' : 'border-danger/30';
@@ -83,6 +118,45 @@ export default function BudgetBalanceCard({ month, postes, liveRate }: Props) {
             <div className="text-[13px] text-t-4 mt-1">Aucun imprévu ce mois</div>
           )}
         </div>
+      </div>
+
+      {/* Projection fin de mois */}
+      <div className="border-t border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold">Projection fin de mois</div>
+            <div className="text-[10px] text-t-4 mt-0.5">budget prévu + dépassements + imprévus{b.excludedFixed.length > 0 ? ' · hors charges fixes' : ''}</div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-[16px] font-bold mono-value text-t-1">≈ {f$(projection)} €</div>
+            <div className="text-[10px] text-t-4 mono-value">déjà dépensé {f$(spentSoFar)} €</div>
+          </div>
+        </div>
+        {forecast && (
+          <div className="mt-2.5 pt-2.5 border-t border-border/60 space-y-1">
+            <div className="flex justify-between gap-3 text-[11px]">
+              <span className="text-t-3">Revenus − dépenses <span className="text-t-4">(confirmés)</span></span>
+              <span className={`mono-value font-semibold shrink-0 ${revDepConf >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepConf)}</span>
+            </div>
+            {forecast.previewEur > 0 && (
+              <div className="flex justify-between gap-3 text-[11px]">
+                <span className="text-t-3">Revenus − dépenses <span className="text-t-4">(avec {f$(forecast.previewEur)} € en prévision)</span></span>
+                <span className={`mono-value font-semibold shrink-0 ${revDepAll >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepAll)}</span>
+              </div>
+            )}
+            <div className="flex justify-between gap-3 text-[11px]">
+              <span className="text-t-3">Solde compte fin de mois <span className="text-t-4">(confirmés)</span></span>
+              <span className={`mono-value font-semibold shrink-0 ${bankEndAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAed)} AED</span>
+            </div>
+            {forecast.previewEur > 0 && (
+              <div className="flex justify-between gap-3 text-[11px]">
+                <span className="text-t-3">Solde compte fin de mois <span className="text-t-4">(avec prévisions)</span></span>
+                <span className={`mono-value font-semibold shrink-0 ${bankEndAllAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAllAed)} AED</span>
+              </div>
+            )}
+            <div className="text-[9px] text-t-4 pt-0.5">Dépenses projetées totales (charges fixes incluses) : {f$(projTotalEur)} €</div>
+          </div>
+        )}
       </div>
 
       {/* Détail collapsible */}
