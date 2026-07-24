@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import MobileRevenus from '@/components/mobile/MobileRevenus';
 import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
-import { f$ } from '@/lib/utils';
+import { f$, f0, fetchRate } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
@@ -93,6 +93,12 @@ export default function RevenusPage() {
   const [form, setForm] = useState<RevenuEntry>({ date: '', client: '', cat: '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
   const [formMonth, setFormMonth] = useState('');
 
+  // Taux EUR→USD (même source que EUR/AED : TwelveData prioritaire + fallbacks)
+  const [usdRate, setUsdRate] = useState(1.08);
+  useEffect(() => { fetchRate('USD').then(r => { if (r > 0) setUsdRate(r); }).catch(() => {}); }, []);
+  // 1 EUR = rateFor(devise) unités de cette devise
+  const rateFor = (c?: string) => (c === 'USD' ? usdRate : c === 'AED' ? liveRate : 1);
+
   const orderedMonths = useMemo(() => {
     const existing = Object.keys(rev.months || {});
     return MOIS_LIST.filter(m => existing.includes(m));
@@ -120,7 +126,7 @@ export default function RevenusPage() {
   // Actions
   const openAdd = (month?: string) => {
     const today = new Date().toISOString().split('T')[0];
-    setForm({ date: today, client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
+    setForm({ date: today, client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed', currency: 'EUR' });
     setFormMonth(month || orderedMonths[orderedMonths.length - 1] || '');
     setEditIdx(null);
     setAddOpen(true);
@@ -128,7 +134,14 @@ export default function RevenusPage() {
 
   const openEdit = (month: string, idx: number) => {
     const e = rev.months[month][idx];
-    setForm({ ...e });
+    // Pré-remplit dans la devise d'origine (orig*) pour éviter toute double conversion :
+    // le form contient les montants dans form.currency, saveEntry reconvertira en EUR
+    // avec le même origRate → sauvegarder sans rien changer est neutre.
+    if (e.currency && e.currency !== 'EUR' && e.origAmount != null) {
+      setForm({ ...e, cashed: e.origAmount, contracted: e.origContracted ?? e.contracted });
+    } else {
+      setForm({ ...e, currency: 'EUR' });
+    }
     setFormMonth(month);
     setEditIdx({ month, idx });
     setAddOpen(true);
@@ -137,20 +150,34 @@ export default function RevenusPage() {
   const saveEntry = () => {
     const monthKey = formMonth.trim().toUpperCase();
     if (!monthKey) return;
+    // Les montants du form sont dans form.currency → conversion vers l'EUR stocké.
+    // cashed/contracted restent TOUJOURS en EUR en base (rien ne change pour l'existant).
+    const cur = form.currency || 'EUR';
+    const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+    const entry: RevenuEntry = {
+      ...form,
+      currency: cur,
+      contracted: Math.round(((form.contracted || 0) / perEur) * 100) / 100,
+      cashed: Math.round(((form.cashed || 0) / perEur) * 100) / 100,
+      origAmount: cur !== 'EUR' ? (form.cashed || 0) : undefined,
+      origContracted: cur !== 'EUR' ? (form.contracted || 0) : undefined,
+      origRate: cur !== 'EUR' ? perEur : undefined,
+      rate: form.rate || liveRate,
+    };
     const months = { ...(rev.months || {}) };
     if (!months[monthKey]) months[monthKey] = [];
     if (editIdx) {
       months[editIdx.month] = [...months[editIdx.month]];
-      months[editIdx.month][editIdx.idx] = { ...form };
+      months[editIdx.month][editIdx.idx] = entry;
     } else {
-      months[monthKey] = [...months[monthKey], { ...form }];
+      months[monthKey] = [...months[monthKey], entry];
     }
     setState({ ...state, revenus: { ...rev, months } });
     setAddOpen(false);
     save();
     const action = editIdx ? 'revenu.update' : 'revenu.add';
     const verb = editIdx ? 'Modif' : 'Ajout';
-    logChange?.(action, `${verb} revenu ${form.client || '—'} · ${f$(form.cashed || 0)} € (${editIdx ? editIdx.month : monthKey})`);
+    logChange?.(action, `${verb} revenu ${entry.client || '—'} · ${f$(entry.cashed || 0)} € (${editIdx ? editIdx.month : monthKey})`);
   };
 
   const deleteEntry = (month: string, idx: number) => {
@@ -310,7 +337,12 @@ export default function RevenusPage() {
                       </td>
                       <td className="px-4 py-2.5"><CatPill cat={e.cat} categories={categories} /></td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs mono-value text-t-2">{f$(e.contracted || 0)} €</td>
-                      <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold mono-value ${cashedColor}`}>{f$(e.cashed || 0)} €</td>
+                      <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold mono-value ${cashedColor}`}>
+                        {f$(e.cashed || 0)} €
+                        {e.currency && e.currency !== 'EUR' && e.origAmount != null && (
+                          <div className="text-[10px] text-t-4 font-normal">{f$(e.origAmount)} {e.currency}</div>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-[12px] text-t-3 truncate max-w-[180px]">{e.comment || '—'}</td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex gap-1 justify-end">
@@ -816,14 +848,43 @@ export default function RevenusPage() {
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </FormField>
+          <FormField label="Devise reçue">
+            <select
+              className="fi"
+              value={form.currency || 'EUR'}
+              onChange={e => {
+                const c = e.target.value as 'EUR' | 'AED' | 'USD';
+                // origRate = taux devise/EUR figé au moment du choix (réutilisé à la sauvegarde)
+                setForm({ ...form, currency: c, origRate: c === 'EUR' ? undefined : rateFor(c) });
+              }}
+            >
+              <option value="EUR">EUR — Euro</option>
+              <option value="AED">AED — Dirham</option>
+              <option value="USD">USD — Dollar</option>
+            </select>
+          </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Contracté (EUR)">
+            <FormField label={`Contracté (${form.currency || 'EUR'})`}>
               <input className="fi" type="number" value={form.contracted || ''} onChange={e => setForm({ ...form, contracted: parseFloat(e.target.value) || 0 })} step="0.01" />
             </FormField>
-            <FormField label="Encaissé (EUR)">
+            <FormField label={`Encaissé (${form.currency || 'EUR'})`}>
               <input className="fi" type="number" value={form.cashed || ''} onChange={e => setForm({ ...form, cashed: parseFloat(e.target.value) || 0 })} step="0.01" />
             </FormField>
           </div>
+          {(form.cashed || 0) > 0 && (() => {
+            const cur = form.currency || 'EUR';
+            const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+            const eur = (form.cashed || 0) / perEur;
+            const aed = eur * (form.rate || liveRate);
+            return (
+              <div className="text-[11px] text-t-3 bg-bg-2 rounded-md p-2.5 flex items-center justify-between gap-3">
+                <span>Équivalent{cur !== 'EUR' ? ` · taux EUR/${cur} ${perEur.toFixed(4)}` : ''}</span>
+                <span className="text-t-1 mono-value font-semibold">
+                  {cur !== 'EUR' && <>{f$(eur)} € · </>}{f0(aed)} AED
+                </span>
+              </div>
+            );
+          })()}
           <FormField label="Taux EUR/AED">
             <input className="fi" type="number" value={form.rate} onChange={e => setForm({ ...form, rate: parseFloat(e.target.value) || 0 })} step="0.0001" />
           </FormField>

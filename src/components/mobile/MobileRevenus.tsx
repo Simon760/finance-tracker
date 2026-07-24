@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$ } from '@/lib/utils';
+import { f$, f0, fetchRate } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -58,6 +58,12 @@ export default function MobileRevenus() {
   const [formMonth, setFormMonth] = useState('');
   const [showClientSugg, setShowClientSugg] = useState(false);
 
+  // Taux EUR→USD (même source que EUR/AED : TwelveData prioritaire + fallbacks)
+  const [usdRate, setUsdRate] = useState(1.08);
+  useEffect(() => { fetchRate('USD').then(r => { if (r > 0) setUsdRate(r); }).catch(() => {}); }, []);
+  // 1 EUR = rateFor(devise) unités de cette devise
+  const rateFor = (c?: string) => (c === 'USD' ? usdRate : c === 'AED' ? liveRate : 1);
+
   // Month picker sheet
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
@@ -68,7 +74,7 @@ export default function MobileRevenus() {
   }, [clientSuggestions, form.client]);
 
   const openAdd = () => {
-    setForm({ date: todayStr(), client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
+    setForm({ date: todayStr(), client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed', currency: 'EUR' });
     setFormMonth(effectiveTab || orderedMonths[orderedMonths.length - 1] || '');
     setEditIdx(null);
     setShowClientSugg(false);
@@ -77,7 +83,13 @@ export default function MobileRevenus() {
 
   const openEdit = (month: string, idx: number) => {
     const e = rev.months[month][idx];
-    setForm({ ...e });
+    // Pré-remplit dans la devise d'origine (orig*) — saveEntry reconvertira en EUR
+    // avec le même origRate → sauvegarder sans rien changer est neutre.
+    if (e.currency && e.currency !== 'EUR' && e.origAmount != null) {
+      setForm({ ...e, cashed: e.origAmount, contracted: e.origContracted ?? e.contracted });
+    } else {
+      setForm({ ...e, currency: 'EUR' });
+    }
     setFormMonth(month);
     setEditIdx({ month, idx });
     setShowClientSugg(false);
@@ -87,20 +99,33 @@ export default function MobileRevenus() {
   const saveEntry = () => {
     const monthKey = formMonth.trim().toUpperCase();
     if (!monthKey) return;
+    // Les montants du form sont dans form.currency → conversion vers l'EUR stocké.
+    const cur = form.currency || 'EUR';
+    const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+    const entry: RevenuEntry = {
+      ...form,
+      currency: cur,
+      contracted: Math.round(((form.contracted || 0) / perEur) * 100) / 100,
+      cashed: Math.round(((form.cashed || 0) / perEur) * 100) / 100,
+      origAmount: cur !== 'EUR' ? (form.cashed || 0) : undefined,
+      origContracted: cur !== 'EUR' ? (form.contracted || 0) : undefined,
+      origRate: cur !== 'EUR' ? perEur : undefined,
+      rate: form.rate || liveRate,
+    };
     const months = { ...(rev.months || {}) };
     if (!months[monthKey]) months[monthKey] = [];
     if (editIdx) {
       months[editIdx.month] = [...months[editIdx.month]];
-      months[editIdx.month][editIdx.idx] = { ...form };
+      months[editIdx.month][editIdx.idx] = entry;
     } else {
-      months[monthKey] = [...months[monthKey], { ...form }];
+      months[monthKey] = [...months[monthKey], entry];
     }
     setState({ ...state, revenus: { ...rev, months } });
     setSheetOpen(false);
     save();
     const action = editIdx ? 'revenu.update' : 'revenu.add';
     const verb = editIdx ? 'Modif' : 'Ajout';
-    logChange?.(action, `${verb} revenu ${form.client || '—'} · ${f$(form.cashed || 0)} € (${editIdx ? editIdx.month : monthKey})`);
+    logChange?.(action, `${verb} revenu ${entry.client || '—'} · ${f$(entry.cashed || 0)} € (${editIdx ? editIdx.month : monthKey})`);
   };
 
   const deleteEntry = (month: string, idx: number) => {
@@ -157,6 +182,7 @@ export default function MobileRevenus() {
           filteredClientSugg={filteredClientSugg}
           showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
           onSave={saveEntry} isEdit={!!editIdx}
+          rateFor={rateFor} liveRate={liveRate}
         />
       </div>
     );
@@ -237,6 +263,9 @@ export default function MobileRevenus() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className={`text-[15px] font-bold mono-value ${status === 'preview' ? 'text-info' : status === 'pending' ? 'text-warning' : 'text-accent'}`}>{f$(e.cashed || 0)} €</div>
+                    {e.currency && e.currency !== 'EUR' && e.origAmount != null && (
+                      <div className="text-[10px] text-t-4 mono-value">{f$(e.origAmount)} {e.currency}</div>
+                    )}
                     {(e.contracted || 0) !== (e.cashed || 0) && (
                       <div className="text-[10px] text-t-4 mono-value">contrat. {f$(e.contracted || 0)} €</div>
                     )}
@@ -301,6 +330,7 @@ export default function MobileRevenus() {
         filteredClientSugg={filteredClientSugg}
         showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
         onSave={saveEntry} isEdit={!!editIdx}
+        rateFor={rateFor} liveRate={liveRate}
       />
     </div>
   );
@@ -318,7 +348,7 @@ function KpiCardMobile({ label, value, sub, color }: { label: string; value: str
 
 function AddEditSheet({
   open, onClose, form, setForm, formMonth, setFormMonth, orderedMonths, categories,
-  filteredClientSugg, showClientSugg, setShowClientSugg, onSave, isEdit,
+  filteredClientSugg, showClientSugg, setShowClientSugg, onSave, isEdit, rateFor, liveRate,
 }: {
   open: boolean; onClose: () => void;
   form: RevenuEntry; setForm: (f: RevenuEntry) => void;
@@ -327,6 +357,7 @@ function AddEditSheet({
   filteredClientSugg: { name: string; count: number }[];
   showClientSugg: boolean; setShowClientSugg: (v: boolean) => void;
   onSave: () => void; isEdit: boolean;
+  rateFor: (c?: string) => number; liveRate: number;
 }) {
   // Allow creating a new month inline
   const allMonths = useMemo(() => {
@@ -403,16 +434,46 @@ function AddEditSheet({
           </div>
         </div>
 
+        <div>
+          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Devise reçue</label>
+          <div className="flex bg-bg-4 rounded-lg p-1">
+            {(['EUR', 'AED', 'USD'] as const).map(c => (
+              <button
+                key={c}
+                onClick={() => setForm({ ...form, currency: c, origRate: c === 'EUR' ? undefined : rateFor(c) })}
+                className={`flex-1 py-2 text-[11px] font-semibold rounded-md transition-all ${(form.currency || 'EUR') === c ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Contracté (€)</label>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Contracté ({form.currency || 'EUR'})</label>
             <input className="fi !h-11 mono-value" type="number" inputMode="decimal" value={form.contracted || ''} onChange={e => setForm({ ...form, contracted: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="0" />
           </div>
           <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Encaissé (€)</label>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Encaissé ({form.currency || 'EUR'})</label>
             <input className="fi !h-11 mono-value" type="number" inputMode="decimal" value={form.cashed || ''} onChange={e => setForm({ ...form, cashed: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="0" />
           </div>
         </div>
+
+        {(form.cashed || 0) > 0 && (() => {
+          const cur = form.currency || 'EUR';
+          const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+          const eur = (form.cashed || 0) / perEur;
+          const aed = eur * (form.rate || liveRate);
+          return (
+            <div className="text-[11px] text-t-3 bg-bg-2 rounded-lg p-2.5 flex items-center justify-between gap-3">
+              <span>Équivalent{cur !== 'EUR' ? ` · EUR/${cur} ${perEur.toFixed(4)}` : ''}</span>
+              <span className="text-t-1 mono-value font-semibold">
+                {cur !== 'EUR' && <>{f$(eur)} € · </>}{f0(aed)} AED
+              </span>
+            </div>
+          );
+        })()}
 
         <div>
           <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Commentaire (optionnel)</label>

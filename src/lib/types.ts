@@ -58,11 +58,23 @@ export interface RevenuEntry {
   date: string;
   client: string;
   cat: string;
+  /** Toujours en EUR (converti à la saisie si devise ≠ EUR) */
   contracted: number;
+  /** Toujours en EUR (converti à la saisie si devise ≠ EUR) */
   cashed: number;
   comment: string;
+  /** Taux EUR→AED à la saisie — sert à calculer l'AED ajouté au compte (earnAed) */
   rate: number;
   status: 'preview' | 'confirmed' | 'pending';
+  /** Devise dans laquelle le revenu a été reçu. Absent = EUR (entrées historiques). */
+  currency?: 'EUR' | 'AED' | 'USD';
+  /** Montant encaissé dans la devise d'origine (affiché en petit dans le tableau). */
+  origAmount?: number;
+  /** Montant contracté dans la devise d'origine (pour ré-éditer sans dérive). */
+  origContracted?: number;
+  /** Taux devise/EUR utilisé à la saisie (ex: 1.0842 USD par EUR) — l'édition réutilise
+   * ce taux pour que sauvegarder sans rien changer ne modifie pas les montants EUR. */
+  origRate?: number;
 }
 
 export interface RevenuState {
