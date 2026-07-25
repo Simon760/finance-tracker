@@ -372,13 +372,15 @@ export default function RevenusPage() {
                       </td>
                       <td className="px-4 py-2.5"><CatPill cat={e.cat} categories={categories} /></td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs mono-value text-t-2">{f$(e.contracted || 0)} €</td>
-                      <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold mono-value ${cashedColor}`}>
-                        {f$(e.cashed || 0)} €
-                        {e.currency && e.currency !== 'EUR' && e.origAmount != null && (
-                          <div className="text-[10px] text-t-4 font-normal">{f$(e.origAmount)} {e.currency}</div>
-                        )}
+                      <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold mono-value ${cashedColor}`}>{f$(e.cashed || 0)} €</td>
+                      <td className="px-4 py-2.5 text-[12px] text-t-3 truncate max-w-[180px]">
+                        {e.currency && e.currency !== 'EUR' && e.origAmount != null ? (
+                          <>
+                            <span className="mono-value">{f$(e.origAmount)} {e.currency}</span>
+                            {e.comment ? <span className="text-t-4"> · {e.comment}</span> : null}
+                          </>
+                        ) : (e.comment || '—')}
                       </td>
-                      <td className="px-4 py-2.5 text-[12px] text-t-3 truncate max-w-[180px]">{e.comment || '—'}</td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex gap-1 justify-end">
                           {!isConfirmed && (
