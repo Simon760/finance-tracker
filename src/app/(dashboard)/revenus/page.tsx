@@ -99,6 +99,30 @@ export default function RevenusPage() {
   // 1 EUR = rateFor(devise) unités de cette devise
   const rateFor = (c?: string) => (c === 'USD' ? usdRate : c === 'AED' ? liveRate : 1);
 
+  // Taux USD→AED officiel (peg) — défaut du champ, l'utilisateur met son taux de swap réel
+  const USD_AED_PEG = 3.6725;
+
+  // Le champ Taux EUR/AED suit le taux live tant qu'il n'a pas été modifié à la main
+  const [rateTouched, setRateTouched] = useState(false);
+  useEffect(() => {
+    if (addOpen && !rateTouched) setForm(f => ({ ...f, rate: liveRate }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRate, addOpen, rateTouched]);
+
+  // Devise du form → 1 EUR = perEurOf(f) unités ; AED crédité au compte = aedOf(f)
+  const perEurOf = (f: RevenuEntry) => {
+    const c = f.currency || 'EUR';
+    if (c === 'EUR') return 1;
+    if (c === 'AED') return f.rate || liveRate;          // le champ EUR/AED fait foi
+    return f.origRate || usdRate;                        // USD : EUR/USD (officiel)
+  };
+  const aedOf = (f: RevenuEntry, amount: number) => {
+    const c = f.currency || 'EUR';
+    if (c === 'EUR') return amount * (f.rate || liveRate);
+    if (c === 'AED') return amount;                      // déjà en AED
+    return amount * (f.origToAed || USD_AED_PEG);        // USD : ton taux de swap USD→AED
+  };
+
   const orderedMonths = useMemo(() => {
     const existing = Object.keys(rev.months || {});
     return MOIS_LIST.filter(m => existing.includes(m));
@@ -129,6 +153,7 @@ export default function RevenusPage() {
     setForm({ date: today, client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed', currency: 'EUR' });
     setFormMonth(month || orderedMonths[orderedMonths.length - 1] || '');
     setEditIdx(null);
+    setRateTouched(false); // le taux suit le live jusqu'à modification manuelle
     setAddOpen(true);
   };
 
@@ -144,6 +169,7 @@ export default function RevenusPage() {
     }
     setFormMonth(month);
     setEditIdx({ month, idx });
+    setRateTouched(true); // édition : on garde le taux historique (bouton Live pour re-sync)
     setAddOpen(true);
   };
 
@@ -152,17 +178,23 @@ export default function RevenusPage() {
     if (!monthKey) return;
     // Les montants du form sont dans form.currency → conversion vers l'EUR stocké.
     // cashed/contracted restent TOUJOURS en EUR en base (rien ne change pour l'existant).
+    // rate stocké = AED crédité ÷ EUR encaissé (dérivé), pour que cashed×rate donne
+    // exactement l'AED voulu (USD : montant × taux de swap USD/AED saisi).
     const cur = form.currency || 'EUR';
-    const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+    const perEur = perEurOf(form);
+    const cashedEur = Math.round(((form.cashed || 0) / perEur) * 100) / 100;
+    const aed = aedOf(form, form.cashed || 0);
+    const effRate = cashedEur > 0 ? Math.round((aed / cashedEur) * 100000) / 100000 : (form.rate || liveRate);
     const entry: RevenuEntry = {
       ...form,
       currency: cur,
       contracted: Math.round(((form.contracted || 0) / perEur) * 100) / 100,
-      cashed: Math.round(((form.cashed || 0) / perEur) * 100) / 100,
+      cashed: cashedEur,
       origAmount: cur !== 'EUR' ? (form.cashed || 0) : undefined,
       origContracted: cur !== 'EUR' ? (form.contracted || 0) : undefined,
       origRate: cur !== 'EUR' ? perEur : undefined,
-      rate: form.rate || liveRate,
+      origToAed: cur === 'USD' ? (form.origToAed || USD_AED_PEG) : undefined,
+      rate: effRate,
     };
     const months = { ...(rev.months || {}) };
     if (!months[monthKey]) months[monthKey] = [];
@@ -195,7 +227,10 @@ export default function RevenusPage() {
     const months = { ...(rev.months || {}) };
     months[month] = [...months[month]];
     const before = months[month][idx];
-    months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: liveRate };
+    // Rate rafraîchi au live UNIQUEMENT pour les entrées EUR — pour AED/USD, rate est
+    // dérivé du taux de swap saisi et l'écraser fausserait l'AED crédité au compte.
+    const isEur = !before?.currency || before.currency === 'EUR';
+    months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: isEur ? liveRate : (before?.rate || liveRate) };
     setState({ ...state, revenus: { ...rev, months } });
     save();
     logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(before?.cashed || 0)} € (${month})`);
@@ -855,7 +890,12 @@ export default function RevenusPage() {
               onChange={e => {
                 const c = e.target.value as 'EUR' | 'AED' | 'USD';
                 // origRate = taux devise/EUR figé au moment du choix (réutilisé à la sauvegarde)
-                setForm({ ...form, currency: c, origRate: c === 'EUR' ? undefined : rateFor(c) });
+                setForm({
+                  ...form,
+                  currency: c,
+                  origRate: c === 'EUR' ? undefined : rateFor(c),
+                  origToAed: c === 'USD' ? (form.origToAed ?? USD_AED_PEG) : undefined,
+                });
               }}
             >
               <option value="EUR">EUR — Euro</option>
@@ -873,9 +913,9 @@ export default function RevenusPage() {
           </div>
           {(form.cashed || 0) > 0 && (() => {
             const cur = form.currency || 'EUR';
-            const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+            const perEur = perEurOf(form);
             const eur = (form.cashed || 0) / perEur;
-            const aed = eur * (form.rate || liveRate);
+            const aed = aedOf(form, form.cashed || 0);
             return (
               <div className="text-[11px] text-t-3 bg-bg-2 rounded-md p-2.5 flex items-center justify-between gap-3">
                 <span>Équivalent{cur !== 'EUR' ? ` · taux EUR/${cur} ${perEur.toFixed(4)}` : ''}</span>
@@ -885,9 +925,38 @@ export default function RevenusPage() {
               </div>
             );
           })()}
-          <FormField label="Taux EUR/AED">
-            <input className="fi" type="number" value={form.rate} onChange={e => setForm({ ...form, rate: parseFloat(e.target.value) || 0 })} step="0.0001" />
-          </FormField>
+          {(form.currency || 'EUR') === 'USD' ? (
+            <FormField label="Taux USD/AED (ton taux de swap)">
+              <input
+                className="fi"
+                type="number"
+                value={form.origToAed ?? USD_AED_PEG}
+                onChange={e => setForm({ ...form, origToAed: parseFloat(e.target.value) || 0 })}
+                step="0.0001"
+                placeholder="3.6725"
+              />
+            </FormField>
+          ) : (
+            <FormField label="Taux EUR/AED">
+              <div className="flex gap-2">
+                <input
+                  className="fi flex-1"
+                  type="number"
+                  value={form.rate}
+                  onChange={e => { setForm({ ...form, rate: parseFloat(e.target.value) || 0 }); setRateTouched(true); }}
+                  step="0.0001"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setForm({ ...form, rate: liveRate }); setRateTouched(false); }}
+                  className={`text-[10px] px-2.5 rounded-md border cursor-pointer transition-colors shrink-0 ${!rateTouched ? 'text-accent bg-accent/10 border-accent/30' : 'text-t-3 bg-bg-2 border-border hover:text-t-1'}`}
+                  title={`Synchroniser avec le taux live (${liveRate.toFixed(4)})`}
+                >
+                  {rateTouched ? '↻ Live' : '● Live'}
+                </button>
+              </div>
+            </FormField>
+          )}
           <FormField label="Statut">
             <select className="fi" value={form.status} onChange={e => setForm({ ...form, status: e.target.value as RevenuEntry['status'] })}>
               <option value="confirmed">Confirmé</option>

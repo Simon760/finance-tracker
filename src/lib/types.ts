@@ -75,6 +75,9 @@ export interface RevenuEntry {
   /** Taux devise/EUR utilisé à la saisie (ex: 1.0842 USD par EUR) — l'édition réutilise
    * ce taux pour que sauvegarder sans rien changer ne modifie pas les montants EUR. */
   origRate?: number;
+  /** USD uniquement : taux USD→AED effectif du swap (défaut 3.6725, modifiable).
+   * C'est LUI qui détermine l'AED crédité au compte (rate est dérivé de lui). */
+  origToAed?: number;
 }
 
 export interface RevenuState {

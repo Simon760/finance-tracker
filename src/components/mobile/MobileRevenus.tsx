@@ -64,6 +64,30 @@ export default function MobileRevenus() {
   // 1 EUR = rateFor(devise) unités de cette devise
   const rateFor = (c?: string) => (c === 'USD' ? usdRate : c === 'AED' ? liveRate : 1);
 
+  // Taux USD→AED officiel (peg) — défaut du champ, l'utilisateur met son taux de swap réel
+  const USD_AED_PEG = 3.6725;
+
+  // Le champ Taux EUR/AED suit le taux live tant qu'il n'a pas été modifié à la main
+  const [rateTouched, setRateTouched] = useState(false);
+  useEffect(() => {
+    if (sheetOpen && !rateTouched) setForm(f => ({ ...f, rate: liveRate }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRate, sheetOpen, rateTouched]);
+
+  // Devise du form → 1 EUR = perEurOf(f) unités ; AED crédité au compte = aedOf(f)
+  const perEurOf = (f: RevenuEntry) => {
+    const c = f.currency || 'EUR';
+    if (c === 'EUR') return 1;
+    if (c === 'AED') return f.rate || liveRate;
+    return f.origRate || usdRate;
+  };
+  const aedOf = (f: RevenuEntry, amount: number) => {
+    const c = f.currency || 'EUR';
+    if (c === 'EUR') return amount * (f.rate || liveRate);
+    if (c === 'AED') return amount;
+    return amount * (f.origToAed || USD_AED_PEG);
+  };
+
   // Month picker sheet
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
@@ -78,6 +102,7 @@ export default function MobileRevenus() {
     setFormMonth(effectiveTab || orderedMonths[orderedMonths.length - 1] || '');
     setEditIdx(null);
     setShowClientSugg(false);
+    setRateTouched(false); // le taux suit le live jusqu'à modification manuelle
     setSheetOpen(true);
   };
 
@@ -93,6 +118,7 @@ export default function MobileRevenus() {
     setFormMonth(month);
     setEditIdx({ month, idx });
     setShowClientSugg(false);
+    setRateTouched(true); // édition : taux historique conservé (bouton Live pour re-sync)
     setSheetOpen(true);
   };
 
@@ -100,17 +126,22 @@ export default function MobileRevenus() {
     const monthKey = formMonth.trim().toUpperCase();
     if (!monthKey) return;
     // Les montants du form sont dans form.currency → conversion vers l'EUR stocké.
+    // rate stocké = AED crédité ÷ EUR encaissé (dérivé) — USD : montant × taux de swap.
     const cur = form.currency || 'EUR';
-    const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+    const perEur = perEurOf(form);
+    const cashedEur = Math.round(((form.cashed || 0) / perEur) * 100) / 100;
+    const aed = aedOf(form, form.cashed || 0);
+    const effRate = cashedEur > 0 ? Math.round((aed / cashedEur) * 100000) / 100000 : (form.rate || liveRate);
     const entry: RevenuEntry = {
       ...form,
       currency: cur,
       contracted: Math.round(((form.contracted || 0) / perEur) * 100) / 100,
-      cashed: Math.round(((form.cashed || 0) / perEur) * 100) / 100,
+      cashed: cashedEur,
       origAmount: cur !== 'EUR' ? (form.cashed || 0) : undefined,
       origContracted: cur !== 'EUR' ? (form.contracted || 0) : undefined,
       origRate: cur !== 'EUR' ? perEur : undefined,
-      rate: form.rate || liveRate,
+      origToAed: cur === 'USD' ? (form.origToAed || USD_AED_PEG) : undefined,
+      rate: effRate,
     };
     const months = { ...(rev.months || {}) };
     if (!months[monthKey]) months[monthKey] = [];
@@ -143,7 +174,9 @@ export default function MobileRevenus() {
     const months = { ...(rev.months || {}) };
     months[month] = [...months[month]];
     const before = months[month][idx];
-    months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: liveRate };
+    // Rate rafraîchi au live UNIQUEMENT pour les entrées EUR (AED/USD : rate dérivé du swap)
+    const isEur = !before?.currency || before.currency === 'EUR';
+    months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: isEur ? liveRate : (before?.rate || liveRate) };
     setState({ ...state, revenus: { ...rev, months } });
     save();
     logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(before?.cashed || 0)} € (${month})`);
@@ -183,6 +216,8 @@ export default function MobileRevenus() {
           showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
           onSave={saveEntry} isEdit={!!editIdx}
           rateFor={rateFor} liveRate={liveRate}
+          perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
+          rateTouched={rateTouched} setRateTouched={setRateTouched}
         />
       </div>
     );
@@ -331,6 +366,8 @@ export default function MobileRevenus() {
         showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
         onSave={saveEntry} isEdit={!!editIdx}
         rateFor={rateFor} liveRate={liveRate}
+        perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
+        rateTouched={rateTouched} setRateTouched={setRateTouched}
       />
     </div>
   );
@@ -349,6 +386,7 @@ function KpiCardMobile({ label, value, sub, color }: { label: string; value: str
 function AddEditSheet({
   open, onClose, form, setForm, formMonth, setFormMonth, orderedMonths, categories,
   filteredClientSugg, showClientSugg, setShowClientSugg, onSave, isEdit, rateFor, liveRate,
+  perEurOf, aedOf, usdPeg, rateTouched, setRateTouched,
 }: {
   open: boolean; onClose: () => void;
   form: RevenuEntry; setForm: (f: RevenuEntry) => void;
@@ -358,6 +396,8 @@ function AddEditSheet({
   showClientSugg: boolean; setShowClientSugg: (v: boolean) => void;
   onSave: () => void; isEdit: boolean;
   rateFor: (c?: string) => number; liveRate: number;
+  perEurOf: (f: RevenuEntry) => number; aedOf: (f: RevenuEntry, amount: number) => number;
+  usdPeg: number; rateTouched: boolean; setRateTouched: (v: boolean) => void;
 }) {
   // Allow creating a new month inline
   const allMonths = useMemo(() => {
@@ -440,7 +480,12 @@ function AddEditSheet({
             {(['EUR', 'AED', 'USD'] as const).map(c => (
               <button
                 key={c}
-                onClick={() => setForm({ ...form, currency: c, origRate: c === 'EUR' ? undefined : rateFor(c) })}
+                onClick={() => setForm({
+                  ...form,
+                  currency: c,
+                  origRate: c === 'EUR' ? undefined : rateFor(c),
+                  origToAed: c === 'USD' ? (form.origToAed ?? usdPeg) : undefined,
+                })}
                 className={`flex-1 py-2 text-[11px] font-semibold rounded-md transition-all ${(form.currency || 'EUR') === c ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
               >
                 {c}
@@ -462,9 +507,9 @@ function AddEditSheet({
 
         {(form.cashed || 0) > 0 && (() => {
           const cur = form.currency || 'EUR';
-          const perEur = cur === 'EUR' ? 1 : (form.origRate || rateFor(cur));
+          const perEur = perEurOf(form);
           const eur = (form.cashed || 0) / perEur;
-          const aed = eur * (form.rate || liveRate);
+          const aed = aedOf(form, form.cashed || 0);
           return (
             <div className="text-[11px] text-t-3 bg-bg-2 rounded-lg p-2.5 flex items-center justify-between gap-3">
               <span>Équivalent{cur !== 'EUR' ? ` · EUR/${cur} ${perEur.toFixed(4)}` : ''}</span>
@@ -474,6 +519,42 @@ function AddEditSheet({
             </div>
           );
         })()}
+
+        {(form.currency || 'EUR') === 'USD' ? (
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Taux USD/AED (ton taux de swap)</label>
+            <input
+              className="fi !h-11 mono-value"
+              type="number"
+              inputMode="decimal"
+              value={form.origToAed ?? usdPeg}
+              onChange={e => setForm({ ...form, origToAed: parseFloat(e.target.value) || 0 })}
+              step="0.0001"
+              placeholder="3.6725"
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Taux EUR/AED</label>
+            <div className="flex gap-2">
+              <input
+                className="fi !h-11 mono-value flex-1"
+                type="number"
+                inputMode="decimal"
+                value={form.rate}
+                onChange={e => { setForm({ ...form, rate: parseFloat(e.target.value) || 0 }); setRateTouched(true); }}
+                step="0.0001"
+              />
+              <button
+                type="button"
+                onClick={() => { setForm({ ...form, rate: liveRate }); setRateTouched(false); }}
+                className={`text-[10px] px-3 rounded-lg border shrink-0 ${!rateTouched ? 'text-accent bg-accent/10 border-accent/30' : 'text-t-3 bg-bg-2 border-border active:text-t-1'}`}
+              >
+                {rateTouched ? '↻ Live' : '● Live'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Commentaire (optionnel)</label>
