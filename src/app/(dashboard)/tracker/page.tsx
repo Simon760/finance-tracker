@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff } from 'lucide-react';
@@ -1250,10 +1250,10 @@ export default function TrackerPage() {
             ? state.months.map(mo => {
                 const er = mo.extraActual?.find(x => x.name === slidePoste.name);
                 const a = er ? (er.eur && er.eur > 0 ? er.eur : toEur(er.aed, mo.rate)) : 0;
-                return { month: mo.id.slice(0, 3), actual: a, budget: 0 };
+                return { month: shortMonth(mo.id), actual: a, budget: 0 };
               })
             : state.months.map(mo => ({
-                month: mo.id.slice(0, 3),
+                month: shortMonth(mo.id),
                 actual: rowEur(mo.actual[slidePoste.idx] || { aed: 0, eur: null }, mo.rate),
                 budget: rowEur(mo.budget[slidePoste.idx] || { aed: 0, eur: null }, liveRate),
               }));

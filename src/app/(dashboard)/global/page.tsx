@@ -7,7 +7,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import MobileGlobal from '@/components/mobile/MobileGlobal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
-import { f$, f0, sumEur, sumAed } from '@/lib/utils';
+import { f$, f0, sumEur, sumAed, shortMonth } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -90,7 +90,7 @@ export default function GlobalPage() {
   const monthList = Array.from(allMonthNames);
 
   const evoData = monthList.map(mId => {
-    const row: Record<string, string | number> = { name: mId.slice(0, 3) };
+    const row: Record<string, string | number> = { name: shortMonth(mId) };
     spaces.forEach(s => {
       const m = s.months.find(mo => mo.id === mId);
       row[s.name] = m ? sumEur(m, s.postes, m.extraActual) : 0;

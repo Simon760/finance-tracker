@@ -3,7 +3,7 @@
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
-import { f$, f0, toAed, rowEur, sumEur } from '@/lib/utils';
+import { f$, f0, toAed, rowEur, sumEur, shortMonth } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
 // import BankStatsCard from '@/components/BankStatsCard'; // retiré temporairement
 import {
@@ -51,7 +51,7 @@ export default function DashboardPage() {
   // Les mois créés pour prévision (budget seul, sans actuals) ne polluent plus le graphe.
   const evoData = ms
     .map(m => ({
-      name: m.id.slice(0, 3),
+      name: shortMonth(m.id),
       Dépenses: dashCur === 'EUR' ? sumEur(m, state.postes, m.extraActual) : toAed(sumEur(m, state.postes, m.extraActual), m.rate),
       Revenus: dashCur === 'EUR' ? monthEarnEur(m) : monthEarnAed(m),
     }))
@@ -63,7 +63,7 @@ export default function DashboardPage() {
     const prevEnd = i > 0 ? soldeMonths[i - 1].soldeEnd || 0 : 0;
     const debut = m.soldeStart > 0 ? m.soldeStart : prevEnd;
     const fin = m.soldeEnd > 0 ? m.soldeEnd : prevEnd;
-    return { name: m.id.slice(0, 3), Début: debut, Fin: fin };
+    return { name: shortMonth(m.id), Début: debut, Fin: fin };
   });
   const soldeAllVals = soldeData.flatMap(d => [d.Début, d.Fin]).filter(v => v > 0);
   const soldeMin = soldeAllVals.length > 0 ? Math.floor(Math.min(...soldeAllVals) * 0.95 / 5000) * 5000 : 0;

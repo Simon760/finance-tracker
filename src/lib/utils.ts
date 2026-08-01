@@ -9,6 +9,18 @@ export function f0(n: number): string {
   return Math.round(n).toLocaleString('fr-FR');
 }
 
+/**
+ * Abréviation d'un nom de mois pour les axes de graphes.
+ * Tronquer à 3 lettres rendait JUIN et JUILLET identiques ("JUI") → on distingue
+ * explicitement ces deux-là (JUIN / JUIL), les autres restent sur 3 lettres.
+ */
+export function shortMonth(id: string): string {
+  const n = (id || '').trim().toUpperCase();
+  if (n.startsWith('JUIL')) return 'JUIL';
+  if (n.startsWith('JUIN')) return 'JUIN';
+  return n.slice(0, 3);
+}
+
 // Currency
 export function toEur(aed: number, rate: number): number {
   return rate > 0 ? aed / rate : 0;
