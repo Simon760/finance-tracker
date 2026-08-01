@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { f$, f0 } from '@/lib/utils';
+import { MOIS_LIST } from '@/lib/constants';
 import { Trip, Transaction } from '@/lib/types';
 import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, Pencil, SlidersHorizontal } from 'lucide-react';
 
@@ -39,7 +40,9 @@ export default function TripsPage() {
   // Calendrier des dépenses : jour sélectionné (filtre la liste) + mois affiché (null = auto)
   const [selDay, setSelDay] = useState<string | null>(null);
   const [calYM, setCalYM] = useState<{ y: number; m: number } | null>(null);
-  useEffect(() => { setSelDay(null); setCalYM(null); }, [selectedTripId]);
+  // Le calendrier suit le mois sélectionné dans l'app (comme le tracker) : on relâche
+  // la navigation manuelle dès que le voyage ou le mois courant change.
+  useEffect(() => { setSelDay(null); setCalYM(null); }, [selectedTripId, curMonth]);
 
   const sortedTrips = useMemo(() => {
     return [...trips].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
@@ -172,13 +175,42 @@ export default function TripsPage() {
     return map;
   }, [tripExpenses]);
 
-  // Mois affiché : auto = mois de la dépense la + récente, sinon début du voyage
+  // Mois affiché. Priorité : navigation manuelle (flèches) > mois sélectionné dans
+  // l'app (comme le tracker) > mois de la dépense la + récente > début du voyage.
   const effCalYM = useMemo(() => {
     if (calYM) return calYM;
+    const norm = (s: string) => s.trim().toUpperCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
+    const mi = curMonth ? (MOIS_LIST as readonly string[]).findIndex(m => norm(m) === norm(curMonth)) : -1;
+    if (mi >= 0) {
+      // Année, par ordre de fiabilité :
+      // 1. celle d'une tx du voyage dans ce mois,
+      // 2. celle calculée par le tracker (_year),
+      // 3. l'année qui place ce mois le plus près d'aujourd'hui — évite de retomber
+      //    sur la mauvaise année pour un voyage à cheval sur deux ans.
+      const mm = String(mi + 1).padStart(2, '0');
+      const hit = [...tripExpenses.map(e => e.t.date), ...tripSwaps.map(s => s.date)]
+        .find(d => !!d && d.slice(5, 7) === mm);
+      let y: number;
+      if (hit) {
+        y = Number(hit.slice(0, 4));
+      } else {
+        const trackerYear = state.months.find(m => m.id === curMonth)?._year;
+        if (trackerYear) {
+          y = trackerYear;
+        } else {
+          const now = new Date();
+          const nowIdx = now.getFullYear() * 12 + now.getMonth();
+          y = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
+            .reduce((best, cand) =>
+              Math.abs(cand * 12 + mi - nowIdx) < Math.abs(best * 12 + mi - nowIdx) ? cand : best);
+        }
+      }
+      return { y, m: mi };
+    }
     const base = tripExpenses[0]?.t.date || selectedTrip?.startDate || todayStr();
     const [y, m] = base.split('-').map(Number);
     return { y, m: (m || 1) - 1 };
-  }, [calYM, tripExpenses, selectedTrip]);
+  }, [calYM, curMonth, tripExpenses, tripSwaps, selectedTrip, state.months]);
 
   // Grille du mois (lundi en 1re colonne), null = case de remplissage
   const calCells = useMemo(() => {
