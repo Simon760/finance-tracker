@@ -3,6 +3,7 @@
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
+import RankedBars from '@/components/ui/RankedBars';
 import { f$, f0, toAed, rowEur, sumEur, shortMonth } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 // import BankStatsCard from '@/components/BankStatsCard'; // retiré temporairement
@@ -10,43 +11,6 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 
-/**
- * Répartition par poste — barres horizontales triées plutôt qu'un camembert :
- * au-delà de ~7 catégories les parts d'un donut deviennent illisibles (et les
- * couleurs cyclent). Une seule teinte, l'intensité porte la magnitude, le nom
- * et la valeur sont lus directement sur la ligne.
- * En HTML/CSS (pas Recharts) : responsive par construction, aucun risque de
- * troncature des libellés sur petit écran.
- */
-function PosteBars({ data, fmt }: { data: { name: string; value: number }[]; fmt: (v: number) => string }) {
-  if (data.length === 0) {
-    return <div className="text-[12px] text-t-4 text-center py-10">Aucune donnée</div>;
-  }
-  const max = Math.max(...data.map(d => d.value)) || 1;
-  return (
-    <div className="space-y-1.5">
-      {data.map(d => {
-        const ratio = d.value / max;
-        return (
-          <div
-            key={d.name}
-            className="grid grid-cols-[minmax(0,6.5rem)_1fr_auto] items-center gap-2.5"
-            title={`${d.name} — ${fmt(d.value)}`}
-          >
-            <span className="text-[11px] text-t-3 truncate">{d.name}</span>
-            <div className="h-2.5 flex items-center">
-              <div
-                className="h-full bg-info rounded-r-[4px]"
-                style={{ width: `${Math.max(ratio * 100, 1)}%`, opacity: 0.4 + 0.6 * ratio }}
-              />
-            </div>
-            <span className="text-[11px] text-t-2 mono-value whitespace-nowrap">{fmt(d.value)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   const { state, dashCur, setDashCur, activeSpace } = useApp();
@@ -194,14 +158,14 @@ export default function DashboardPage() {
             <span className="text-[13px] font-semibold text-t-2">Répartition moyenne</span>
             <span className="text-[10px] text-t-4">par mois · {pieData.length} postes</span>
           </div>
-          <PosteBars data={pieData} fmt={barFmt} />
+          <RankedBars data={pieData} fmt={barFmt} />
         </div>
         <div className="bg-bg-3 border border-border rounded-md p-4">
           <div className="flex items-baseline justify-between gap-3 mb-4">
             <span className="text-[13px] font-semibold text-t-2">Total par poste</span>
             <span className="text-[10px] text-t-4">{ms.length} mois · {totalPieData.length} postes</span>
           </div>
-          <PosteBars data={totalPieData} fmt={barFmt} />
+          <RankedBars data={totalPieData} fmt={barFmt} />
         </div>
       </div>
     </div>

@@ -6,12 +6,13 @@ import PageHeader from '@/components/layout/PageHeader';
 import MobileRevenus from '@/components/mobile/MobileRevenus';
 import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
+import RankedBars from '@/components/ui/RankedBars';
 import { f$, f0, fetchRate, sameWeekdayDatesInMonth } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, ReferenceLine,
+  ReferenceLine,
 } from 'recharts';
 
 const tooltipStyle = { background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 };
@@ -444,19 +445,12 @@ export default function RevenusPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="bg-bg-3 border border-border rounded-lg p-4 shadow-inset-border" style={{ height: 300 }}>
-            <div className="text-[13px] font-semibold text-t-2 mb-4 tracking-tight">Par catégorie ({curMonthName})</div>
-            <ResponsiveContainer width="100%" height="85%">
-              <PieChart>
-                <Pie data={catTotalsMonth} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={2}>
-                  {catTotalsMonth.map((entry, i) => {
-                    const idx = categories.indexOf(entry.name);
-                    return <Cell key={i} fill={REV_COLORS[(idx >= 0 ? idx : i) % REV_COLORS.length]} />;
-                  })}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${f$(Number(v))} €`} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="bg-bg-3 border border-border rounded-lg p-4 shadow-inset-border">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <span className="text-[13px] font-semibold text-t-2 tracking-tight">Par catégorie ({curMonthName})</span>
+              <span className="text-[10px] text-t-4">{catTotalsMonth.length} source{catTotalsMonth.length > 1 ? 's' : ''}</span>
+            </div>
+            <RankedBars data={catTotalsMonth} fmt={(v) => `${f$(v)} €`} barClass="bg-accent" emptyLabel="Aucune source" />
           </div>
         </div>
       </>
@@ -747,21 +741,17 @@ export default function RevenusPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="bg-bg-3 border border-border rounded-lg p-4 shadow-inset-border" style={{ height: 300 }}>
-            <div className="text-[13px] font-semibold text-t-2 mb-4 tracking-tight">Répartition annuelle par source</div>
-            {srcEntries.length > 0 ? (
-              <ResponsiveContainer width="100%" height="85%">
-                <PieChart>
-                  <Pie data={srcEntries.map(([name, value]) => ({ name, value }))} dataKey="value" cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                    {srcEntries.map(([name], i) => {
-                      const idx = categories.indexOf(name);
-                      return <Cell key={i} fill={REV_COLORS[(idx >= 0 ? idx : i) % REV_COLORS.length]} />;
-                    })}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${f$(Number(v))} €`} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <div className="text-center text-t-4 text-sm pt-12">Aucune source</div>}
+          <div className="bg-bg-3 border border-border rounded-lg p-4 shadow-inset-border">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <span className="text-[13px] font-semibold text-t-2 tracking-tight">Répartition annuelle par source</span>
+              <span className="text-[10px] text-t-4">{srcEntries.length} source{srcEntries.length > 1 ? 's' : ''}</span>
+            </div>
+            <RankedBars
+              data={srcEntries.map(([name, value]) => ({ name, value }))}
+              fmt={(v) => `${f$(v)} €`}
+              barClass="bg-accent"
+              emptyLabel="Aucune source"
+            />
           </div>
         </div>
 
