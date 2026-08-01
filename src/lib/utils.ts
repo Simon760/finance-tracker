@@ -21,6 +21,28 @@ export function shortMonth(id: string): string {
   return n.slice(0, 3);
 }
 
+/**
+ * Toutes les autres dates du même jour de semaine, dans le mois calendaire de `dateStr`.
+ * Ex: 2026-08-07 (vendredi) → ['2026-08-14', '2026-08-21', '2026-08-28'] (+ les vendredis
+ * antérieurs du mois s'il y en a). La date de départ elle-même est exclue.
+ */
+export function sameWeekdayDatesInMonth(dateStr: string): string[] {
+  if (!dateStr) return [];
+  const base = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(base.getTime())) return [];
+  const year = base.getFullYear();
+  const month = base.getMonth();
+  const out: string[] = [];
+  const d = new Date(year, month, 1);
+  while (d.getDay() !== base.getDay()) d.setDate(d.getDate() + 1);
+  while (d.getMonth() === month) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (iso !== dateStr) out.push(iso);
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
+}
+
 // Currency
 export function toEur(aed: number, rate: number): number {
   return rate > 0 ? aed / rate : 0;

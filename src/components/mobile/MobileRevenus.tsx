@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, fetchRate } from '@/lib/utils';
+import { f$, f0, fetchRate, sameWeekdayDatesInMonth } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -67,6 +67,10 @@ export default function MobileRevenus() {
   // Taux USD→AED officiel (peg) — défaut du champ, l'utilisateur met son taux de swap réel
   const USD_AED_PEG = 3.6725;
 
+  // Récurrence hebdo : duplique l'entrée sur les autres mêmes jours de semaine du mois
+  const [repeatWeekly, setRepeatWeekly] = useState(false);
+  const repeatDates = useMemo(() => (repeatWeekly ? sameWeekdayDatesInMonth(form.date) : []), [repeatWeekly, form.date]);
+
   // Le champ Taux EUR/AED suit le taux live tant qu'il n'a pas été modifié à la main
   const [rateTouched, setRateTouched] = useState(false);
   useEffect(() => {
@@ -103,6 +107,7 @@ export default function MobileRevenus() {
     setEditIdx(null);
     setShowClientSugg(false);
     setRateTouched(false); // le taux suit le live jusqu'à modification manuelle
+    setRepeatWeekly(false);
     setSheetOpen(true);
   };
 
@@ -119,6 +124,7 @@ export default function MobileRevenus() {
     setEditIdx({ month, idx });
     setShowClientSugg(false);
     setRateTouched(true); // édition : taux historique conservé (bouton Live pour re-sync)
+    setRepeatWeekly(false); // la récurrence ne s'applique qu'à la création
     setSheetOpen(true);
   };
 
@@ -145,18 +151,27 @@ export default function MobileRevenus() {
     };
     const months = { ...(rev.months || {}) };
     if (!months[monthKey]) months[monthKey] = [];
+    let added = 1;
     if (editIdx) {
       months[editIdx.month] = [...months[editIdx.month]];
       months[editIdx.month][editIdx.idx] = entry;
     } else {
-      months[monthKey] = [...months[monthKey], entry];
+      // Récurrence hebdo : copies indépendantes sur les autres mêmes jours du mois
+      const clones = repeatWeekly
+        ? repeatDates
+            .filter(d => !months[monthKey].some(e => e.date === d && e.client === entry.client && e.cashed === entry.cashed))
+            .map(d => ({ ...entry, date: d }))
+        : [];
+      months[monthKey] = [...months[monthKey], entry, ...clones];
+      added += clones.length;
     }
     setState({ ...state, revenus: { ...rev, months } });
     setSheetOpen(false);
     save();
     const action = editIdx ? 'revenu.update' : 'revenu.add';
     const verb = editIdx ? 'Modif' : 'Ajout';
-    logChange?.(action, `${verb} revenu ${entry.client || '—'} · ${f$(entry.cashed || 0)} € (${editIdx ? editIdx.month : monthKey})`);
+    const suffix = added > 1 ? ` ×${added} (récurrence hebdo)` : '';
+    logChange?.(action, `${verb} revenu ${entry.client || '—'} · ${f$(entry.cashed || 0)} €${suffix} (${editIdx ? editIdx.month : monthKey})`);
   };
 
   const deleteEntry = (month: string, idx: number) => {
@@ -218,6 +233,7 @@ export default function MobileRevenus() {
           rateFor={rateFor} liveRate={liveRate}
           perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
           rateTouched={rateTouched} setRateTouched={setRateTouched}
+          repeatWeekly={repeatWeekly} setRepeatWeekly={setRepeatWeekly}
         />
       </div>
     );
@@ -368,6 +384,7 @@ export default function MobileRevenus() {
         rateFor={rateFor} liveRate={liveRate}
         perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
         rateTouched={rateTouched} setRateTouched={setRateTouched}
+        repeatWeekly={repeatWeekly} setRepeatWeekly={setRepeatWeekly}
       />
     </div>
   );
@@ -386,7 +403,7 @@ function KpiCardMobile({ label, value, sub, color }: { label: string; value: str
 function AddEditSheet({
   open, onClose, form, setForm, formMonth, setFormMonth, orderedMonths, categories,
   filteredClientSugg, showClientSugg, setShowClientSugg, onSave, isEdit, rateFor, liveRate,
-  perEurOf, aedOf, usdPeg, rateTouched, setRateTouched,
+  perEurOf, aedOf, usdPeg, rateTouched, setRateTouched, repeatWeekly, setRepeatWeekly,
 }: {
   open: boolean; onClose: () => void;
   form: RevenuEntry; setForm: (f: RevenuEntry) => void;
@@ -398,6 +415,7 @@ function AddEditSheet({
   rateFor: (c?: string) => number; liveRate: number;
   perEurOf: (f: RevenuEntry) => number; aedOf: (f: RevenuEntry, amount: number) => number;
   usdPeg: number; rateTouched: boolean; setRateTouched: (v: boolean) => void;
+  repeatWeekly: boolean; setRepeatWeekly: (v: boolean) => void;
 }) {
   // Allow creating a new month inline
   const allMonths = useMemo(() => {
@@ -420,6 +438,31 @@ function AddEditSheet({
             <input className="fi !h-11" type="date" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
           </div>
         </div>
+
+        {!isEdit && form.date && (() => {
+          const wd = new Date(`${form.date}T00:00:00`);
+          const wdName = isNaN(wd.getTime()) ? '' : wd.toLocaleDateString('fr-FR', { weekday: 'long' });
+          const all = sameWeekdayDatesInMonth(form.date);
+          return (
+            <button
+              type="button"
+              onClick={() => setRepeatWeekly(!repeatWeekly)}
+              className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${repeatWeekly ? 'bg-accent/10 border-accent/40' : 'bg-bg-4 border-border'}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`w-4 h-4 rounded-[4px] border flex items-center justify-center text-[10px] font-bold shrink-0 ${repeatWeekly ? 'bg-accent border-accent text-black' : 'border-border-2 text-transparent'}`}>✓</span>
+                <span className={`text-[12px] font-medium ${repeatWeekly ? 'text-accent' : 'text-t-2'}`}>Répéter chaque {wdName} du mois</span>
+              </div>
+              <div className="text-[10px] text-t-4 mt-1 pl-6">
+                {all.length === 0
+                  ? `Aucun autre ${wdName} ce mois-ci`
+                  : repeatWeekly
+                    ? `+${all.length} entrée${all.length > 1 ? 's' : ''} : ${all.map(d => d.slice(8)).join(', ')}`
+                    : `${all.length} autre${all.length > 1 ? 's' : ''} ce mois-ci`}
+              </div>
+            </button>
+          );
+        })()}
 
         <div>
           <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Client</label>
