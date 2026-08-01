@@ -6,7 +6,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Card, { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { ResidencyEntry, ResidencyCountry } from '@/lib/types';
-import { Plus, Pencil, X, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, X, ChevronLeft, ChevronRight, AlertTriangle, Plane } from 'lucide-react';
 
 const MIN_YEAR = 2026;
 
@@ -92,6 +92,8 @@ interface Computed {
   streakOutUaeTo: string | null;
   longestSegments: { country: ResidencyCountry; start: string; end: string; days: number }[];
   conflicts: string[];
+  /** Jours où l'on quitte un pays et arrive dans un autre le même jour (pas un conflit) */
+  travelDays: string[];
   projection: { uae: number; fr: number; other: number };
 }
 
@@ -116,7 +118,23 @@ function computeYear(year: number, entries: ResidencyEntry[]): Computed {
     .filter(s => s._end >= s._start)
     .sort((a, b) => a._start.getTime() - b._start.getTime());
 
-  // Détection chevauchements
+  // ── Jours de voyage ────────────────────────────────────────────────────────
+  // Quitter un pays et arriver dans un autre le MÊME jour est légitime (ex: départ
+  // de Suisse le 31/07 → arrivée en France le 31/07) : ce n'est pas un chevauchement,
+  // et l'utilisateur ne doit pas avoir à décaler ses dates d'un jour.
+  // Convention retenue (règle de la nuit passée) : le jour appartient au pays
+  // d'ARRIVÉE. On raccourcit donc d'un jour la fin du segment précédent — le jour
+  // n'est ainsi jamais compté deux fois, ni perdu.
+  const travelDays: string[] = [];
+  for (let i = 0; i < segs.length - 1; i++) {
+    const cur = segs[i], next = segs[i + 1];
+    if (cur._end.getTime() === next._start.getTime()) {
+      travelDays.push(`${ymd(next._start)} · ${COUNTRY_SHORT[cur.country]} → ${COUNTRY_SHORT[next.country]} (jour compté pour ${COUNTRY_SHORT[next.country]})`);
+      cur._end = new Date(cur._end.getTime() - 86400000);
+    }
+  }
+
+  // Détection chevauchements (les jours de voyage ci-dessus n'en sont plus)
   for (let i = 0; i < segs.length; i++) {
     for (let j = i + 1; j < segs.length; j++) {
       const a = segs[i], b = segs[j];
@@ -215,6 +233,7 @@ function computeYear(year: number, entries: ResidencyEntry[]): Computed {
     streakOutUaeTo: streakTo,
     longestSegments,
     conflicts,
+    travelDays,
     projection,
   };
 }
@@ -379,7 +398,7 @@ export default function ResidencyPage() {
       </div>
 
       {/* Alertes & conflits */}
-      {(alerts.length > 0 || computed.conflicts.length > 0) && (
+      {(alerts.length > 0 || computed.conflicts.length > 0 || computed.travelDays.length > 0) && (
         <div className="mb-6 space-y-2">
           {alerts.map((a, i) => (
             <div
@@ -409,6 +428,20 @@ export default function ResidencyPage() {
               <div className="tracking-tight">{c}</div>
             </div>
           ))}
+          {computed.travelDays.length > 0 && (
+            <div
+              className="flex items-start gap-2 px-3 py-2.5 rounded-md border text-[12px]"
+              style={{ background: 'rgba(59,130,246,0.06)', borderColor: 'rgba(59,130,246,0.25)', color: '#93c5fd' }}
+            >
+              <Plane size={14} className="mt-0.5 shrink-0" />
+              <div className="tracking-tight">
+                <div className="font-semibold mb-0.5">
+                  {computed.travelDays.length} jour{computed.travelDays.length > 1 ? 's' : ''} de voyage — compté{computed.travelDays.length > 1 ? 's' : ''} une seule fois, pour le pays d&apos;arrivée
+                </div>
+                {computed.travelDays.map((t, i) => <div key={i} className="opacity-80">{t}</div>)}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
