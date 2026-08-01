@@ -4,12 +4,49 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import { f$, f0, toAed, rowEur, sumEur, shortMonth } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
+import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 // import BankStatsCard from '@/components/BankStatsCard'; // retiré temporairement
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell,
 } from 'recharts';
+
+/**
+ * Répartition par poste — barres horizontales triées plutôt qu'un camembert :
+ * au-delà de ~7 catégories les parts d'un donut deviennent illisibles (et les
+ * couleurs cyclent). Une seule teinte, l'intensité porte la magnitude, le nom
+ * et la valeur sont lus directement sur la ligne.
+ * En HTML/CSS (pas Recharts) : responsive par construction, aucun risque de
+ * troncature des libellés sur petit écran.
+ */
+function PosteBars({ data, fmt }: { data: { name: string; value: number }[]; fmt: (v: number) => string }) {
+  if (data.length === 0) {
+    return <div className="text-[12px] text-t-4 text-center py-10">Aucune donnée</div>;
+  }
+  const max = Math.max(...data.map(d => d.value)) || 1;
+  return (
+    <div className="space-y-1.5">
+      {data.map(d => {
+        const ratio = d.value / max;
+        return (
+          <div
+            key={d.name}
+            className="grid grid-cols-[minmax(0,6.5rem)_1fr_auto] items-center gap-2.5"
+            title={`${d.name} — ${fmt(d.value)}`}
+          >
+            <span className="text-[11px] text-t-3 truncate">{d.name}</span>
+            <div className="h-2.5 flex items-center">
+              <div
+                className="h-full bg-info rounded-r-[4px]"
+                style={{ width: `${Math.max(ratio * 100, 1)}%`, opacity: 0.4 + 0.6 * ratio }}
+              />
+            </div>
+            <span className="text-[11px] text-t-2 mono-value whitespace-nowrap">{fmt(d.value)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { state, dashCur, setDashCur, activeSpace } = useApp();
@@ -45,6 +82,8 @@ export default function DashboardPage() {
   const activeMonthsCount = ms.filter(m => sumEur(m, state.postes, m.extraActual) > 0).length || ms.length;
   const avg = totalSpent / activeMonthsCount;
   const dcFmt = (v: number, rate: number) => dashCur === 'EUR' ? `${f$(v)} €` : `${f0(toAed(v, rate))} AED`;
+  // Valeurs des barres : déjà converties dans la devise active → on formate seulement
+  const barFmt = (v: number) => dashCur === 'EUR' ? `${f$(v)} €` : `${f0(v)} AED`;
   const avgRate = ms.reduce((s, m) => s + m.rate, 0) / ms.length;
 
   // Evolution data — n'inclut QUE les mois qui ont du réel (dépenses ou revenus).
@@ -77,7 +116,7 @@ export default function DashboardPage() {
       avgExp[p.name] = (avgExp[p.name] || 0) + (dashCur === 'EUR' ? v : toAed(v, m.rate));
     });
   });
-  const pieData = Object.entries(avgExp).filter(([, v]) => v > 10).map(([name, value]) => ({ name, value: value / ms.length }));
+  const pieData = Object.entries(avgExp).filter(([, v]) => v > 10).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value: value / ms.length }));
 
   // Total par poste
   const posteTotals: Record<string, number> = {};
@@ -148,29 +187,21 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Pie charts */}
+      {/* Répartition par poste — barres horizontales triées (lisible au-delà de 7 postes) */}
       <div className="grid grid-cols-2 gap-3 mb-3.5 max-lg:grid-cols-1">
         <div className="bg-bg-3 border border-border rounded-md p-4">
-          <div className="text-[13px] font-semibold text-t-2 mb-4">Répartition moyenne</div>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={2}>
-                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={tooltipStyle} formatter={(v) => f$(Number(v))} />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <span className="text-[13px] font-semibold text-t-2">Répartition moyenne</span>
+            <span className="text-[10px] text-t-4">par mois · {pieData.length} postes</span>
+          </div>
+          <PosteBars data={pieData} fmt={barFmt} />
         </div>
         <div className="bg-bg-3 border border-border rounded-md p-4">
-          <div className="text-[13px] font-semibold text-t-2 mb-4">Total par poste</div>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={totalPieData} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={2}>
-                {totalPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={tooltipStyle} formatter={(v) => f$(Number(v))} />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <span className="text-[13px] font-semibold text-t-2">Total par poste</span>
+            <span className="text-[10px] text-t-4">{ms.length} mois · {totalPieData.length} postes</span>
+          </div>
+          <PosteBars data={totalPieData} fmt={barFmt} />
         </div>
       </div>
     </div>
