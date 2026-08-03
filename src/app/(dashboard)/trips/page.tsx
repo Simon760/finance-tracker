@@ -251,6 +251,17 @@ export default function TripsPage() {
     setSelDay(null);
   };
 
+  // Mois du tracker correspondant à une date (ex: 2026-08-03 → 'AOÛT'), s'il existe.
+  // Sert à recaler le champ « Mois (tracker) » quand la date change.
+  const trackerMonthForDate = (d: string): string | null => {
+    if (!d) return null;
+    const idx = Number(d.slice(5, 7)) - 1;
+    if (isNaN(idx) || idx < 0 || idx > 11) return null;
+    const norm = (s: string) => s.trim().toUpperCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
+    const target = norm(MOIS_LIST[idx]);
+    return state.months.find(m => norm(m.id) === target)?.id ?? null;
+  };
+
   const handleCreate = () => {
     if (!nForm.name.trim() || nForm.aedOut <= 0 || nForm.localIn <= 0 || !nForm.monthId) return;
     const id = createTrip({
@@ -471,7 +482,18 @@ export default function TripsPage() {
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Dépenses ({tripExpenses.length})</span>
-            <button onClick={() => { setEditing(null); setEForm({ ...eForm, monthId: selectedTrip.swap.monthId || curMonth || '', date: selDay || todayStr(), label: '', eur: 0 }); setExpenseOpen(true); }} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer">+ Ajouter une dépense</button>
+            <button
+              onClick={() => {
+                setEditing(null);
+                const date = selDay || todayStr();
+                // Le mois suit la date pré-remplie (jour cliqué dans le calendrier)
+                setEForm({ ...eForm, monthId: trackerMonthForDate(date) || selectedTrip.swap.monthId || curMonth || '', date, label: '', eur: 0 });
+                setExpenseOpen(true);
+              }}
+              className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold cursor-pointer"
+            >
+              + Ajouter une dépense
+            </button>
           </div>
 
           {/* Calendrier mensuel des dépenses */}
@@ -672,7 +694,17 @@ export default function TripsPage() {
               <input className="fi" type="number" value={eForm.eur || ''} onChange={e => setEForm({ ...eForm, eur: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="50" autoFocus />
             </FormField>
             <FormField label="Date">
-              <input className="fi" type="date" value={eForm.date} onChange={e => setEForm({ ...eForm, date: e.target.value })} />
+              <input
+                className="fi"
+                type="date"
+                value={eForm.date}
+                onChange={e => {
+                  // Le mois du tracker suit la date saisie (s'il existe) ; sinon on garde le choix courant
+                  const date = e.target.value;
+                  const mid = trackerMonthForDate(date);
+                  setEForm({ ...eForm, date, ...(mid ? { monthId: mid } : {}) });
+                }}
+              />
             </FormField>
           </div>
           <FormField label="Mois (tracker)">
@@ -680,6 +712,9 @@ export default function TripsPage() {
               <option value="">— choisir —</option>
               {state.months.map(mo => <option key={mo.id} value={mo.id}>{mo.id}</option>)}
             </select>
+            {eForm.date && !trackerMonthForDate(eForm.date) && (
+              <div className="text-[10px] text-warning mt-1">Aucun mois « {MOIS_LIST[Number(eForm.date.slice(5, 7)) - 1]} » dans le tracker — crée-le pour l&apos;imputer au bon mois.</div>
+            )}
           </FormField>
           {eForm.eur > 0 && selectedTrip && (
             <div className="text-[11px] text-t-3 bg-bg-2 rounded-md p-2.5 flex justify-between">
@@ -715,7 +750,16 @@ export default function TripsPage() {
           )}
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Date">
-              <input className="fi" type="date" value={rForm.date} onChange={e => setRForm({ ...rForm, date: e.target.value })} />
+              <input
+                className="fi"
+                type="date"
+                value={rForm.date}
+                onChange={e => {
+                  const date = e.target.value;
+                  const mid = trackerMonthForDate(date);
+                  setRForm({ ...rForm, date, ...(mid ? { monthId: mid } : {}) });
+                }}
+              />
             </FormField>
             <FormField label="Mois (tracker)">
               <select className="fi" value={rForm.monthId} onChange={e => setRForm({ ...rForm, monthId: e.target.value })}>
