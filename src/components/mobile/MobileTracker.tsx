@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, pocketCashEur } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -13,7 +13,7 @@ import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function MobileTracker() {
-  const { state, save, curMonth, setCurMonth, setState, liveRate } = useApp();
+  const { state, save, curMonth, setCurMonth, setState, liveRate, trips } = useApp();
   const months = state.months;
   const idx = months.findIndex(mo => mo.id === curMonth);
   const m: Month | undefined = idx >= 0 ? months[idx] : undefined;
@@ -457,7 +457,7 @@ export default function MobileTracker() {
 
       {/* Bilan vs prévisionnel */}
       <div className="mt-5">
-        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact forecast={{ earnEur, previewEur, prevCompteAed: prevCompte }} />
+        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact forecast={{ earnEur, previewEur, prevCompteAed: prevCompte, pocketEur: pocketCashEur(trips, state.months) }} />
       </div>
 
       {/* Stats du mois — à retravailler */}

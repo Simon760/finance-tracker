@@ -16,6 +16,7 @@ interface Props {
     earnEur: number;       // revenus confirmés (EUR)
     previewEur: number;    // revenus en prévision (EUR, status='preview')
     prevCompteAed: number; // prévisionnel compte actuel (AED) = soldeStart + earnAed − aABank + adjustment
+    pocketEur?: number;    // cash restant dans les pockets voyage (déjà sorti du compte)
   };
 }
 
@@ -56,6 +57,12 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
   const revDepAll = forecast ? forecast.earnEur + forecast.previewEur - projTotalEur : 0;
   const bankEndAed = forecast ? forecast.prevCompteAed - toAed(remainingEur, liveRate) : 0;
   const bankEndAllAed = forecast ? bankEndAed + toAed(forecast.previewEur, liveRate) : 0;
+  // Le cash encore en pocket voyage est déjà sorti du compte : on le rajoute pour
+  // obtenir le patrimoine réel (compte + pockets).
+  const pocketEur = forecast?.pocketEur || 0;
+  const pocketAed = toAed(pocketEur, liveRate);
+  const totalEndAed = bankEndAed + pocketAed;
+  const totalEndAllAed = bankEndAllAed + pocketAed;
 
   const toneColor = msg.tone === 'good' ? 'text-accent' : msg.tone === 'warn' ? 'text-warning' : 'text-danger';
   const toneBorder = msg.tone === 'good' ? 'border-accent/30' : msg.tone === 'warn' ? 'border-warning/30' : 'border-danger/30';
@@ -216,6 +223,23 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
               <div className="flex justify-between gap-3 text-[13px]">
                 <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px]">(avec prévisions)</span></span>
                 <span className={`mono-value font-bold shrink-0 ${bankEndAllAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAllAed)} AED</span>
+              </div>
+            )}
+            {pocketEur > 0.5 && (
+              <div className="mt-2 pt-2 border-t border-border/60 space-y-1.5">
+                <div className="flex justify-between gap-3 text-[13px]">
+                  <span className="text-t-2">+ Cash pocket voyage <span className="text-t-4 text-[11px]">(déjà sorti du compte)</span></span>
+                  <span className="mono-value font-bold shrink-0 text-info">+{f0(pocketAed)} AED</span>
+                </div>
+                <div className="flex justify-between gap-3 text-[13px]">
+                  <span className="text-t-1 font-semibold">= Total fin de mois <span className="text-t-4 text-[11px] font-normal">(compte + pockets)</span></span>
+                  <span className="text-right shrink-0">
+                    <span className={`mono-value font-bold ${totalEndAed >= 0 ? 'text-accent' : 'text-danger'}`}>≈ {f0(totalEndAed)} AED</span>
+                    {forecast.previewEur > 0 && (
+                      <span className="block text-[10px] text-t-4 mono-value">{f0(totalEndAllAed)} AED avec prévisions</span>
+                    )}
+                  </span>
+                </div>
               </div>
             )}
           </div>

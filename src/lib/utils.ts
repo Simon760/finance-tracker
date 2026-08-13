@@ -1,4 +1,4 @@
-import { Month, BudgetRow, ActualRow, ExtraRow } from './types';
+import { Month, BudgetRow, ActualRow, ExtraRow, Trip } from './types';
 
 // Format
 export function f$(n: number): string {
@@ -19,6 +19,26 @@ export function shortMonth(id: string): string {
   if (n.startsWith('JUIL')) return 'JUIL';
   if (n.startsWith('JUIN')) return 'JUIN';
   return n.slice(0, 3);
+}
+
+/**
+ * Cash restant dans les pockets des voyages EN COURS (somme des swaps − dépenses,
+ * ajustement inclus, jamais négatif). Le swap a déjà débité le compte AED, donc ce
+ * reliquat n'apparaît dans aucun solde bancaire : il faut l'ajouter pour obtenir le
+ * patrimoine réel. Montants lus dans le champ `eur` des txns, comme partout ailleurs
+ * dans le module Voyages.
+ */
+export function pocketCashEur(trips: Trip[], months: Month[]): number {
+  return (trips || [])
+    .filter(t => t.status !== 'ended')
+    .reduce((sum, t) => {
+      const txns = (months || []).flatMap(mo =>
+        [...(mo.actual || []), ...(mo.extraActual || [])].flatMap(row =>
+          (row.txns || []).filter(x => x.tripId === t.id)));
+      const swapped = txns.filter(x => x.tripKind === 'swap').reduce((s, x) => s + (x.eur || 0), 0);
+      const spent = txns.filter(x => x.tripKind === 'expense').reduce((s, x) => s + (x.eur || 0), 0);
+      return sum + Math.max(0, swapped - spent + (t.adjustment || 0));
+    }, 0);
 }
 
 /**

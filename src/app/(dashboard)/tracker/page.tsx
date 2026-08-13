@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff } from 'lucide-react';
@@ -20,7 +20,7 @@ const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4',
 
 export default function TrackerPage() {
   const isMobile = useIsMobile();
-  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange } = useApp();
+  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange, trips } = useApp();
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcileInput, setReconcileInput] = useState('');
@@ -1071,7 +1071,7 @@ export default function TrackerPage() {
           </TableSection>
 
           {/* Bilan vs prévisionnel */}
-          <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} forecast={{ earnEur, previewEur, prevCompteAed: prevCompte }} />
+          <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} forecast={{ earnEur, previewEur, prevCompteAed: prevCompte, pocketEur: pocketCashEur(trips, state.months) }} />
 
           {/* Stats du mois — à retravailler */}
           {/* <MonthStatsCard month={m} postes={state.postes} /> */}
