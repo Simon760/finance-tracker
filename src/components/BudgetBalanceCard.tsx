@@ -233,10 +233,13 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
                 </div>
                 <div className="flex justify-between gap-3 text-[13px]">
                   <span className="text-t-1 font-semibold">= Total fin de mois <span className="text-t-4 text-[11px] font-normal">(compte + pockets)</span></span>
+                  {/* Le scénario avec prévisions est mis en avant ; le confirmé passe en sous-ligne */}
                   <span className="text-right shrink-0">
-                    <span className={`mono-value font-bold ${totalEndAed >= 0 ? 'text-accent' : 'text-danger'}`}>≈ {f0(totalEndAed)} AED</span>
+                    <span className={`text-[15px] mono-value font-bold ${(forecast.previewEur > 0 ? totalEndAllAed : totalEndAed) >= 0 ? 'text-accent' : 'text-danger'}`}>
+                      ≈ {f0(forecast.previewEur > 0 ? totalEndAllAed : totalEndAed)} AED
+                    </span>
                     {forecast.previewEur > 0 && (
-                      <span className="block text-[10px] text-t-4 mono-value">{f0(totalEndAllAed)} AED avec prévisions</span>
+                      <span className="block text-[10px] text-t-4 mono-value">{f0(totalEndAed)} AED sans les prévisions</span>
                     )}
                   </span>
                 </div>
