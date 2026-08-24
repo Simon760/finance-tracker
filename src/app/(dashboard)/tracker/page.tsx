@@ -479,6 +479,24 @@ export default function TrackerPage() {
     }
   };
 
+  // Même logique pour les postes du mois (extras) : la devise saisie devient la
+  // référence. Ici pas de flag isAed — on stocke UNIQUEMENT la devise de référence
+  // et on laisse l'autre à 0, ce que sumEurBudget/sumAedBudget interprètent déjà
+  // comme « dérive au taux live ».
+  const updateExtraBudget = (idx: number, val: number, isEur = false) => {
+    if (!m) return;
+    const months = state.months.map(mo => {
+      if (mo.id !== m.id) return mo;
+      const extraBudget = [...(mo.extraBudget || [])];
+      const prev = extraBudget[idx];
+      if (!prev) return mo;
+      extraBudget[idx] = isEur ? { ...prev, eur: val, aed: 0 } : { ...prev, aed: val, eur: 0 };
+      return { ...mo, extraBudget };
+    });
+    setState({ ...state, months });
+    save();
+  };
+
   const updateActual = (idx: number, val: number, isEur = false) => {
     if (!m) return;
     const months = state.months.map(mo => {
@@ -924,7 +942,10 @@ export default function TrackerPage() {
                 );
               })}
               {(m.extraBudget || []).map((r, i) => {
-                const eur = r.eur > 0 ? r.eur : toEur(r.aed, liveRate);
+                // Référence = EUR dès qu'un montant EUR est stocké (cf. sumEurBudget)
+                const isEurRef = r.eur > 0;
+                const eur = isEurRef ? r.eur : toEur(r.aed, liveRate);
+                const aedVal = isEurRef ? toAed(r.eur, liveRate) : r.aed;
                 const pct = bE > 0 ? ((eur / bE) * 100).toFixed(1) : '0.0';
                 return (
                   <tr key={`eb${i}`} className="border-b border-border hover:bg-white/[.02] group">
@@ -932,8 +953,22 @@ export default function TrackerPage() {
                       {r.name}
                       <button onClick={() => { const months = state.months.map(mo => mo.id === m.id ? { ...mo, extraBudget: mo.extraBudget.filter((_, j) => j !== i) } : mo); setState({ ...state, months }); save(); }} className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded cursor-pointer hover:bg-danger/20" title="Supprimer cet extra">✕</button>
                     </td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs mono-value pr-2 inline-block border border-transparent">{r.aed > 0 ? f0(r.aed) : (r.eur > 0 ? f0(toAed(r.eur, liveRate)) : '—')}</span></td>
-                    <td className="px-4 py-2.5 text-right"><span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{f$(eur)}</span></td>
+                    <td className="px-4 py-2.5 text-right">
+                      <CellInput
+                        value={Math.round(aedVal * 100) / 100}
+                        onChange={v => updateExtraBudget(i, v)}
+                        muted={isEurRef}
+                        title={isEurRef ? 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en AED' : 'Objectif fixé en AED'}
+                      />
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <CellInput
+                        value={Math.round(eur * 100) / 100}
+                        onChange={v => updateExtraBudget(i, v, true)}
+                        muted={!isEurRef}
+                        title={isEurRef ? 'Objectif fixé en EUR' : 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en EUR'}
+                      />
+                    </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="font-mono text-[11px]">{pct}%</span>
                       <div className="h-[3px] bg-border rounded mt-1 overflow-hidden">
