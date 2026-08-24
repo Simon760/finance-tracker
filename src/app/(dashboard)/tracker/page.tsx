@@ -464,8 +464,19 @@ export default function TrackerPage() {
       }
       return { ...mo, budget };
     });
-    setState({ ...state, months });
+    // La devise dans laquelle on SAISIT devient la devise de référence du poste :
+    // elle reste figée, l'autre colonne suit le taux. Sans ça, saisir un objectif en
+    // euros le stockait en AED et l'euro dérivait avec le taux (contre-sens).
+    const target = state.postes[idx];
+    const flipped = target && target.isAed === isEur;
+    const postes = flipped
+      ? state.postes.map((p, i) => (i === idx ? { ...p, isAed: !isEur } : p))
+      : state.postes;
+    setState({ ...state, postes, months });
     save();
+    if (flipped) {
+      logChange?.('poste.update', `« ${target.name} » : budget désormais fixé en ${isEur ? 'EUR' : 'AED'}`);
+    }
   };
 
   const updateActual = (idx: number, val: number, isEur = false) => {
@@ -861,7 +872,7 @@ export default function TrackerPage() {
           )}
 
           {/* Budget Table */}
-          <TableSection title="Budget Prévisionnel" subtitle="Estimations du mois">
+          <TableSection title="Budget Prévisionnel" subtitle="Estimations du mois · la devise que tu saisis reste figée, l’autre suit le taux">
             <thead>
               <tr className="bg-bg-2">
                 <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium w-[25%]">Poste</th>
@@ -888,10 +899,20 @@ export default function TrackerPage() {
                       ><EyeOff size={11} /></button>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <CellInput value={row.aed} onChange={v => updateBudget(i, v)} />
+                      <CellInput
+                        value={Math.round((p.isAed ? row.aed : toAed(row.eur ?? 0, liveRate)) * 100) / 100}
+                        onChange={v => updateBudget(i, v)}
+                        muted={!p.isAed}
+                        title={p.isAed ? 'Objectif fixé en AED' : 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en AED'}
+                      />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <CellInput value={Math.round((p.isAed ? eur : (row.eur ?? eur)) * 100) / 100} onChange={v => updateBudget(i, v, true)} />
+                      <CellInput
+                        value={Math.round((p.isAed ? eur : (row.eur ?? eur)) * 100) / 100}
+                        onChange={v => updateBudget(i, v, true)}
+                        muted={p.isAed}
+                        title={p.isAed ? 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en EUR' : 'Objectif fixé en EUR'}
+                      />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="font-mono text-[11px]">{pct}%</span>
@@ -1655,11 +1676,12 @@ function SoldeDisplay({
   );
 }
 
-function CellInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function CellInput({ value, onChange, muted, title }: { value: number; onChange: (v: number) => void; muted?: boolean; title?: string }) {
   return (
     <input
       type="number"
-      className="bg-transparent border border-transparent font-mono text-xs w-full text-right outline-none px-2 py-1 rounded-md hover:border-border-2 hover:bg-bg-2 focus:border-accent focus:bg-bg-2 focus:shadow-[0_0_0_2px_rgba(16,185,129,0.1)] transition-all"
+      title={title}
+      className={`bg-transparent border border-transparent font-mono text-xs w-full text-right outline-none px-2 py-1 rounded-md hover:border-border-2 hover:bg-bg-2 focus:border-accent focus:bg-bg-2 focus:shadow-[0_0_0_2px_rgba(16,185,129,0.1)] transition-all ${muted ? 'text-t-4' : ''}`}
       value={value || ''}
       onChange={e => onChange(parseFloat(e.target.value) || 0)}
       step="0.01"
