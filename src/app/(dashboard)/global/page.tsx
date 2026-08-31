@@ -173,12 +173,12 @@ export default function GlobalPage() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Dépenses</div>
-                <div className="hero-num text-[15px] mt-1 mono-value text-danger">{f$(sp.totalSpent)} €</div>
-              </div>
-              <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Revenus</div>
                 <div className="hero-num text-[15px] mt-1 mono-value text-accent">{f$(sp.totalRevenue)} €</div>
+              </div>
+              <div>
+                <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Dépenses</div>
+                <div className="hero-num text-[15px] mt-1 mono-value text-danger">{f$(sp.totalSpent)} €</div>
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Balance</div>

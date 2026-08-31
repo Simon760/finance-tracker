@@ -167,12 +167,12 @@ export default function MobileGlobal() {
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-bg-2 rounded-lg px-2.5 py-2">
-                <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Dép.</div>
-                <div className="text-[12px] font-bold mono-value text-danger mt-1 truncate">{f$(sp.totalSpent)} €</div>
-              </div>
-              <div className="bg-bg-2 rounded-lg px-2.5 py-2">
                 <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Rev.</div>
                 <div className="text-[12px] font-bold mono-value text-accent mt-1 truncate">{f$(sp.totalRevenue)} €</div>
+              </div>
+              <div className="bg-bg-2 rounded-lg px-2.5 py-2">
+                <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Dép.</div>
+                <div className="text-[12px] font-bold mono-value text-danger mt-1 truncate">{f$(sp.totalSpent)} €</div>
               </div>
               <div className="bg-bg-2 rounded-lg px-2.5 py-2">
                 <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Bal.</div>
