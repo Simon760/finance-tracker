@@ -7,7 +7,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import MobileGlobal from '@/components/mobile/MobileGlobal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
-import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
+import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS, isLegacyEarnMonth } from '@/lib/constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -51,6 +51,20 @@ export default function GlobalPage() {
   const grandTotalSpent = spaceStats.reduce((s, sp) => s + sp.totalSpent, 0);
   const grandTotalRev = spaceStats.reduce((s, sp) => s + sp.totalRevenue, 0);
   const grandBalance = grandTotalRev - grandTotalSpent;
+
+  // Variation RÉELLE du compte (tous spaces, converti en EUR) + net des flux tracés
+  // sur la même période : l'écart entre les deux = mouvements bancaires non saisis.
+  const bankReality = useMemo(() => {
+    return spaces.reduce((acc, s) => {
+      const r = bankRealDelta(s.months, s.postes, s.revenus?.months, liveRate);
+      const toEurLocal = (v: number) => (s.localCurrency === 'EUR' ? v : v / liveRate);
+      return {
+        delta: acc.delta + toEurLocal(r.delta),
+        flows: acc.flows + toEurLocal(r.flows),
+        from: acc.from || r.from,
+      };
+    }, { delta: 0, flows: 0, from: null as string | null });
+  }, [spaces, liveRate]);
 
   // Net worth - bank balances from spaces (confirmed prévisionnel)
   const bankBalances = useMemo(() => {
@@ -112,7 +126,15 @@ export default function GlobalPage() {
       <div className="grid grid-cols-4 gap-3 mb-6 max-lg:grid-cols-2 max-md:grid-cols-1">
         <KpiCard label="Total dépensé" value={`${f$(grandTotalSpent)} €`} accentColor="#ef4444" hero />
         <KpiCard label="Total revenus" value={`${f$(grandTotalRev)} €`} accentColor="#10b981" hero />
-        <KpiCard label="Balance nette" value={`${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`} accentColor={grandBalance >= 0 ? '#10b981' : '#ef4444'} hero />
+        <KpiCard
+          label="Balance nette"
+          value={`${bankReality.delta >= 0 ? '+' : ''}${f$(bankReality.delta)} €`}
+          sub={bankReality.from
+            ? `Compte réel depuis ${bankReality.from} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
+            : `Entrées − sorties : ${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`}
+          accentColor={bankReality.delta >= 0 ? '#10b981' : '#ef4444'}
+          hero
+        />
         <KpiCard label="Patrimoine net" value={`${f$(netWorth)} €`} sub={`Banques: ${f$(totalBankEur)} € · Actifs: ${f$(totalAssetsEur)} €`} accentColor="#8b5cf6" hero />
       </div>
 

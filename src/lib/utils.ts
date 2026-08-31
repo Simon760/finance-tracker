@@ -55,6 +55,30 @@ export function monthBankBalance(
 }
 
 /**
+ * Variation RÉELLE du compte sur la période suivie : solde de départ du premier mois
+ * renseigné → solde d'aujourd'hui. Diffère de « entrées − sorties » de tous les
+ * mouvements bancaires jamais saisis (l'écart se voit alors dans le sous-titre).
+ * Retourne aussi le net des flux tracés sur la MÊME période, pour comparaison.
+ */
+export function bankRealDelta(
+  months: Month[],
+  postes: Poste[],
+  revenusMonths: Record<string, RevenuEntry[]> | undefined,
+  fallbackRate: number,
+): { delta: number; flows: number; from: string | null } {
+  const tracked = (months || []).filter(m => (m.soldeStart || 0) > 0);
+  if (tracked.length === 0) return { delta: 0, flows: 0, from: null };
+  const first = tracked[0];
+  const last = tracked[tracked.length - 1];
+  const now = monthBankBalance(last, postes, revenusMonths, fallbackRate);
+  const flows = tracked.reduce((sum, m) => {
+    const bal = monthBankBalance(m, postes, revenusMonths, fallbackRate);
+    return sum + (bal - (m.soldeStart || 0)); // entrées − sorties du mois
+  }, 0);
+  return { delta: now - (first.soldeStart || 0), flows, from: first.id };
+}
+
+/**
  * Cash restant dans les pockets des voyages EN COURS (somme des swaps − dépenses,
  * ajustement inclus, jamais négatif). Le swap a déjà débité le compte AED, donc ce
  * reliquat n'apparaît dans aucun solde bancaire : il faut l'ajouter pour obtenir le

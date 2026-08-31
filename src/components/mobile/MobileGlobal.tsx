@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
+import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance, bankRealDelta } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, isLegacyEarnMonth } from '@/lib/constants';
 import { ChevronRight, TrendingUp } from 'lucide-react';
 
@@ -42,6 +42,19 @@ export default function MobileGlobal() {
   const grandTotalRev = spaceStats.reduce((s, sp) => s + sp.totalRevenue, 0);
   const grandBalance = grandTotalRev - grandTotalSpent;
 
+  // Variation RÉELLE du compte + net des flux tracés sur la même période
+  const bankReality = useMemo(() => {
+    return spaces.reduce((acc, s) => {
+      const r = bankRealDelta(s.months, s.postes, s.revenus?.months, liveRate);
+      const toEurLocal = (v: number) => (s.localCurrency === 'EUR' ? v : v / liveRate);
+      return {
+        delta: acc.delta + toEurLocal(r.delta),
+        flows: acc.flows + toEurLocal(r.flows),
+        from: acc.from || r.from,
+      };
+    }, { delta: 0, flows: 0, from: null as string | null });
+  }, [spaces, liveRate]);
+
   // Bank balances
   const bankBalances = useMemo(() => {
     return spaces.map(s => {
@@ -76,8 +89,13 @@ export default function MobileGlobal() {
       {/* Top KPI hero card */}
       <div className="bg-gradient-to-br from-bg-3 to-bg-2 border border-border-2 rounded-2xl p-5 mb-4">
         <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1">Balance nette globale</div>
-        <div className={`text-[28px] font-bold mono-value tracking-tight leading-none ${grandBalance >= 0 ? 'text-accent' : 'text-danger'}`}>
-          {grandBalance >= 0 ? '+' : ''}{f$(grandBalance)} €
+        <div className={`text-[28px] font-bold mono-value tracking-tight leading-none ${bankReality.delta >= 0 ? 'text-accent' : 'text-danger'}`}>
+          {bankReality.delta >= 0 ? '+' : ''}{f$(bankReality.delta)} €
+        </div>
+        <div className="text-[10px] text-t-4 mt-1">
+          {bankReality.from
+            ? `Compte réel depuis ${bankReality.from} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
+            : `Entrées − sorties : ${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
           <div>
