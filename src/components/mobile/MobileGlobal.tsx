@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance, bankRealDelta } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS, isLegacyEarnMonth } from '@/lib/constants';
+import { LEGACY_EARN_MONTHS, isLegacyEarnMonth, INSTALL_CAPITAL } from '@/lib/constants';
 import { ChevronRight, TrendingUp } from 'lucide-react';
 
 export default function MobileGlobal() {
@@ -42,17 +42,23 @@ export default function MobileGlobal() {
   const grandTotalRev = spaceStats.reduce((s, sp) => s + sp.totalRevenue, 0);
   const grandBalance = grandTotalRev - grandTotalSpent;
 
-  // Variation RÉELLE du compte + net des flux tracés sur la même période
+  // Variation RÉELLE du compte (tous spaces, converti en EUR) + net des flux tracés
+  // sur la même période : l'écart entre les deux = mouvements bancaires non saisis.
+  // Le point de départ est le capital d'installation reconstitué depuis les relevés
+  // bancaires (INSTALL_CAPITAL), pas le soldeStart du premier mois renseigné.
   const bankReality = useMemo(() => {
     return spaces.reduce((acc, s) => {
-      const r = bankRealDelta(s.months, s.postes, s.revenus?.months, liveRate);
+      const base = INSTALL_CAPITAL[s.id];
+      const r = bankRealDelta(s.months, s.postes, s.revenus?.months, liveRate,
+        base ? { aed: base.aed, label: `le ${base.date}` } : undefined);
       const toEurLocal = (v: number) => (s.localCurrency === 'EUR' ? v : v / liveRate);
       return {
         delta: acc.delta + toEurLocal(r.delta),
         flows: acc.flows + toEurLocal(r.flows),
         from: acc.from || r.from,
+        startLabel: acc.startLabel || (base ? `capital ${f0(base.aed)} ${s.localCurrency}` : ''),
       };
-    }, { delta: 0, flows: 0, from: null as string | null });
+    }, { delta: 0, flows: 0, from: null as string | null, startLabel: '' });
   }, [spaces, liveRate]);
 
   // Bank balances
@@ -94,7 +100,7 @@ export default function MobileGlobal() {
         </div>
         <div className="text-[10px] text-t-4 mt-1">
           {bankReality.from
-            ? `Compte réel depuis ${bankReality.from} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
+            ? `Compte réel depuis ${bankReality.from}${bankReality.startLabel ? ` · ${bankReality.startLabel}` : ''} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
             : `Entrées − sorties : ${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">

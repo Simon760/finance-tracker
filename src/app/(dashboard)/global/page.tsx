@@ -8,7 +8,7 @@ import MobileGlobal from '@/components/mobile/MobileGlobal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
 import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS, PIE_COLORS, isLegacyEarnMonth } from '@/lib/constants';
+import { LEGACY_EARN_MONTHS, PIE_COLORS, isLegacyEarnMonth, INSTALL_CAPITAL } from '@/lib/constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -54,16 +54,21 @@ export default function GlobalPage() {
 
   // Variation RÉELLE du compte (tous spaces, converti en EUR) + net des flux tracés
   // sur la même période : l'écart entre les deux = mouvements bancaires non saisis.
+  // Le point de départ est le capital d'installation reconstitué depuis les relevés
+  // bancaires (INSTALL_CAPITAL), pas le soldeStart du premier mois renseigné.
   const bankReality = useMemo(() => {
     return spaces.reduce((acc, s) => {
-      const r = bankRealDelta(s.months, s.postes, s.revenus?.months, liveRate);
+      const base = INSTALL_CAPITAL[s.id];
+      const r = bankRealDelta(s.months, s.postes, s.revenus?.months, liveRate,
+        base ? { aed: base.aed, label: `le ${base.date}` } : undefined);
       const toEurLocal = (v: number) => (s.localCurrency === 'EUR' ? v : v / liveRate);
       return {
         delta: acc.delta + toEurLocal(r.delta),
         flows: acc.flows + toEurLocal(r.flows),
         from: acc.from || r.from,
+        startLabel: acc.startLabel || (base ? `capital ${f0(base.aed)} ${s.localCurrency}` : ''),
       };
-    }, { delta: 0, flows: 0, from: null as string | null });
+    }, { delta: 0, flows: 0, from: null as string | null, startLabel: '' });
   }, [spaces, liveRate]);
 
   // Net worth - bank balances from spaces (confirmed prévisionnel)
@@ -130,7 +135,7 @@ export default function GlobalPage() {
           label="Balance nette"
           value={`${bankReality.delta >= 0 ? '+' : ''}${f$(bankReality.delta)} €`}
           sub={bankReality.from
-            ? `Compte réel depuis ${bankReality.from} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
+            ? `Compte réel depuis ${bankReality.from}${bankReality.startLabel ? ` · ${bankReality.startLabel}` : ''} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
             : `Entrées − sorties : ${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`}
           accentColor={bankReality.delta >= 0 ? '#10b981' : '#ef4444'}
           hero

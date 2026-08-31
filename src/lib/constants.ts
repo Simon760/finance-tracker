@@ -59,3 +59,30 @@ export function isLegacyEarnMonth(id: string): boolean {
   const n = strip(id || '');
   return LEGACY_EARN_MONTHS.some(m => strip(m) === n);
 }
+
+/**
+ * Capital d'installation : ce que Simon possédait AVANT de s'expatrier (18/10/2025)
+ * et qu'il a transféré vers ses comptes UAE en octobre 2025. Reconstitué en croisant
+ * les relevés Revolut FR, FAB, WIO perso et WIO Business :
+ *
+ *   Revolut → FAB (3 virements telex, 20–22/10)      67 622,82
+ *   Revolut → retrait cash → dépôt FAB du 24/10       6 500,00
+ *   Wise    → WIO Business → FAB du 21/10             6 403,25
+ *   ────────────────────────────────────────────────────────────
+ *                                                    80 526,07 AED
+ *
+ * EXCLU volontairement — revenus réalisés APRÈS le 18/10, donc gagnés depuis Dubaï :
+ *   COINMENA (cash-out crypto) → WIO, 22–27/10       19 639,71
+ *   Wise → WIO perso, 21/10                             500,00
+ *   soit 20 139,71 AED = 4 653 € — à 3 € près les 4 650 € du tracker d'octobre.
+ *
+ * Contrôle : 80 526,07 + 15 225,71 (part crypto arrivée au FAB) + 232 (remboursement
+ * Lucas) + 7,56 (remboursement carte) = 95 991,34 = total exact des crédits FAB
+ * d'octobre 2025. Chaque dirham du relevé est expliqué.
+ *
+ * `rate` = EUR/AED au 18/10/2025 (BCE ~4,284 ; encadré par les conversions Revolut
+ * réelles du 16/10 à 4,2876 et du 20/10 à 4,2814).
+ */
+export const INSTALL_CAPITAL: Record<string, { aed: number; rate: number; date: string }> = {
+  dubai: { aed: 80526.07, rate: 4.284, date: '18/10/2025' },
+};

@@ -6,6 +6,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur } from '@/lib/utils';
+import { INSTALL_CAPITAL } from '@/lib/constants';
 import { EmmenagementItem } from '@/lib/types';
 
 const CATS = ['Meubles', 'Électroménager', 'Décoration', 'Cuisine', 'Autre'];
@@ -20,6 +21,13 @@ export default function SetupPage() {
 
   const totalAed = items.reduce((s, i) => s + (i.aed || 0), 0);
   const totalEur = items.reduce((s, i) => s + (i.eur || toEur(i.aed, i.taux || liveRate)), 0);
+
+  // Ce qu'il fallait avoir en poche avant de s'installer : les frais de setup déjà
+  // payés sur place + le capital transféré vers les comptes UAE (cf. INSTALL_CAPITAL,
+  // reconstitué depuis les relevés Revolut / FAB / WIO). Converti au taux du jour de
+  // l'expatriation, pas au taux courant — c'est une photo, pas une valeur qui vit.
+  const install = INSTALL_CAPITAL[activeSpace.id];
+  const capitalPreInstall = install ? totalAed + install.aed : 0;
 
   const catTotals: Record<string, number> = {};
   items.forEach(i => {
@@ -66,10 +74,18 @@ export default function SetupPage() {
       </PageHeader>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3 mb-5 max-md:grid-cols-1">
+      <div className={`grid ${install ? 'grid-cols-4' : 'grid-cols-3'} gap-3 mb-5 max-lg:grid-cols-2 max-md:grid-cols-1`}>
         <KpiCard label="Total AED" value={`${f0(totalAed)} AED`} accentColor="#3b82f6" />
         <KpiCard label="Total EUR" value={`${f$(totalEur)} €`} accentColor="#10b981" />
         <KpiCard label="Postes" value={`${items.length}`} accentColor="#8b5cf6" />
+        {install && (
+          <KpiCard
+            label="Capital avant installation"
+            value={`${f0(capitalPreInstall)} AED`}
+            sub={`${f$(capitalPreInstall / install.rate)} € au taux du ${install.date} · ${f0(totalAed)} de frais + ${f0(install.aed)} transférés`}
+            accentColor="#f59e0b"
+          />
+        )}
       </div>
 
       {/* Category summary */}

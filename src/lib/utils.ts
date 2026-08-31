@@ -55,27 +55,40 @@ export function monthBankBalance(
 }
 
 /**
- * Variation RÉELLE du compte sur la période suivie : solde de départ du premier mois
- * renseigné → solde d'aujourd'hui. Diffère de « entrées − sorties » de tous les
- * mouvements bancaires jamais saisis (l'écart se voit alors dans le sous-titre).
- * Retourne aussi le net des flux tracés sur la MÊME période, pour comparaison.
+ * Variation RÉELLE du compte sur la période suivie : solde de départ → solde
+ * d'aujourd'hui. Diffère de « entrées − sorties » de tous les mouvements bancaires
+ * jamais saisis (l'écart se voit alors dans le sous-titre). Retourne aussi le net
+ * des flux tracés sur la MÊME période, pour comparaison.
+ *
+ * `baseline` remplace le point de départ par un montant connu hors tracker — le
+ * capital d'installation reconstitué depuis les relevés bancaires (cf.
+ * INSTALL_CAPITAL). Sans lui, le départ est le soldeStart du premier mois renseigné,
+ * ce qui ignore le mois d'arrivée et fait démarrer la mesure un mois trop tard.
  */
 export function bankRealDelta(
   months: Month[],
   postes: Poste[],
   revenusMonths: Record<string, RevenuEntry[]> | undefined,
   fallbackRate: number,
-): { delta: number; flows: number; from: string | null } {
-  const tracked = (months || []).filter(m => (m.soldeStart || 0) > 0);
-  if (tracked.length === 0) return { delta: 0, flows: 0, from: null };
-  const first = tracked[0];
+  baseline?: { aed: number; label: string },
+): { delta: number; flows: number; from: string | null; start: number } {
+  const all = months || [];
+  const tracked = all.filter(m => (m.soldeStart || 0) > 0);
+  if (tracked.length === 0) return { delta: 0, flows: 0, from: null, start: 0 };
   const last = tracked[tracked.length - 1];
   const now = monthBankBalance(last, postes, revenusMonths, fallbackRate);
-  const flows = tracked.reduce((sum, m) => {
+
+  // Avec un baseline (capital d'installation), la période démarre AVANT le premier
+  // mois qui a un soldeStart : on somme alors les flux de tous les mois jusqu'au
+  // dernier suivi — sinon le mois d'arrivée (soldeStart 0) serait ignoré.
+  const scope = baseline ? all.slice(0, all.lastIndexOf(last) + 1) : tracked;
+  const flows = scope.reduce((sum, m) => {
     const bal = monthBankBalance(m, postes, revenusMonths, fallbackRate);
     return sum + (bal - (m.soldeStart || 0)); // entrées − sorties du mois
   }, 0);
-  return { delta: now - (first.soldeStart || 0), flows, from: first.id };
+
+  const start = baseline ? baseline.aed : (tracked[0].soldeStart || 0);
+  return { delta: now - start, flows, from: baseline ? baseline.label : tracked[0].id, start };
 }
 
 /**
