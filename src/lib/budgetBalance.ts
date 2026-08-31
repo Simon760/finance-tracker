@@ -1,5 +1,5 @@
 import { Month, Poste } from './types';
-import { toEur, rowEur } from './utils';
+import { toEur, rowEur, budgetEurOf } from './utils';
 
 export interface PosteDelta {
   name: string;
@@ -78,7 +78,7 @@ export function computeBudgetBalance(m: Month, postes: Poste[], liveRate: number
     if (isPosteFixed(p)) { excludedFixed.push(p.name); return; }
     const brow = m.budget?.[i] || { aed: 0, eur: null };
     const arow = m.actual?.[i] || { aed: 0, eur: null };
-    const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
+    const budgetEur = budgetEurOf(brow, p.isAed, liveRate);
     const actualEur = rowEur(arow, m.rate);
     prevuBudgetEur += budgetEur;
     prevuActualEur += actualEur;

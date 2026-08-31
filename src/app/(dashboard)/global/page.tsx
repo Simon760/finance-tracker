@@ -8,7 +8,7 @@ import MobileGlobal from '@/components/mobile/MobileGlobal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
 import { f$, f0, sumEur, sumAed, shortMonth } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS, PIE_COLORS } from '@/lib/constants';
+import { LEGACY_EARN_MONTHS, PIE_COLORS, isLegacyEarnMonth } from '@/lib/constants';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -24,7 +24,10 @@ export default function GlobalPage() {
   const spaceStats = useMemo(() => {
     return spaces.map(space => {
       const totalSpent = space.months.reduce((s, m) => s + sumEur(m, space.postes, m.extraActual), 0);
-      const totalRevConfirmed = Object.values(space.revenus?.months || {}).reduce((total, entries) => {
+      // Les mois legacy lisent Month.earn ci-dessous : on exclut leurs entrées de la
+      // table Revenus, sinon ils sont comptés deux fois.
+      const totalRevConfirmed = Object.entries(space.revenus?.months || {}).reduce((total, [monthId, entries]) => {
+        if (isLegacyEarnMonth(monthId)) return total;
         return total + (entries || []).filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       }, 0);
       const legacyEarn = space.months

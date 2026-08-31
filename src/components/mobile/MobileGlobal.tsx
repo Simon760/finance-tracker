@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import { f$, f0, sumEur, sumAed } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS } from '@/lib/constants';
+import { LEGACY_EARN_MONTHS, isLegacyEarnMonth } from '@/lib/constants';
 import { ChevronRight, TrendingUp } from 'lucide-react';
 
 export default function MobileGlobal() {
@@ -14,7 +14,10 @@ export default function MobileGlobal() {
   const spaceStats = useMemo(() => {
     return spaces.map(space => {
       const totalSpent = space.months.reduce((s, m) => s + sumEur(m, space.postes, m.extraActual), 0);
-      const totalRevConfirmed = Object.values(space.revenus?.months || {}).reduce((total, entries) => {
+      // Les mois legacy lisent Month.earn ci-dessous : on exclut leurs entrées de la
+      // table Revenus, sinon ils sont comptés deux fois.
+      const totalRevConfirmed = Object.entries(space.revenus?.months || {}).reduce((total, [monthId, entries]) => {
+        if (isLegacyEarnMonth(monthId)) return total;
         return total + (entries || []).filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       }, 0);
       const legacyEarn = space.months

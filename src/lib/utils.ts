@@ -72,6 +72,28 @@ export function toAed(eur: number, rate: number): number {
   return eur * rate;
 }
 
+/**
+ * Devise de référence d'une LIGNE de budget. Le flag isAed est global au poste, or
+ * les mois anciens ne stockaient qu'une seule devise : sans repli, changer la devise
+ * de référence d'un poste viderait l'affichage et les totaux des mois passés.
+ */
+export function budgetIsEurRef(row: BudgetRow | undefined | null, isAed: boolean): boolean {
+  const aed = row?.aed || 0;
+  const eur = row?.eur || 0;
+  if (aed > 0 && eur > 0) return !isAed; // les deux stockés → le flag du poste tranche
+  return eur > 0;                        // sinon → la devise réellement saisie
+}
+
+/** Budget d'une ligne en EUR, selon sa devise de référence (l'autre suit le taux). */
+export function budgetEurOf(row: BudgetRow | undefined | null, isAed: boolean, liveRate: number): number {
+  return budgetIsEurRef(row, isAed) ? (row?.eur || 0) : toEur(row?.aed || 0, liveRate);
+}
+
+/** Budget d'une ligne en AED, selon sa devise de référence. */
+export function budgetAedOf(row: BudgetRow | undefined | null, isAed: boolean, liveRate: number): number {
+  return budgetIsEurRef(row, isAed) ? toAed(row?.eur || 0, liveRate) : (row?.aed || 0);
+}
+
 export function rowEur(row: BudgetRow | ActualRow, rate: number): number {
   if (row.eur && row.eur > 0) return row.eur;
   return toEur(row.aed || 0, rate);
@@ -100,7 +122,7 @@ export function sumEurBudget(m: Month, postes: { isAed: boolean; name?: string }
     if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
-    total += p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
+    total += budgetEurOf(row, p.isAed, liveRate);
   });
   (m.extraBudget || []).forEach(r => {
     total += r.eur > 0 ? r.eur : toEur(r.aed, liveRate);
@@ -114,7 +136,7 @@ export function sumAedBudget(m: Month, postes: { isAed: boolean; name?: string }
     if (isHidden(m, p.name)) return;
     const row = m.budget[i];
     if (!row) return;
-    total += p.isAed ? (row.aed || 0) : toAed(row.eur || 0, liveRate);
+    total += budgetAedOf(row, p.isAed, liveRate);
   });
   (m.extraBudget || []).forEach(r => {
     total += r.aed > 0 ? r.aed : toAed(r.eur || 0, liveRate);

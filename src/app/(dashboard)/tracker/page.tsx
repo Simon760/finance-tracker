@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff } from 'lucide-react';
@@ -904,7 +904,10 @@ export default function TrackerPage() {
                 if ((m.hiddenPostes || []).includes(p.name)) return null;
                 const row = m.budget[i] || { aed: 0, eur: null };
                 // Budget EUR = AED converti au taux live pour les postes AED (ignore le eur figé)
-                const eur = p.isAed ? toEur(row.aed, liveRate) : (row.eur || 0);
+                // Devise de référence de CETTE ligne : repli sur la devise réellement
+                // stockée pour les mois saisis avant que le poste ait une référence.
+                const eurRef = budgetIsEurRef(row, p.isAed);
+                const eur = budgetEurOf(row, p.isAed, liveRate);
                 const pct = bE > 0 ? ((eur / bE) * 100).toFixed(1) : '0.0';
                 return (
                   <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors group">
@@ -918,18 +921,18 @@ export default function TrackerPage() {
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <CellInput
-                        value={Math.round((p.isAed ? row.aed : toAed(row.eur ?? 0, liveRate)) * 100) / 100}
+                        value={Math.round(budgetAedOf(row, p.isAed, liveRate) * 100) / 100}
                         onChange={v => updateBudget(i, v)}
-                        muted={!p.isAed}
-                        title={p.isAed ? 'Objectif fixé en AED' : 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en AED'}
+                        muted={eurRef}
+                        title={eurRef ? 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en AED' : 'Objectif fixé en AED'}
                       />
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <CellInput
-                        value={Math.round((p.isAed ? eur : (row.eur ?? eur)) * 100) / 100}
+                        value={Math.round(eur * 100) / 100}
                         onChange={v => updateBudget(i, v, true)}
-                        muted={p.isAed}
-                        title={p.isAed ? 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en EUR' : 'Objectif fixé en EUR'}
+                        muted={!eurRef}
+                        title={eurRef ? 'Objectif fixé en EUR' : 'Calculé au taux live — saisis ici pour fixer l\u2019objectif en EUR'}
                       />
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -1012,7 +1015,7 @@ export default function TrackerPage() {
                 const brow = m.budget[i] || { aed: 0, eur: null };
                 const eur = rowEur(row, m.rate);
                 // Budget EUR = AED converti au taux live (cohérent avec le total et la carte)
-                const beur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
+                const beur = budgetEurOf(brow, p.isAed, liveRate);
                 const ratio = beur > 0 ? eur / beur : 0;
                 const ecart = beur - eur;
                 const rc = ratio > 1.05 ? 'text-danger' : ratio < 0.95 && ratio > 0 ? 'text-accent' : 'text-t-3';

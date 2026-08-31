@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, pocketCashEur } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, pocketCashEur, budgetEurOf } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -290,7 +290,7 @@ export default function MobileTracker() {
       if (hidden.includes(p.name)) return null;
       const bRow = m.budget[i] || { aed: 0, eur: null };
       const aRow = m.actual[i] || { aed: 0, eur: null };
-      const budgetEur = bRow.eur ?? (p.isAed ? toEur(bRow.aed || 0, liveRate) : 0);
+      const budgetEur = budgetEurOf(bRow, p.isAed, liveRate);
       const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
       const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
       const txnsCount = (aRow.txns || []).length;
@@ -491,7 +491,7 @@ export default function MobileTracker() {
           const row = m.actual[detailIdx];
           const bRow = m.budget[detailIdx];
           const txns = row?.txns || [];
-          const budgetEur = bRow?.eur ?? (state.postes[detailIdx].isAed ? toEur(bRow?.aed || 0, liveRate) : 0);
+          const budgetEur = budgetEurOf(bRow, state.postes[detailIdx].isAed, liveRate);
           const actualEur = row?.eur ?? (state.postes[detailIdx].isAed ? toEur(row?.aed || 0, m.rate) : 0);
           return (
             <div className="pt-1">

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Month, Poste } from '@/lib/types';
-import { f$, f0, toEur, toAed, rowEur } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, budgetEurOf } from '@/lib/utils';
 import { computeBudgetBalance, budgetBalanceMessage, isPosteFixed } from '@/lib/budgetBalance';
 import { Target, ChevronDown } from 'lucide-react';
 
@@ -44,7 +44,7 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
     if (!isPosteFixed(p)) return;
     const brow = month.budget?.[i] || { aed: 0, eur: null };
     const arow = month.actual?.[i] || { aed: 0, eur: null };
-    const budgetEur = p.isAed ? toEur(brow.aed, liveRate) : (brow.eur || 0);
+    const budgetEur = budgetEurOf(brow, p.isAed, liveRate);
     const actualEur = rowEur(arow, month.rate);
     projFixedEur += Math.max(budgetEur, actualEur);
     remainingFixedEur += Math.max(0, budgetEur - actualEur);

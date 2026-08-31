@@ -48,3 +48,14 @@ export const CAT_LABELS: Record<string, string> = {
 };
 
 export const LEGACY_EARN_MONTHS = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER'];
+
+/**
+ * Un mois « legacy » lit son revenu dans Month.earn, PAS dans la table Revenus.
+ * Comparaison insensible aux accents : la table peut contenir « FÉVRIER » alors que
+ * la constante est « FEVRIER » — sans ça le mois était compté deux fois.
+ */
+export function isLegacyEarnMonth(id: string): boolean {
+  const strip = (v: string) => v.trim().toUpperCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
+  const n = strip(id || '');
+  return LEGACY_EARN_MONTHS.some(m => strip(m) === n);
+}
