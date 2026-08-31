@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, sumEur, sumAed } from '@/lib/utils';
+import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, isLegacyEarnMonth } from '@/lib/constants';
 import { ChevronRight, TrendingUp } from 'lucide-react';
 
@@ -45,15 +45,10 @@ export default function MobileGlobal() {
   // Bank balances
   const bankBalances = useMemo(() => {
     return spaces.map(s => {
-      const lastMonth = s.months[s.months.length - 1];
+      // Dernier mois RENSEIGNÉ (pas le dernier de la liste, souvent un mois futur vide)
+      const lastMonth = lastMonthWithBalance(s.months);
       if (!lastMonth) return null;
-      const synced = !LEGACY_EARN_MONTHS.includes(lastMonth.id);
-      const revEntries = s.revenus?.months?.[lastMonth.id] || [];
-      const earnLocal = synced
-        ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((sum, e) => sum + ((e.cashed || 0) * (e.rate || lastMonth.rate)), 0)
-        : (lastMonth.earn || 0) * lastMonth.rate;
-      const spentLocal = sumAed(lastMonth, s.postes, lastMonth.extraActual);
-      const balance = (lastMonth.soldeStart || 0) + earnLocal - spentLocal;
+      const balance = monthBankBalance(lastMonth, s.postes, s.revenus?.months, liveRate);
       const eurBalance = s.localCurrency === 'EUR' ? balance : balance / liveRate;
       return { space: s.name, emoji: s.emoji, currency: s.localCurrency, balance, eurBalance };
     }).filter((b): b is { space: string; emoji: string; currency: string; balance: number; eurBalance: number } => b !== null && b.balance > 0);

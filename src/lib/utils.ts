@@ -1,4 +1,5 @@
-import { Month, BudgetRow, ActualRow, ExtraRow, Trip } from './types';
+import { Month, BudgetRow, ActualRow, ExtraRow, Trip, Poste, RevenuEntry } from './types';
+import { isLegacyEarnMonth } from './constants';
 
 // Format
 export function f$(n: number): string {
@@ -19,6 +20,38 @@ export function shortMonth(id: string): string {
   if (n.startsWith('JUIL')) return 'JUIL';
   if (n.startsWith('JUIN')) return 'JUIN';
   return n.slice(0, 3);
+}
+
+/**
+ * Dernier mois réellement renseigné (avec un solde de départ). Les pages patrimoine
+ * prenaient le DERNIER mois de la liste, souvent un mois futur encore vide → solde 0.
+ */
+export function lastMonthWithBalance(months: Month[]): Month | undefined {
+  for (let i = (months || []).length - 1; i >= 0; i--) {
+    if ((months[i].soldeStart || 0) > 0) return months[i];
+  }
+  return undefined;
+}
+
+/**
+ * Solde bancaire d'un mois en devise locale — même formule que le « Prévisionnel
+ * compte » du tracker : soldeStart + revenus confirmés − dépenses hors voyage
+ * (le swap a déjà débité le compte) + ajustement manuel.
+ */
+export function monthBankBalance(
+  m: Month,
+  postes: Poste[],
+  revenusMonths: Record<string, RevenuEntry[]> | undefined,
+  fallbackRate: number,
+): number {
+  const entries = revenusMonths?.[m.id] || [];
+  const earnLocal = isLegacyEarnMonth(m.id)
+    ? (m.earn || 0) * m.rate
+    : entries
+        .filter(e => !e.status || e.status === 'confirmed')
+        .reduce((sum: number, e: RevenuEntry) => sum + ((e.cashed || 0) * (e.rate || fallbackRate)), 0);
+  const spentLocal = sumAedBank(m, postes, m.extraActual || []);
+  return (m.soldeStart || 0) + earnLocal - spentLocal + (m.adjustment || 0);
 }
 
 /**
