@@ -33,6 +33,18 @@ export default function GlobalPage() {
       const legacyEarn = space.months
         .filter(m => LEGACY_EARN_MONTHS.includes(m.id))
         .reduce((s, m) => s + (m.earn || 0), 0);
+      const totalRevenue = totalRevConfirmed + legacyEarn;
+
+      // La balance affichée est la variation RÉELLE du compte depuis le capital
+      // d'installation, pas revenus − dépenses : les deux diffèrent de tous les
+      // mouvements bancaires jamais saisis. Repli sur la balance comptable pour un
+      // space sans solde bancaire suivi.
+      const base = INSTALL_CAPITAL[space.id];
+      const real = bankRealDelta(space.months, space.postes, space.revenus?.months, liveRate,
+        base ? { aed: base.aed, label: `le ${base.date}` } : undefined);
+      const realBalance = real.from
+        ? (space.localCurrency === 'EUR' ? real.delta : real.delta / liveRate)
+        : totalRevenue - totalSpent;
 
       return {
         id: space.id,
@@ -42,11 +54,12 @@ export default function GlobalPage() {
         status: space.status,
         monthCount: space.months.length,
         totalSpent,
-        totalRevenue: totalRevConfirmed + legacyEarn,
-        balance: totalRevConfirmed + legacyEarn - totalSpent,
+        totalRevenue,
+        balance: totalRevenue - totalSpent,
+        realBalance,
       };
     });
-  }, [spaces]);
+  }, [spaces, liveRate]);
 
   const grandTotalSpent = spaceStats.reduce((s, sp) => s + sp.totalSpent, 0);
   const grandTotalRev = spaceStats.reduce((s, sp) => s + sp.totalRevenue, 0);
@@ -129,8 +142,8 @@ export default function GlobalPage() {
 
       {/* Grand Total KPIs */}
       <div className="grid grid-cols-4 gap-3 mb-6 max-lg:grid-cols-2 max-md:grid-cols-1">
-        <KpiCard label="Total dépensé" value={`${f$(grandTotalSpent)} €`} accentColor="#ef4444" hero />
         <KpiCard label="Total revenus" value={`${f$(grandTotalRev)} €`} accentColor="#10b981" hero />
+        <KpiCard label="Total dépensé" value={`${f$(grandTotalSpent)} €`} accentColor="#ef4444" hero />
         <KpiCard
           label="Balance nette"
           value={`${bankReality.delta >= 0 ? '+' : ''}${f$(bankReality.delta)} €`}
@@ -169,8 +182,8 @@ export default function GlobalPage() {
               </div>
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Balance</div>
-                <div className={`hero-num text-[15px] mt-1 mono-value ${sp.balance >= 0 ? 'text-accent' : 'text-danger'}`}>
-                  {sp.balance >= 0 ? '+' : ''}{f$(sp.balance)} €
+                <div className={`hero-num text-[15px] mt-1 mono-value ${sp.realBalance >= 0 ? 'text-accent' : 'text-danger'}`}>
+                  {sp.realBalance >= 0 ? '+' : ''}{f$(sp.realBalance)} €
                 </div>
               </div>
             </div>

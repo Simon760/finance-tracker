@@ -23,6 +23,18 @@ export default function MobileGlobal() {
       const legacyEarn = space.months
         .filter(m => LEGACY_EARN_MONTHS.includes(m.id))
         .reduce((s, m) => s + (m.earn || 0), 0);
+      const totalRevenue = totalRevConfirmed + legacyEarn;
+
+      // La balance affichée est la variation RÉELLE du compte depuis le capital
+      // d'installation, pas revenus − dépenses : les deux diffèrent de tous les
+      // mouvements bancaires jamais saisis. Repli sur la balance comptable pour un
+      // space sans solde bancaire suivi.
+      const base = INSTALL_CAPITAL[space.id];
+      const real = bankRealDelta(space.months, space.postes, space.revenus?.months, liveRate,
+        base ? { aed: base.aed, label: `le ${base.date}` } : undefined);
+      const realBalance = real.from
+        ? (space.localCurrency === 'EUR' ? real.delta : real.delta / liveRate)
+        : totalRevenue - totalSpent;
 
       return {
         id: space.id,
@@ -32,11 +44,12 @@ export default function MobileGlobal() {
         status: space.status,
         monthCount: space.months.length,
         totalSpent,
-        totalRevenue: totalRevConfirmed + legacyEarn,
-        balance: totalRevConfirmed + legacyEarn - totalSpent,
+        totalRevenue,
+        balance: totalRevenue - totalSpent,
+        realBalance,
       };
     });
-  }, [spaces]);
+  }, [spaces, liveRate]);
 
   const grandTotalSpent = spaceStats.reduce((s, sp) => s + sp.totalSpent, 0);
   const grandTotalRev = spaceStats.reduce((s, sp) => s + sp.totalRevenue, 0);
@@ -163,8 +176,8 @@ export default function MobileGlobal() {
               </div>
               <div className="bg-bg-2 rounded-lg px-2.5 py-2">
                 <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Bal.</div>
-                <div className={`text-[12px] font-bold mono-value mt-1 truncate ${sp.balance >= 0 ? 'text-accent' : 'text-danger'}`}>
-                  {sp.balance >= 0 ? '+' : ''}{f$(sp.balance)} €
+                <div className={`text-[12px] font-bold mono-value mt-1 truncate ${sp.realBalance >= 0 ? 'text-accent' : 'text-danger'}`}>
+                  {sp.realBalance >= 0 ? '+' : ''}{f$(sp.realBalance)} €
                 </div>
               </div>
             </div>
