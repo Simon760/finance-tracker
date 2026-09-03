@@ -15,12 +15,15 @@ import { EyeOff } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 
 const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'];
 
 export default function TrackerPage() {
   const isMobile = useIsMobile();
-  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange, trips } = useApp();
+  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange, trips, theme } = useApp();
+  const ct = chartTheme(theme);
+  const tooltipStyle = chartTooltipStyle(theme);
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcileInput, setReconcileInput] = useState('');
@@ -1143,7 +1146,7 @@ export default function TrackerPage() {
                   <Pie data={budgetPieData} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2}>
                     {budgetPieData.map((_, i) => <Cell key={i} fill={PIE_C[i % PIE_C.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => `${f$(Number(v))} €`} contentStyle={{ background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 }} />
+                  <Tooltip formatter={(v) => `${f$(Number(v))} €`} contentStyle={tooltipStyle} />
                 </PieChart>
               </ResponsiveContainer>
             </ChartBox>
@@ -1153,7 +1156,7 @@ export default function TrackerPage() {
                   <Pie data={actualPieData} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={2}>
                     {actualPieData.map((_, i) => <Cell key={i} fill={PIE_C[i % PIE_C.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => `${f$(Number(v))} €`} contentStyle={{ background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 }} />
+                  <Tooltip formatter={(v) => `${f$(Number(v))} €`} contentStyle={tooltipStyle} />
                 </PieChart>
               </ResponsiveContainer>
             </ChartBox>
@@ -1162,10 +1165,10 @@ export default function TrackerPage() {
           <ChartBox title="Budget vs Réel" className="mb-5">
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={compareData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e1e2a" />
-                <XAxis type="number" tick={{ fill: '#52525b', fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} width={80} />
-                <Tooltip contentStyle={{ background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
+                <XAxis type="number" tick={{ fill: ct.tick, fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} width={80} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="Budget" fill="rgba(59,130,246,0.3)" radius={4} />
                 <Bar dataKey="Réel" fill="rgba(236,72,153,0.35)" radius={4} />

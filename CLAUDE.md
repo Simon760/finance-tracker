@@ -32,6 +32,14 @@ Types principaux : `Month`, `Poste { isAed }`, `ActualRow`, `ExtraRow`, `RevenuE
 - **Tous les chiffres en gras** via `.mono-value` — ne pas overrider avec `style={{ fontWeight: 400 }}` inline
 - **Alignement numérique tableaux** : spans avec `pr-2 inline-block border border-transparent` pour matcher le border-box du `CellInput` (1px transparent + 8px padding)
 
+## Thème (jour / nuit)
+- Tokens CSS dans `globals.css` : `:root` = sombre, `[data-theme="light"]` = clair. Stockés en **canaux RGB** (`--bg: 9 9 11`) car `tailwind.config.ts` les consomme via `rgb(var(--x) / <alpha-value>)` — c'est ce qui garde `bg-accent/10`, `border-danger/25`… fonctionnels. **Ne jamais y remettre un hex.**
+- Échelles : `bg` 1→4 = fond de page → élévation ; `t` 1→4 = texte le plus contrasté → le plus discret. Les deux s'inversent en clair.
+- État dans `AppProvider` : `theme` / `toggleTheme`, appliqué en `data-theme` sur `<html>`. **La persistance se fait dans `toggleTheme`, pas dans un effet** — un effet écraserait la préférence au montage (l'état initial est `'dark'`).
+- Script anti-flash dans `app/layout.tsx` (clé `fhq_theme`, à garder alignée sur `THEME_KEY`).
+- **Graphes** : Recharts pose `fill`/`stroke` en attributs SVG, qui n'acceptent pas `var()`. Les couleurs de chrome passent donc par `chartTheme(theme)` / `chartTooltipStyle(theme)` (`src/lib/chartTheme.ts`). Les palettes de séries (`PIE_COLORS`…) restent en dur, elles lisent sur les deux fonds.
+- Toute nouvelle couleur d'UI passe par un token, pas par un hex.
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu

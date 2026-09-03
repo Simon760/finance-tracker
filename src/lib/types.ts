@@ -1,3 +1,6 @@
+/** Thème de l'interface. Persisté sous la clé THEME_KEY, appliqué en data-theme sur <html>. */
+export type Theme = 'dark' | 'light';
+
 export interface Poste {
   name: string;
   cat: 'vital' | 'lifestyle' | 'finance' | 'logement';

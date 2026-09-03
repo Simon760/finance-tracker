@@ -9,16 +9,18 @@ import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
 import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, PIE_COLORS, isLegacyEarnMonth, INSTALL_CAPITAL } from '@/lib/constants';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
 
-const tooltipStyle = { background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 };
 
 export default function GlobalPage() {
   const isMobile = useIsMobile();
-  const { spaces, liveRate, setActiveSpaceId } = useApp();
+  const { spaces, liveRate, setActiveSpaceId, theme } = useApp();
+  const ct = chartTheme(theme);
+  const tooltipStyle = chartTooltipStyle(theme);
   const router = useRouter();
 
   const spaceStats = useMemo(() => {
@@ -245,9 +247,9 @@ export default function GlobalPage() {
             <div className="text-[13px] font-semibold text-t-2 mb-4">Dépenses par mois</div>
             <ResponsiveContainer width="100%" height="85%">
               <BarChart data={evoData}>
-                <CartesianGrid stroke="#1e1e2a" />
-                <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#52525b', fontSize: 11 }} />
+                <CartesianGrid stroke={ct.grid} />
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} />
+                <YAxis tick={{ fill: ct.tick, fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 {spaces.map((s, i) => (

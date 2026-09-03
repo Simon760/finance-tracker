@@ -5,9 +5,96 @@
 /* Inter — the neo-bank standard (Qonto, Linear, Stripe, Vercel, Notion) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Thème. Les tokens sont stockés en CANAUX RGB (« 9 9 11 ») et non en hex,
+   parce que tailwind.config les consomme via rgb(var(--x) / <alpha-value>) :
+   c'est ce qui garde les modificateurs d'opacité (bg-accent/10, border-t/25…)
+   fonctionnels. Un hex ou un rgb() complet les casserait.
+
+   Sombre = défaut. Clair = [data-theme="light"] posé sur <html> par
+   AppProvider (et par le script anti-flash dans app/layout.tsx).
+
+   Échelles : bg 1→4 va du fond de page vers l'élévation ; t 1→4 va du texte
+   le plus contrasté au plus discret. Les deux s'inversent en clair.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+
+  --bg: 9 9 11;
+  --bg-2: 15 15 19;
+  --bg-3: 21 21 26;
+  --bg-4: 28 28 35;
+  --surface: 30 30 38;
+  --surface-hover: 36 36 46;
+
+  --border: 30 30 42;
+  --border-2: 42 42 58;
+  --border-active: 58 58 78;
+
+  --t-1: 250 250 250;
+  --t-2: 161 161 170;
+  --t-3: 113 113 122;
+  --t-4: 82 82 91;
+
+  --accent: 16 185 129;
+  --danger: 239 68 68;
+  --info: 59 130 246;
+  --warning: 245 158 11;
+  --purple: 139 92 246;
+  --cyan: 6 182 212;
+  --pink: 236 72 153;
+
+  /* Voile de survol des lignes de tableau : blanc sur fond sombre. */
+  --hover-tint: 255 255 255 / 0.02;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.6);
+  --shadow-inset-border: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: 247 247 249;
+  --bg-2: 241 242 245;
+  --bg-3: 255 255 255;
+  --bg-4: 235 236 240;
+  --surface: 255 255 255;
+  --surface-hover: 244 244 247;
+
+  --border: 226 227 232;
+  --border-2: 208 210 218;
+  --border-active: 168 170 182;
+
+  --t-1: 24 24 27;
+  --t-2: 82 82 91;
+  --t-3: 113 113 122;
+  --t-4: 143 143 152;
+
+  /* Teintes 600 : les 500 du mode sombre passent mal en texte sur blanc. */
+  --accent: 5 150 105;
+  --danger: 220 38 38;
+  --info: 37 99 235;
+  --warning: 217 119 6;
+  --purple: 124 58 237;
+  --cyan: 8 145 178;
+  --pink: 219 39 119;
+
+  /* Survol : noir léger, le blanc serait invisible. */
+  --hover-tint: 0 0 0 / 0.035;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --shadow-xl: 0 20px 50px rgba(15, 23, 42, 0.12);
+  --shadow-inset-border: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
 html, body {
-  background: #09090b;
-  color: #fafafa;
+  background: rgb(var(--bg));
+  color: rgb(var(--t-1));
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -17,19 +104,19 @@ html, body {
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a4e; }
+::-webkit-scrollbar-thumb { background: rgb(var(--border-2)); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--border-active)); }
 
 ::selection {
-  background: rgba(16, 185, 129, 0.25);
-  color: #fafafa;
+  background: rgb(var(--accent) / 0.25);
+  color: rgb(var(--t-1));
 }
 
 .recharts-default-tooltip {
-  background: #1c1c23 !important;
-  border: 1px solid #2a2a3a !important;
+  background: rgb(var(--bg-4)) !important;
+  border: 1px solid rgb(var(--border-2)) !important;
   border-radius: 10px !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+  box-shadow: var(--shadow-lg) !important;
   font-family: 'Inter', sans-serif !important;
   font-size: 11px !important;
   font-feature-settings: 'tnum' !important;
@@ -41,7 +128,8 @@ html, body {
 }
 .fi:hover { @apply border-border-2; }
 .fi:focus {
-  @apply border-accent shadow-[0_0_0_3px_rgba(16,185,129,0.12)];
+  @apply border-accent;
+  box-shadow: 0 0 0 3px rgb(var(--accent) / 0.12);
 }
 select.fi { @apply cursor-pointer; }
 
@@ -102,7 +190,7 @@ select.fi { @apply cursor-pointer; }
   content: '••••••';
   position: absolute;
   inset: 0;
-  color: #52525b;
+  color: rgb(var(--t-4));
   letter-spacing: 0.12em;
   text-align: inherit;
   font-weight: inherit;
@@ -118,7 +206,12 @@ select.fi { @apply cursor-pointer; }
 }
 
 /* Subtle table hover */
-.tr-hover:hover { background: rgba(255, 255, 255, 0.02); }
+.tr-hover:hover { background: rgb(var(--hover-tint)); }
+
+/* Les tables utilisent `hover:bg-white/[.02]` en dur dans le JSX (13 sites).
+   Plutôt que de les réécrire un par un, on repointe l'utilitaire sur le token :
+   `[data-theme] .classe` (0,2,0) l'emporte sur `.classe` (0,1,0). */
+[data-theme] .hover\:bg-white\/\[\.02\]:hover { background-color: rgb(var(--hover-tint)); }
 
 /* Status pills */
 .pill {

@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppProvider';
 import Modal from '@/components/ui/Modal';
 import {
   LayoutGrid, BarChart3, DollarSign, Home, Settings, Eye, EyeOff,
-  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane,
+  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane, Sun, Moon,
 } from 'lucide-react';
 
 const spaceNavItems = [
@@ -31,7 +31,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const {
-    liveRate, refreshRate, rateRefreshing, setRateManually, lastRateFetch, syncStatus, hiddenMode, toggleHidden, logout, userId,
+    liveRate, refreshRate, rateRefreshing, setRateManually, lastRateFetch, syncStatus, hiddenMode, toggleHidden, theme, toggleTheme, logout, userId,
     spaces, activeSpace, activeSpaceId, setActiveSpaceId, createSpace,
   } = useApp();
 
@@ -117,8 +117,15 @@ export default function Sidebar() {
           <span className="text-[13px] font-semibold tracking-tight truncate">{activeSpace.name}</span>
         </div>
         <button
-          onClick={toggleHidden}
+          onClick={toggleTheme}
           className="ml-auto w-8 h-8 flex items-center justify-center rounded-md text-t-3 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
+          title={theme === 'dark' ? 'Mode jour' : 'Mode nuit'}
+        >
+          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+        </button>
+        <button
+          onClick={toggleHidden}
+          className="w-8 h-8 flex items-center justify-center rounded-md text-t-3 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
           title={hiddenMode ? 'Afficher' : 'Masquer'}
         >
           {hiddenMode ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -230,6 +237,9 @@ export default function Sidebar() {
         <div className="flex justify-end gap-1.5 mb-2">
           <button onClick={() => router.push('/settings')} className={`w-7 h-7 flex items-center justify-center rounded-md transition-all cursor-pointer ${isActive('/settings') ? 'bg-bg-4 border border-border-2 text-t-1' : 'text-t-3 hover:bg-bg-3 hover:text-t-1'}`} title="Paramètres">
             <Settings size={13} />
+          </button>
+          <button onClick={toggleTheme} className="w-7 h-7 flex items-center justify-center rounded-md text-t-3 hover:bg-bg-3 hover:text-t-1 transition-all cursor-pointer" title={theme === 'dark' ? 'Mode jour' : 'Mode nuit'}>
+            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
           </button>
           <button onClick={toggleHidden} className="w-7 h-7 flex items-center justify-center rounded-md text-t-3 hover:bg-bg-3 hover:text-t-1 transition-all cursor-pointer" title={hiddenMode ? 'Afficher' : 'Masquer'}>
             {hiddenMode ? <EyeOff size={13} /> : <Eye size={13} />}

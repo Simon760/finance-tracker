@@ -14,8 +14,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 
-const tooltipStyle = { background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 };
 
 /** Small KPI card with emoji icon (matches old HTML "solde-card" pattern) */
 function RevKpi({
@@ -37,7 +37,7 @@ function RevKpi({
         <div className="text-[9px] text-t-3 uppercase tracking-[0.14em] font-semibold">{label}</div>
         <div
           className="text-[18px] mt-1 mono-value leading-none"
-          style={{ color: valueColor || '#fafafa' }}
+          style={valueColor ? { color: valueColor } : undefined}
         >{value}</div>
         {sub && <div className="text-[10px] mt-1 mono-value font-medium">{sub}</div>}
       </div>
@@ -84,7 +84,9 @@ const STATUS_ROW_BORDER: Record<string, string> = {
 
 export default function RevenusPage() {
   const isMobile = useIsMobile();
-  const { state, setState, save, liveRate, activeSpace, logChange } = useApp();
+  const { state, setState, save, liveRate, activeSpace, logChange, theme } = useApp();
+  const ct = chartTheme(theme);
+  const tooltipStyle = chartTooltipStyle(theme);
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
 
   const [page, setPage] = useState<'tracker' | 'global'>('tracker');
@@ -434,9 +436,9 @@ export default function RevenusPage() {
             <div className="text-[13px] font-semibold text-t-2 mb-4 tracking-tight">Revenus par mois</div>
             <ResponsiveContainer width="100%" height="85%">
               <BarChart data={barData}>
-                <CartesianGrid stroke="#1e1e2a" />
-                <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#52525b', fontSize: 11 }} />
+                <CartesianGrid stroke={ct.grid} />
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} />
+                <YAxis tick={{ fill: ct.tick, fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <ReferenceLine y={obj} stroke="#ef4444" strokeDasharray="6 4" strokeWidth={2} />
@@ -730,9 +732,9 @@ export default function RevenusPage() {
             <div className="text-[13px] font-semibold text-t-2 mb-4 tracking-tight">Encaissé vs Objectif</div>
             <ResponsiveContainer width="100%" height="85%">
               <BarChart data={evoData}>
-                <CartesianGrid stroke="#1e1e2a" />
-                <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#52525b', fontSize: 11 }} />
+                <CartesianGrid stroke={ct.grid} />
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} />
+                <YAxis tick={{ fill: ct.tick, fontSize: 11 }} />
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <ReferenceLine y={obj} stroke="#ef4444" strokeDasharray="6 4" strokeWidth={2} />
@@ -828,9 +830,9 @@ export default function RevenusPage() {
           <div className="text-[13px] font-semibold text-t-2 mb-4 tracking-tight">Évolution trimestrielle</div>
           <ResponsiveContainer width="100%" height="85%">
             <BarChart data={qData}>
-              <CartesianGrid stroke="#1e1e2a" />
-              <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-              <YAxis tick={{ fill: '#52525b', fontSize: 11 }} />
+              <CartesianGrid stroke={ct.grid} />
+              <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} />
+              <YAxis tick={{ fill: ct.tick, fontSize: 11 }} />
               <Tooltip contentStyle={tooltipStyle} />
               <ReferenceLine y={qObj} stroke="#ef4444" strokeDasharray="6 4" strokeWidth={2} />
               <Bar dataKey="Encaissé" fill="rgba(139,92,246,.55)" radius={6} barSize={60} />

@@ -11,6 +11,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 
 interface Asset {
   name: string;
@@ -28,10 +29,10 @@ const ASSET_TYPES = [
   { value: 'other', label: 'Autre', color: '#06b6d4' },
 ];
 
-const tooltipStyle = { background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 };
 
 export default function NetWorthPage() {
-  const { spaces, liveRate } = useApp();
+  const { spaces, liveRate, theme } = useApp();
+  const tooltipStyle = chartTooltipStyle(theme);
   const [assets, setAssets] = useState<Asset[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('fhq_assets');

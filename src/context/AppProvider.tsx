@@ -1,10 +1,13 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
-import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry, Trip, Transaction } from '@/lib/types';
+import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry, Trip, Transaction, Theme } from '@/lib/types';
 import { DEFAULT_POSTES, MOIS_LIST } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate } from '@/lib/utils';
+
+/** Doit rester identique à la clé lue par le script anti-flash de app/layout.tsx. */
+export const THEME_KEY = 'fhq_theme';
 
 /**
  * Normalise un nom de mois : majuscules, sans accents, sans espaces.
@@ -83,6 +86,8 @@ interface AppContextType {
   syncStatus: 'ok' | 'saving' | 'off';
   hiddenMode: boolean;
   toggleHidden: () => void;
+  theme: Theme;
+  toggleTheme: () => void;
   curMonth: string | null;
   setCurMonth: (id: string) => void;
   curYear: string;
@@ -244,6 +249,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'ok' | 'saving' | 'off'>('off');
   const [hiddenMode, setHiddenMode] = useState(false);
+  // 'dark' au 1er render pour coller au HTML servi ; le vrai thème est relu
+  // depuis localStorage juste après le montage (cf. useEffect plus bas).
+  const [theme, setTheme] = useState<Theme>('dark');
   const [curMonth, setCurMonth] = useState<string | null>(null);
   const [curYear, setCurYear] = useState<string>('all');
   const [dashCur, setDashCur] = useState<'EUR' | 'AED'>('EUR');
@@ -502,6 +510,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [userId, persistToFirebase]);
 
   const toggleHidden = useCallback(() => setHiddenMode(prev => !prev), []);
+
+  // Le script inline de app/layout.tsx a déjà posé data-theme avant le paint
+  // (pas de flash) ; on se resynchronise dessus au montage.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved === 'light' || saved === 'dark') setTheme(saved);
+    } catch { /* localStorage indisponible (navigation privée) → on reste en sombre */ }
+  }, []);
+
+  // N'écrit QUE l'attribut, jamais localStorage. Au montage cet effet tourne
+  // encore avec theme='dark' (l'état initial), donc persister ici écraserait la
+  // préférence enregistrée — et en StrictMode le double-invoke relisait ensuite
+  // la valeur écrasée, ce qui ramenait le mode jour en sombre à chaque reload.
+  // La persistance se fait dans toggleTheme, sur action utilisateur.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => setTheme(prev => {
+    const next: Theme = prev === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* idem */ }
+    return next;
+  }), []);
 
   const logChange = useCallback((action: string, detail: string) => {
     setStateRaw(prev => {
@@ -1003,6 +1035,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       liveRate, refreshRate, setRateManually, rateRefreshing, lastRateFetch,
       syncStatus,
       hiddenMode, toggleHidden,
+      theme, toggleTheme,
       curMonth, setCurMonth,
       curYear, setCurYear,
       dashCur, setDashCur,

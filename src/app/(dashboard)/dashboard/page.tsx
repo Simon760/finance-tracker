@@ -10,10 +10,12 @@ import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 
 
 export default function DashboardPage() {
-  const { state, dashCur, setDashCur, activeSpace } = useApp();
+  const { state, dashCur, setDashCur, activeSpace, theme } = useApp();
+  const ct = chartTheme(theme);
   const ms = state.months;
 
   if (ms.length === 0) {
@@ -96,7 +98,7 @@ export default function DashboardPage() {
   });
   const totalPieData = Object.entries(posteTotals).filter(([, v]) => v > 1).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
 
-  const tooltipStyle = { background: '#1c1c23', border: '1px solid #2a2a3a', borderRadius: 8 };
+  const tooltipStyle = chartTooltipStyle(theme);
 
   return (
     <div>
@@ -122,9 +124,9 @@ export default function DashboardPage() {
         <div className="text-[13px] font-semibold text-t-2 mb-4">Dépenses & Revenus</div>
         <ResponsiveContainer width="100%" height="85%">
           <LineChart data={evoData}>
-            <CartesianGrid stroke="#1e1e2a" />
-            <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-            <YAxis tick={{ fill: '#52525b', fontSize: 11 }} />
+            <CartesianGrid stroke={ct.grid} />
+            <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} />
+            <YAxis tick={{ fill: ct.tick, fontSize: 11 }} />
             <Tooltip contentStyle={tooltipStyle} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line type="monotone" dataKey="Dépenses" stroke="#ef4444" strokeWidth={2} dot={{ fill: '#ef4444', r: 4 }} />
@@ -139,9 +141,9 @@ export default function DashboardPage() {
           <div className="text-[13px] font-semibold text-t-2 mb-4">Solde Bancaire AED (MoM)</div>
           <ResponsiveContainer width="100%" height="85%">
             <LineChart data={soldeData}>
-              <CartesianGrid stroke="#1e1e2a" />
-              <XAxis dataKey="name" tick={{ fill: '#52525b', fontSize: 11 }} />
-              <YAxis domain={[soldeMin, soldeMax]} allowDataOverflow tick={{ fill: '#52525b', fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+              <CartesianGrid stroke={ct.grid} />
+              <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 11 }} />
+              <YAxis domain={[soldeMin, soldeMax]} allowDataOverflow tick={{ fill: ct.tick, fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v) => `${f0(Number(v))} AED`} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="Début" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} />

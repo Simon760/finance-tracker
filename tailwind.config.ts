@@ -6,18 +6,56 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // Tous les tokens pointent sur des variables CSS définies dans globals.css
+      // (:root = sombre, [data-theme="light"] = clair). La forme
+      // rgb(var(--x) / <alpha-value>) est OBLIGATOIRE : c'est elle qui laisse
+      // fonctionner les modificateurs d'opacité (bg-accent/10, border-danger/25…),
+      // très utilisés dans le code. Un hex ou un rgb() figé les casserait.
       colors: {
-        bg: { DEFAULT: '#09090b', 2: '#0f0f13', 3: '#15151a', 4: '#1c1c23' },
-        surface: { DEFAULT: '#1e1e26', hover: '#24242e' },
-        border: { DEFAULT: '#1e1e2a', 2: '#2a2a3a', active: '#3a3a4e' },
-        t: { 1: '#fafafa', 2: '#a1a1aa', 3: '#71717a', 4: '#52525b' },
-        accent: { DEFAULT: '#10b981', light: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.24)' },
-        danger: { DEFAULT: '#ef4444', light: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.24)' },
-        info: { DEFAULT: '#3b82f6', light: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.24)' },
-        warning: { DEFAULT: '#f59e0b', light: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.24)' },
-        purple: { DEFAULT: '#8b5cf6', light: 'rgba(139,92,246,0.1)' },
-        cyan: { DEFAULT: '#06b6d4', light: 'rgba(6,182,212,0.1)' },
-        pink: { DEFAULT: '#ec4899', light: 'rgba(236,72,153,0.1)' },
+        bg: {
+          DEFAULT: 'rgb(var(--bg) / <alpha-value>)',
+          2: 'rgb(var(--bg-2) / <alpha-value>)',
+          3: 'rgb(var(--bg-3) / <alpha-value>)',
+          4: 'rgb(var(--bg-4) / <alpha-value>)',
+        },
+        surface: {
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          hover: 'rgb(var(--surface-hover) / <alpha-value>)',
+        },
+        border: {
+          DEFAULT: 'rgb(var(--border) / <alpha-value>)',
+          2: 'rgb(var(--border-2) / <alpha-value>)',
+          active: 'rgb(var(--border-active) / <alpha-value>)',
+        },
+        t: {
+          1: 'rgb(var(--t-1) / <alpha-value>)',
+          2: 'rgb(var(--t-2) / <alpha-value>)',
+          3: 'rgb(var(--t-3) / <alpha-value>)',
+          4: 'rgb(var(--t-4) / <alpha-value>)',
+        },
+        accent: {
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          light: 'rgb(var(--accent) / 0.1)',
+          border: 'rgb(var(--accent) / 0.24)',
+        },
+        danger: {
+          DEFAULT: 'rgb(var(--danger) / <alpha-value>)',
+          light: 'rgb(var(--danger) / 0.1)',
+          border: 'rgb(var(--danger) / 0.24)',
+        },
+        info: {
+          DEFAULT: 'rgb(var(--info) / <alpha-value>)',
+          light: 'rgb(var(--info) / 0.1)',
+          border: 'rgb(var(--info) / 0.24)',
+        },
+        warning: {
+          DEFAULT: 'rgb(var(--warning) / <alpha-value>)',
+          light: 'rgb(var(--warning) / 0.1)',
+          border: 'rgb(var(--warning) / 0.24)',
+        },
+        purple: { DEFAULT: 'rgb(var(--purple) / <alpha-value>)', light: 'rgb(var(--purple) / 0.1)' },
+        cyan: { DEFAULT: 'rgb(var(--cyan) / <alpha-value>)', light: 'rgb(var(--cyan) / 0.1)' },
+        pink: { DEFAULT: 'rgb(var(--pink) / <alpha-value>)', light: 'rgb(var(--pink) / 0.1)' },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
@@ -29,14 +67,16 @@ const config: Config = {
         lg: '16px',
         xl: '20px',
       },
+      // Ombres également tokenisées : les noirs à 40-60 % du mode sombre sont
+      // beaucoup trop lourds sur fond clair.
       boxShadow: {
-        sm: '0 1px 2px rgba(0,0,0,0.3)',
-        md: '0 4px 12px rgba(0,0,0,0.4)',
-        lg: '0 8px 24px rgba(0,0,0,0.5)',
-        xl: '0 20px 50px rgba(0,0,0,0.6)',
-        glow: '0 0 24px rgba(16,185,129,0.18)',
-        'glow-sm': '0 0 12px rgba(16,185,129,0.12)',
-        'inset-border': 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        xl: 'var(--shadow-xl)',
+        glow: '0 0 24px rgb(var(--accent) / 0.18)',
+        'glow-sm': '0 0 12px rgb(var(--accent) / 0.12)',
+        'inset-border': 'var(--shadow-inset-border)',
       },
       animation: {
         'fade-up': 'fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',

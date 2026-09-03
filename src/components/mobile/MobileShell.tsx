@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutGrid, DollarSign, Globe, MapPin, MoreHorizontal,
-  Eye, EyeOff, RefreshCw, LogOut, BarChart3, TrendingUp, Home, Settings, ChevronRight, X, Plane,
+  Eye, EyeOff, RefreshCw, LogOut, BarChart3, TrendingUp, Home, Settings, ChevronRight, X, Plane, Sun, Moon,
 } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
 import { setForceDesktop } from '@/lib/useIsMobile';
@@ -30,7 +30,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   const router = useRouter();
   const {
     activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing, setRateManually, lastRateFetch,
-    hiddenMode, toggleHidden, logout, userId,
+    hiddenMode, toggleHidden, theme, toggleTheme, logout, userId,
   } = useApp();
 
   const [moreOpen, setMoreOpen] = useState(false);
@@ -71,6 +71,13 @@ export default function MobileShell({ children }: { children: React.ReactNode })
             <div className="text-[13px] font-semibold text-t-1 truncate leading-tight">{activeSpace?.name || 'Space'}</div>
           </div>
           <ChevronRight size={14} className="text-t-3 shrink-0 rotate-90" />
+        </button>
+        <button
+          onClick={toggleTheme}
+          className="w-9 h-9 flex items-center justify-center rounded-full active:bg-bg-4 transition-colors text-t-2"
+          aria-label={theme === 'dark' ? 'Mode jour' : 'Mode nuit'}
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <button
           onClick={toggleHidden}
