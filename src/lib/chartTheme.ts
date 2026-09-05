@@ -13,7 +13,9 @@ import { Theme } from './types';
  */
 export function chartTheme(theme: Theme) {
   return theme === 'light'
-    ? { grid: '#e4e4e8', tick: '#8f8f98', tooltipBg: '#ffffff', tooltipBorder: '#d0d2da', text: '#18181b' }
+    // Valeurs alignées sur les tokens du mode clair : --border pour la grille,
+    // --t-4 pour les graduations, --t-1 pour le texte du tooltip.
+    ? { grid: '#dfe2e9', tick: '#697386', tooltipBg: '#ffffff', tooltipBorder: '#c7ccd6', text: '#101828' }
     : { grid: '#1e1e2a', tick: '#52525b', tooltipBg: '#1c1c23', tooltipBorder: '#2a2a3a', text: '#fafafa' };
 }
 

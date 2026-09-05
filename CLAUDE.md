@@ -34,7 +34,8 @@ Types principaux : `Month`, `Poste { isAed }`, `ActualRow`, `ExtraRow`, `RevenuE
 
 ## Thème (jour / nuit)
 - Tokens CSS dans `globals.css` : `:root` = sombre, `[data-theme="light"]` = clair. Stockés en **canaux RGB** (`--bg: 9 9 11`) car `tailwind.config.ts` les consomme via `rgb(var(--x) / <alpha-value>)` — c'est ce qui garde `bg-accent/10`, `border-danger/25`… fonctionnels. **Ne jamais y remettre un hex.**
-- Échelles : `bg` 1→4 = fond de page → élévation ; `t` 1→4 = texte le plus contrasté → le plus discret. Les deux s'inversent en clair.
+- Échelles : `bg` 1→4 = fond de page → élévation ; `t` 1→4 = texte le plus contrasté → le plus discret. **En clair `bg` s'inverse** (`bg` = le plus gris, `bg-3` = blanc) — sauf `bg-4`, qui reste un gris : au-dessus du blanc il n'y a plus rien, donc puces et survols redescendent. `t` s'inverse aussi.
+- Palette claire calibrée au contraste (rampe froide base `16 24 40`, teintes 600/700) : tout le texte passe AA. Avant de retoucher une couleur claire, refaire l'audit — un ratio calculé sur le fond effectif, pas à l'œil.
 - État dans `AppProvider` : `theme` / `toggleTheme`, appliqué en `data-theme` sur `<html>`. **La persistance se fait dans `toggleTheme`, pas dans un effet** — un effet écraserait la préférence au montage (l'état initial est `'dark'`).
 - Script anti-flash dans `app/layout.tsx` (clé `fhq_theme`, à garder alignée sur `THEME_KEY`).
 - **Graphes** : Recharts pose `fill`/`stroke` en attributs SVG, qui n'acceptent pas `var()`. Les couleurs de chrome passent donc par `chartTheme(theme)` / `chartTooltipStyle(theme)` (`src/lib/chartTheme.ts`). Les palettes de séries (`PIE_COLORS`…) restent en dur, elles lisent sur les deux fonds.

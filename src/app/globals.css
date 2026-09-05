@@ -46,6 +46,11 @@
 
   /* Voile de survol des lignes de tableau : blanc sur fond sombre. */
   --hover-tint: 255 255 255 / 0.02;
+  /* Texte posé sur un aplat de couleur (boutons accent/danger/info/warning). */
+  --on-accent: 0 0 0;
+  /* Fond des backdrops de modale. */
+  --overlay: 0 0 0 / 0.6;
+  --overlay-soft: 0 0 0 / 0.4;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -57,39 +62,54 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --bg: 247 247 249;
-  --bg-2: 241 242 245;
+  /* En sombre l'échelle va du fond de page (le plus foncé) vers l'élévation.
+     En clair elle doit s'inverser : bg = le plus gris, bg-3 = blanc. bg-2 était
+     resté PLUS gris que bg, donc la sidebar et le panneau latéral s'enfonçaient
+     au lieu de ressortir. bg-4 reste un gris, lui : au-dessus du blanc il n'y a
+     plus rien, les puces et les survols redescendent donc vers le gris. */
+  --bg: 240 242 245;
+  --bg-2: 248 249 251;
   --bg-3: 255 255 255;
-  --bg-4: 235 236 240;
+  --bg-4: 233 236 241;
   --surface: 255 255 255;
-  --surface-hover: 244 244 247;
+  --surface-hover: 244 246 249;
 
-  --border: 226 227 232;
-  --border-2: 208 210 218;
-  --border-active: 168 170 182;
+  --border: 223 226 233;
+  --border-2: 199 204 214;
+  --border-active: 154 161 176;
 
-  --t-1: 24 24 27;
-  --t-2: 82 82 91;
-  --t-3: 113 113 122;
-  --t-4: 143 143 152;
+  /* Rampe froide (base 16 24 40) plutôt que le zinc neutre : plus proche du
+     rendu des apps bancaires en clair. t-4 remonté à ~4,5:1 sur blanc — les
+     en-têtes de colonnes en 10px étaient sous le seuil de lisibilité. */
+  --t-1: 16 24 40;
+  --t-2: 65 78 97;
+  --t-3: 88 99 118;
+  --t-4: 105 115 134;
 
-  /* Teintes 600 : les 500 du mode sombre passent mal en texte sur blanc. */
-  --accent: 5 150 105;
-  --danger: 220 38 38;
-  --info: 37 99 235;
-  --warning: 217 119 6;
-  --purple: 124 58 237;
-  --cyan: 8 145 178;
-  --pink: 219 39 119;
+  /* Teintes assombries : les 500 du mode sombre passent mal en petit texte sur
+     blanc (l'ambre surtout, à peine 3:1). */
+  --accent: 4 120 87;
+  --danger: 190 27 27;
+  --info: 26 78 194;
+  --warning: 163 64 7;
+  --purple: 100 35 200;
+  --cyan: 7 116 143;
+  --pink: 182 28 96;
 
   /* Survol : noir léger, le blanc serait invisible. */
-  --hover-tint: 0 0 0 / 0.035;
+  --hover-tint: 16 24 40 / 0.04;
+  --on-accent: 255 255 255;
+  --overlay: 16 24 40 / 0.45;
+  --overlay-soft: 16 24 40 / 0.3;
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.1);
-  --shadow-xl: 0 20px 50px rgba(15, 23, 42, 0.12);
-  --shadow-inset-border: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  /* Ombres teintées bleu-nuit et étagées : un noir pur à 40-60 % salit le blanc. */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.05);
+  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.04);
+  --shadow-xl: 0 20px 24px -4px rgba(16, 24, 40, 0.1), 0 8px 8px -4px rgba(16, 24, 40, 0.04);
+  /* En sombre c'est un liseré blanc interne ; sur une carte blanche il ne se
+     voit pas. On le remplace par l'ombre douce qui donne le relief. */
+  --shadow-inset-border: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
 }
 
 html, body {
@@ -212,6 +232,29 @@ select.fi { @apply cursor-pointer; }
    Plutôt que de les réécrire un par un, on repointe l'utilitaire sur le token :
    `[data-theme] .classe` (0,2,0) l'emporte sur `.classe` (0,1,0). */
 [data-theme] .hover\:bg-white\/\[\.02\]:hover { background-color: rgb(var(--hover-tint)); }
+
+/* Texte posé sur un aplat de couleur. En sombre il est noir (bon contraste sur
+   emerald-500) ; sur les teintes 600 du mode clair, le noir devient sale — il
+   faut du blanc. Les sélecteurs à deux classes (0,2,0) passent devant
+   `.text-black` (0,1,0), donc aucun JSX à réécrire. */
+.bg-accent.text-black,
+.bg-danger.text-black,
+.bg-info.text-black,
+.bg-warning.text-black,
+.bg-gradient-to-br.text-black { color: rgb(var(--on-accent)); }
+
+/* Backdrops de modale : un noir à 60 % écrase une interface claire. */
+[data-theme] .bg-black\/70,
+[data-theme] .bg-black\/60 { background-color: rgb(var(--overlay)); }
+[data-theme] .bg-black\/40 { background-color: rgb(var(--overlay-soft)); }
+
+/* En-têtes de colonnes : en 10px capitales sur blanc, le gris le plus discret
+   décroche. On monte d'un cran et on appuie le trait sous l'en-tête, sinon la
+   zone de titres se confond avec la première ligne. */
+[data-theme="light"] thead th {
+  color: rgb(var(--t-3));
+  border-bottom: 1px solid rgb(var(--border));
+}
 
 /* Status pills */
 .pill {
