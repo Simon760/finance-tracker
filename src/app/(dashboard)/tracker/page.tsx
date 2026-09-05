@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff } from 'lucide-react';
@@ -152,14 +152,13 @@ export default function TrackerPage() {
     txnEntry.originalAmount = Math.round(txnForm.amount * 100) / 100;
 
     // Helper: recalcule aed/eur d'une row à partir de ses txns
-    const recalc = (row: ActualRow, isAed: boolean): ActualRow => {
+    // Écrit TOUJOURS les deux devises, y compris pour un poste EUR. Avant, row.aed
+    // restait à 0 pour ces postes et la colonne AED devait re-dériver l'EUR au taux
+    // du mois : elle affichait 1 175 pour une tx saisie à 1 196 AED.
+    const recalc = (row: ActualRow): ActualRow => {
       const txns = row.txns || [];
-      if (isAed) {
-        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      } else {
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      }
+      row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+      row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
       return row;
     };
 
@@ -192,7 +191,7 @@ export default function TrackerPage() {
           } else {
             const srcRow = { ...(actualArr[txnTarget.posteIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
             srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-            recalc(srcRow, !!state.postes[txnTarget.posteIdx]?.isAed);
+            recalc(srcRow);
             actualArr[txnTarget.posteIdx] = srcRow;
           }
         }
@@ -276,7 +275,7 @@ export default function TrackerPage() {
 
         const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
-        recalc(tgtRow, !!postes[targetIdx]?.isAed);
+        recalc(tgtRow);
         actual[targetIdx] = tgtRow;
         return { ...mo, actual, extraActual };
       }
@@ -285,7 +284,7 @@ export default function TrackerPage() {
       if (!isMove && isExtraSrc) {
         const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
-        recalc(tgtRow, !!postes[targetIdx]?.isAed);
+        recalc(tgtRow);
         actual[targetIdx] = tgtRow;
         return { ...mo, actual, extraActual };
       }
@@ -294,12 +293,12 @@ export default function TrackerPage() {
       if (isMove) {
         const srcRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-        recalc(srcRow, !!postes[sourceIdx]?.isAed);
+        recalc(srcRow);
         actual[sourceIdx] = srcRow;
 
         const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
-        recalc(tgtRow, !!postes[targetIdx]?.isAed);
+        recalc(tgtRow);
         actual[targetIdx] = tgtRow;
       } else {
         const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
@@ -307,7 +306,7 @@ export default function TrackerPage() {
         if (txnTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txnTarget.editIdx] = txnEntry;
         else txns.push(txnEntry);
         row.txns = txns;
-        recalc(row, !!postes[targetIdx]?.isAed);
+        recalc(row);
         actual[targetIdx] = row;
       }
       return { ...mo, actual, extraActual };
@@ -339,16 +338,13 @@ export default function TrackerPage() {
       const txns = (row.txns || []).filter((_, i) => i !== txnIdx);
       row.txns = txns;
       const p = state.postes[posteIdx];
+      // Les deux devises sont maintenues quel que soit le type de poste (cf. recalc).
       if (txns.length === 0) {
-        if (p?.isAed) { row.aed = 0; row.eur = null; }
-        else { row.eur = 0; }
+        row.aed = 0;
+        row.eur = p?.isAed ? null : 0;
       } else {
-        if (p?.isAed) {
-          row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-        } else {
-          row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-        }
+        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
       }
       actual[posteIdx] = row;
       return { ...mo, actual };
@@ -1017,6 +1013,9 @@ export default function TrackerPage() {
                 const row = m.actual[i] || { aed: 0, eur: null };
                 const brow = m.budget[i] || { aed: 0, eur: null };
                 const eur = rowEur(row, m.rate);
+                // AED réellement dépensé : somme des txns si elles existent. Re-dériver
+                // depuis l'EUR au taux du mois n'affiche pas le montant saisi.
+                const aedSpent = rowAedSpent(row, m.rate, { isAed: p.isAed });
                 // Budget EUR = AED converti au taux live (cohérent avec le total et la carte)
                 const beur = budgetEurOf(brow, p.isAed, liveRate);
                 const ratio = beur > 0 ? eur / beur : 0;
@@ -1044,7 +1043,7 @@ export default function TrackerPage() {
                     <td className="px-4 py-2.5 text-right">
                       {p.isAed
                         ? <CellInput value={row.aed} onChange={v => updateActual(i, v)} />
-                        : <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{(row.eur || 0) > 0 ? f0(toAed(row.eur || 0, m.rate)) : '—'}</span>}
+                        : <span className="font-mono text-xs text-t-3 mono-value pr-2 inline-block border border-transparent">{aedSpent > 0 ? f0(aedSpent) : '—'}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {!p.isAed

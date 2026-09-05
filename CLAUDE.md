@@ -22,7 +22,7 @@ Types principaux : `Month`, `Poste { isAed }`, `ActualRow`, `ExtraRow`, `RevenuE
 
 ## Règles de calcul — pièges connus
 1. **`sumAed` / `sumEur` itèrent `state.postes`**, pas `m.actual[]`. Itérer `actual[]` somme des rows orphelines (postes supprimés mais entrées résiduelles). Le HTML fait pareil (`_old/js/services/budget.js`).
-2. **Les transactions stockent `amount` toujours en AED** (cf. `tracker/page.tsx` save handler). Donc dans une somme, `t.amount * rate` = **double conversion**. Ne PAS re-sommer les txns ; les save handlers maintiennent `row.aed`/`row.eur` synchronisés, on lit ces champs.
+2. **Les transactions stockent `amount` toujours en AED** (cf. `tracker/page.tsx` save handler), converti au taux du **jour de la saisie** — pas au `m.rate` du mois. Donc `t.amount * rate` = **double conversion**, jamais. Et l'inverse est vrai aussi : re-dériver l'AED depuis `row.eur` au taux du mois ne redonne pas le montant saisi (une tx de 1 196 AED s'affichait 1 175). Pour l'AED d'une ligne « Réel », passer par **`rowAedSpent()`** (`lib/utils.ts`) : txns si présentes, sinon repli selon la devise de référence du poste. Pour l'EUR, lire `row.eur`, maintenu par les save handlers.
 3. **Prévisionnel (confirmé)** = `soldeStart + earnAed - aA` (cf. `_old/js/pages/tracker.js:98`). Utilisé aussi comme balance bancaire dans Networth & Global.
 4. **Revenus confirmés** = `entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0)`. Mois "legacy" (cf. `LEGACY_EARN_MONTHS` dans `src/lib/constants.ts`) n'utilisent PAS la table revenus, on lit `m.earn` directement.
 

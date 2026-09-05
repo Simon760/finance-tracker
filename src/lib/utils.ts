@@ -1,4 +1,4 @@
-import { Month, BudgetRow, ActualRow, ExtraRow, Trip, Poste, RevenuEntry } from './types';
+import { Month, BudgetRow, ActualRow, ExtraRow, Trip, Poste, RevenuEntry, Transaction } from './types';
 import { isLegacyEarnMonth } from './constants';
 
 // Format
@@ -164,6 +164,38 @@ export function budgetAedOf(row: BudgetRow | undefined | null, isAed: boolean, l
   return budgetIsEurRef(row, isAed) ? toAed(row?.eur || 0, liveRate) : (row?.aed || 0);
 }
 
+/**
+ * AED réellement sorti du compte pour une ligne « Réel ».
+ *
+ * Les transactions stockent `amount` en AED, converti au taux du JOUR de la
+ * saisie, alors que le mois porte son propre `rate`. Re-dériver l'AED depuis
+ * l'EUR de la ligne au taux du mois ne redonne donc PAS le montant saisi :
+ * une tx de 1 196 AED s'affichait 1 175. Dès qu'il y a des transactions, elles
+ * font foi.
+ *
+ * Sans transaction, on garde exactement l'ancien repli, qui dépend de la devise
+ * de référence du poste : un poste EUR peut traîner un `aed` figé à un vieux
+ * taux (DÉCEMBRE/COURSES : aed=663 pour eur=184,32), c'est l'EUR qui fait foi.
+ * `isAed` non fourni = ligne extra, qui stocke les deux devises à jour.
+ *
+ * `excludeTripExpense` sert au solde bancaire : une dépense de voyage ne
+ * redébite pas le compte, le swap initial l'a déjà fait.
+ */
+export function rowAedSpent(
+  row: { aed?: number; eur?: number | null; txns?: Transaction[] } | undefined,
+  rate: number,
+  opts: { isAed?: boolean; excludeTripExpense?: boolean } = {},
+): number {
+  const txns = row?.txns || [];
+  if (txns.length > 0) {
+    const list = opts.excludeTripExpense ? txns.filter(t => t.tripKind !== 'expense') : txns;
+    return list.reduce((sum, t) => sum + (t.amount || 0), 0);
+  }
+  if (opts.isAed === true) return row?.aed || 0;
+  if (opts.isAed === false) return toAed(rowEur(row as ActualRow, rate), rate);
+  return (row?.aed || 0) > 0 ? (row?.aed || 0) : toAed(row?.eur || 0, rate);
+}
+
 export function rowEur(row: BudgetRow | ActualRow, rate: number): number {
   if (row.eur && row.eur > 0) return row.eur;
   return toEur(row.aed || 0, rate);
@@ -245,27 +277,10 @@ export function sumAedBank(m: Month, postes: { isAed: boolean; name?: string }[]
     if (isHidden(m, p.name)) return;
     const row = m.actual?.[i];
     if (!row) return;
-    // Si la row a des txns, on les somme en excluant les expense-voyage
-    if (row.txns && row.txns.length > 0) {
-      const bankTxns = row.txns.filter(t => t.tripKind !== 'expense');
-      const totalAed = bankTxns.reduce((s, t) => s + (t.amount || 0), 0);
-      if (p.isAed) total += totalAed;
-      else total += toAed(bankTxns.reduce((s, t) => s + (t.eur || (t.amount / (t.rate || m.rate))), 0), m.rate);
-    } else {
-      // Pas de txns détaillées : lit row.aed comme avant
-      if (p.isAed) total += row.aed || 0;
-      else total += toAed(rowEur(row, m.rate), m.rate);
-    }
+    total += rowAedSpent(row, m.rate, { isAed: p.isAed, excludeTripExpense: true });
   });
   (extra || []).forEach(r => {
-    if (r.txns && r.txns.length > 0) {
-      const bankTxns = r.txns.filter(t => t.tripKind !== 'expense');
-      const aed = bankTxns.reduce((s, t) => s + (t.amount || 0), 0);
-      total += aed;
-    } else {
-      if (r.aed && r.aed > 0) total += r.aed;
-      else if (r.eur && r.eur > 0) total += toAed(r.eur, m.rate);
-    }
+    total += rowAedSpent(r, m.rate, { excludeTripExpense: true });
   });
   return total;
 }
@@ -276,16 +291,11 @@ export function sumAed(m: Month, postes: { isAed: boolean; name?: string }[], ex
     if (isHidden(m, p.name)) return;
     const row = m.actual?.[i];
     if (!row) return;
-    if (p.isAed) {
-      total += row.aed || 0;
-    } else {
-      total += toAed(rowEur(row, m.rate), m.rate);
-    }
+    total += rowAedSpent(row, m.rate, { isAed: p.isAed });
   });
   (extra || []).forEach(r => {
     if (isSwapContainer(r)) return; // swap = transfert, pas une dépense
-    if (r.aed && r.aed > 0) total += r.aed;
-    else if (r.eur && r.eur > 0) total += toAed(r.eur, m.rate);
+    total += rowAedSpent(r, m.rate);
   });
   return total;
 }

@@ -130,14 +130,13 @@ export default function MobileTracker() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (entry as any).originalAmount = Math.round(tx.amount * 100) / 100;
 
-    const recalc = (row: ActualRow, isAed: boolean): ActualRow => {
+    // Écrit TOUJOURS les deux devises, y compris pour un poste EUR. Avant, row.aed
+    // restait à 0 pour ces postes et la colonne AED devait re-dériver l'EUR au taux
+    // du mois : elle affichait 1 175 pour une tx saisie à 1 196 AED.
+    const recalc = (row: ActualRow): ActualRow => {
       const txns = row.txns || [];
-      if (isAed) {
-        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      } else {
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      }
+      row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+      row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
       return row;
     };
 
@@ -160,7 +159,7 @@ export default function MobileTracker() {
         if (txTarget.editIdx !== undefined) {
           const srcRow = { ...(actualArr[txTarget.posteIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
           srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txTarget.editIdx);
-          recalc(srcRow, !!state.postes[txTarget.posteIdx]?.isAed);
+          recalc(srcRow);
           actualArr[txTarget.posteIdx] = srcRow;
         }
         const newExtra = { name: trimmed, cat: newPosteForm.cat, aed: 0, eur: 0, txns: [entry] };
@@ -198,12 +197,12 @@ export default function MobileTracker() {
       if (isMove) {
         const sourceRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         sourceRow.txns = (sourceRow.txns || []).filter((_, i) => i !== txTarget.editIdx);
-        recalc(sourceRow, !!postes[sourceIdx]?.isAed);
+        recalc(sourceRow);
         actual[sourceIdx] = sourceRow;
 
         const targetRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
         targetRow.txns = [...(targetRow.txns || []), entry];
-        recalc(targetRow, !!postes[targetIdx]?.isAed);
+        recalc(targetRow);
         actual[targetIdx] = targetRow;
       } else {
         const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
@@ -211,7 +210,7 @@ export default function MobileTracker() {
         if (txTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txTarget.editIdx] = entry;
         else txns.push(entry);
         row.txns = txns;
-        recalc(row, !!postes[targetIdx]?.isAed);
+        recalc(row);
         actual[targetIdx] = row;
       }
       return { ...mo, actual };
@@ -230,13 +229,9 @@ export default function MobileTracker() {
       const row = { ...actual[posteIdx] };
       const txns = (row.txns || []).filter((_, i) => i !== txIdx);
       row.txns = txns;
-      const p = state.postes[posteIdx];
-      if (p?.isAed) {
-        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      } else {
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      }
+      // Les deux devises sont maintenues quel que soit le type de poste (cf. recalc).
+      row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+      row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
       actual[posteIdx] = row;
       return { ...mo, actual };
     });
