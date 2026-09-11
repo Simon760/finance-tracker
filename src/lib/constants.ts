@@ -60,6 +60,42 @@ export function isLegacyEarnMonth(id: string): boolean {
   return LEGACY_EARN_MONTHS.some(m => strip(m) === n);
 }
 
+const DIACRITICS_RE = new RegExp('[\\u0300-\\u036f]', 'g');
+function stripAccents(v: string): string {
+  return v.normalize('NFD').replace(DIACRITICS_RE, '');
+}
+
+/**
+ * Un même nom de mois (« OCTOBRE ») revient chaque année — l'id du mois porte alors
+ * un suffixe année à 2 chiffres (« OCTOBRE 26 ») pour rester unique, ajouté
+ * automatiquement par `inferNextMonthYear` (cf. utils.ts) quand une collision est
+ * détectée à la création — format choisi pour matcher exactement le contournement
+ * manuel que l'utilisateur avait déjà utilisé avant ce fix. Le suffixe à 4 chiffres
+ * (« OCTOBRE 2026 ») est accepté en lecture pour rester tolérant si jamais saisi
+ * ainsi via le renommage manuel. Ces deux helpers permettent au reste du code de
+ * continuer à raisonner sur le NOM du mois sans se soucier de ce suffixe.
+ */
+export function monthBaseName(id: string): string {
+  return (id || '').trim().toUpperCase().replace(/\s+\d{2,4}$/, '');
+}
+
+/** Année portée par le suffixe de l'id (ex: 2026 pour « OCTOBRE 26 » ou « OCTOBRE 2026 »), sinon null. */
+export function monthYearSuffix(id: string): number | null {
+  const m = (id || '').trim().match(/\s+(\d{2,4})$/);
+  if (!m) return null;
+  const raw = m[1];
+  return raw.length === 4 ? parseInt(raw, 10) : 2000 + parseInt(raw, 10);
+}
+
+/**
+ * Index calendaire (0=Janvier..11=Décembre) du mois désigné par un id — tolérant aux
+ * accents et à un éventuel suffixe année. -1 si non reconnu.
+ */
+export function monthIndexOf(id: string): number {
+  const base = stripAccents(monthBaseName(id));
+  return MOIS_LIST.findIndex(m => stripAccents(m) === base);
+}
+
 /**
  * Capital d'installation : ce que Simon possédait AVANT de s'expatrier (18/10/2025)
  * et qu'il a transféré vers ses comptes UAE en octobre 2025. Reconstitué en croisant

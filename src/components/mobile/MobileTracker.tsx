@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, pocketCashEur, budgetEurOf } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, inferNextMonthYear, pocketCashEur, budgetEurOf } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -13,7 +13,7 @@ import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function MobileTracker() {
-  const { state, save, curMonth, setCurMonth, setState, liveRate, trips } = useApp();
+  const { state, save, curMonth, setCurMonth, setState, liveRate, trips, renameMonth } = useApp();
   const months = state.months;
   const idx = months.findIndex(mo => mo.id === curMonth);
   const m: Month | undefined = idx >= 0 ? months[idx] : undefined;
@@ -33,9 +33,15 @@ export default function MobileTracker() {
   // Add new month sheet
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [nmName, setNmName] = useState('');
+  const [nmError, setNmError] = useState('');
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcileInput, setReconcileInput] = useState('');
   const [nmSolde, setNmSolde] = useState(0);
+
+  // Rename month sheet
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
 
   // Reset detail if month changes
   useEffect(() => { setDetailIdx(null); }, [curMonth]);
@@ -241,9 +247,21 @@ export default function MobileTracker() {
 
   const createMonth = () => {
     const name = nmName.trim().toUpperCase();
-    if (!name || state.months.find(mo => mo.id === name)) return;
+    if (!name) return;
+    // Un même nom revient chaque année ("OCTOBRE" existe déjà pour 2025) : plutôt que
+    // d'échouer silencieusement, on suffixe automatiquement l'année déduite du dernier
+    // mois de la liste (cf. inferNextMonthYear) — aucune saisie supplémentaire requise.
+    let id = name;
+    if (state.months.find(mo => mo.id === id)) {
+      id = `${name} ${String(inferNextMonthYear(state.months, name)).slice(-2)}`;
+      if (state.months.find(mo => mo.id === id)) {
+        setNmError(`Un mois « ${id} » existe déjà. Renomme-le d'abord (crayon à côté du mois).`);
+        return;
+      }
+    }
+    setNmError('');
     const newM: Month = {
-      id: name, rate: liveRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
+      id, rate: liveRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
       budget: [], actual: [], extraBudget: [], extraActual: [],
     };
     // Copie M-1 par défaut sur mobile (rapide)
@@ -261,10 +279,24 @@ export default function MobileTracker() {
       });
     }
     setState({ ...state, months: [...state.months, newM] });
-    setCurMonth(name);
+    setCurMonth(id);
     setNewMonthOpen(false);
     setNmName(''); setNmSolde(0);
     save();
+  };
+
+  const openRename = () => {
+    if (!m) return;
+    setRenameValue(m.id);
+    setRenameError('');
+    setRenameOpen(true);
+  };
+
+  const confirmRename = () => {
+    if (!m) return;
+    const err = renameMonth(m.id, renameValue);
+    if (err) { setRenameError(err); return; }
+    setRenameOpen(false);
   };
 
   if (!m) {
@@ -273,8 +305,8 @@ export default function MobileTracker() {
         <Receipt className="mx-auto text-t-4 mb-3" size={42} />
         <div className="text-t-2 font-semibold mb-1">Aucun mois</div>
         <div className="text-[12px] text-t-3 mb-5">Crée un mois pour commencer le tracking.</div>
-        <button onClick={() => setNewMonthOpen(true)} className="px-5 py-2.5 bg-accent text-black font-semibold text-[13px] rounded-full">+ Nouveau mois</button>
-        <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} />
+        <button onClick={() => { setNmError(''); setNewMonthOpen(true); }} className="px-5 py-2.5 bg-accent text-black font-semibold text-[13px] rounded-full">+ Nouveau mois</button>
+        <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} error={nmError} />
       </div>
     );
   }
@@ -346,10 +378,12 @@ export default function MobileTracker() {
         <button onClick={goPrev} disabled={idx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
           <ChevronLeft size={18} />
         </button>
-        <div className="flex-1 text-center bg-bg-3 border border-border-2 rounded-xl py-2.5">
-          <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none">Mois</div>
+        <button onClick={openRename} className="flex-1 text-center bg-bg-3 border border-border-2 rounded-xl py-2.5 active:bg-bg-4">
+          <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none flex items-center justify-center gap-1">
+            <span>Mois</span><Pencil size={9} />
+          </div>
           <div className="text-[16px] font-bold tracking-tight mt-0.5">{m.id}</div>
-        </div>
+        </button>
         <button onClick={goNext} disabled={idx >= months.length - 1} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
           <ChevronRight size={18} />
         </button>
@@ -460,7 +494,7 @@ export default function MobileTracker() {
 
       {/* New month button */}
       <button
-        onClick={() => setNewMonthOpen(true)}
+        onClick={() => { setNmError(''); setNewMonthOpen(true); }}
         className="w-full mt-5 py-3 border border-dashed border-border-2 rounded-xl text-[13px] text-t-3 active:bg-bg-3"
       >
         + Nouveau mois
@@ -731,7 +765,10 @@ export default function MobileTracker() {
       </BottomSheet>
 
       {/* New month sheet */}
-      <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} />
+      <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} error={nmError} />
+
+      {/* Rename month sheet */}
+      <RenameMonthSheet open={renameOpen} onClose={() => setRenameOpen(false)} value={renameValue} setValue={setRenameValue} onConfirm={confirmRename} error={renameError} />
 
       {/* Régul sheet */}
       <BottomSheet open={reconcileOpen} onClose={() => setReconcileOpen(false)} title="Régulariser le prévisionnel">
@@ -797,9 +834,9 @@ function KpiCardMobile({ label, value, sub, color }: { label: string; value: str
   );
 }
 
-function NewMonthSheet({ open, onClose, name, setName, solde, setSolde, onCreate }: {
+function NewMonthSheet({ open, onClose, name, setName, solde, setSolde, onCreate, error }: {
   open: boolean; onClose: () => void; name: string; setName: (v: string) => void;
-  solde: number; setSolde: (v: number) => void; onCreate: () => void;
+  solde: number; setSolde: (v: number) => void; onCreate: () => void; error?: string;
 }) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Nouveau mois">
@@ -807,6 +844,8 @@ function NewMonthSheet({ open, onClose, name, setName, solde, setSolde, onCreate
         <div>
           <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Nom du mois</label>
           <input className="fi !h-11" value={name} onChange={e => setName(e.target.value.toUpperCase())} placeholder="Ex: JUIN" autoFocus />
+          <p className="text-[10px] text-t-4 mt-1">Si ce nom existe déjà pour une année précédente, l&apos;année sera ajoutée automatiquement.</p>
+          {error && <p className="text-[11px] text-danger mt-1">{error}</p>}
         </div>
         <div>
           <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Solde début (AED)</label>
@@ -816,6 +855,27 @@ function NewMonthSheet({ open, onClose, name, setName, solde, setSolde, onCreate
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 py-3 bg-bg-4 text-t-2 text-[14px] font-semibold rounded-full active:bg-bg-3">Annuler</button>
           <button onClick={onCreate} disabled={!name.trim()} className="flex-[1.4] py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30">Créer</button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function RenameMonthSheet({ open, onClose, value, setValue, onConfirm, error }: {
+  open: boolean; onClose: () => void; value: string; setValue: (v: string) => void;
+  onConfirm: () => void; error?: string;
+}) {
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Renommer ce mois">
+      <div className="space-y-4 pt-1">
+        <div>
+          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Nom du mois</label>
+          <input className="fi !h-11" value={value} onChange={e => setValue(e.target.value.toUpperCase())} placeholder="Ex: OCTOBRE 2025" autoFocus />
+          {error && <p className="text-[11px] text-danger mt-1">{error}</p>}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-3 bg-bg-4 text-t-2 text-[14px] font-semibold rounded-full active:bg-bg-3">Annuler</button>
+          <button onClick={onConfirm} disabled={!value.trim()} className="flex-[1.4] py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30">Renommer</button>
         </div>
       </div>
     </BottomSheet>

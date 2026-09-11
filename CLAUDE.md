@@ -20,6 +20,32 @@ Le champ `aed` = devise locale du space (pas forcément AED — c'est juste le n
 
 Types principaux : `Month`, `Poste { isAed }`, `ActualRow`, `ExtraRow`, `RevenuEntry`, `HistoryEntry` (cf. `src/lib/types.ts`).
 
+## Identité des mois (id, année, collision)
+`Month.id` est le NOM du mois (« OCTOBRE »), sans année — jusqu'à ce qu'une collision
+survienne (le mois revient chaque année). `Month._year` est un champ **calculé**
+(`detectYears()` dans `utils.ts`, muté sur les objets en place à chaque render de
+`tracker/page.tsx`), jamais une source de vérité stable — un composant qui ne
+passe pas par Tracker en premier peut le trouver `undefined`.
+
+**Collision de nom** : `createMonth` (desktop + mobile) suffixe automatiquement
+l'année à 2 chiffres (« OCTOBRE 26 ») via `inferNextMonthYear()` (`utils.ts`) —
+déterministe, dérivé du dernier mois de la liste, aucune saisie demandée. Format
+choisi pour matcher le contournement manuel que l'utilisateur avait déjà utilisé
+avant ce fix (voir son month réel « OCTOBRE 26 » dans les données de prod). Le
+suffixe à 4 chiffres reste toléré en lecture (renommage manuel libre).
+
+**Tout code qui doit reconnaître un nom de mois depuis un id** (afficher, dater,
+grouper) passe par `monthBaseName(id)` / `monthYearSuffix(id)` / `monthIndexOf(id)`
+(`lib/constants.ts`) — PAS de comparaison exacte contre `MOIS_LIST` ni
+`LEGACY_EARN_MONTHS.includes(m.id)` en dur : ça casse dès qu'un suffixe apparaît
+(cf. `bankHistory.ts`, `trips/page.tsx:trackerMonthForDate`, `shortMonth()`).
+
+**Renommer un mois** : `renameMonth(oldId, newName)` (`AppProvider`) — rekey aussi
+`revenus.months[oldId]` et `trip.swap.monthId` (les SEULES références persistées
+à un id de mois hors `Month` lui-même ; les rechargements de voyage affichés sont
+recalculés à la volée depuis `mo.id`, pas besoin d'y toucher). Bouton crayon à
+côté du mois courant (desktop : pill du nav ; mobile : sheet dédiée).
+
 ## Règles de calcul — pièges connus
 1. **`sumAed` / `sumEur` itèrent `state.postes`**, pas `m.actual[]`. Itérer `actual[]` somme des rows orphelines (postes supprimés mais entrées résiduelles). Le HTML fait pareil (`_old/js/services/budget.js`).
 2. **Les transactions stockent `amount` toujours en AED** (cf. `tracker/page.tsx` save handler), converti au taux du **jour de la saisie** — pas au `m.rate` du mois. Donc `t.amount * rate` = **double conversion**, jamais. Et l'inverse est vrai aussi : re-dériver l'AED depuis `row.eur` au taux du mois ne redonne pas le montant saisi (une tx de 1 196 AED s'affichait 1 175). Pour l'AED d'une ligne « Réel », passer par **`rowAedSpent()`** (`lib/utils.ts`) : txns si présentes, sinon repli selon la devise de référence du poste. Pour l'EUR, lire `row.eur`, maintenu par les save handlers.

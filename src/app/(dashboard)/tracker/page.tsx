@@ -8,10 +8,10 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
-import { EyeOff } from 'lucide-react';
+import { EyeOff, Pencil } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
@@ -21,7 +21,7 @@ const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4',
 
 export default function TrackerPage() {
   const isMobile = useIsMobile();
-  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, setState, activeSpace, logChange, trips, theme } = useApp();
+  const { state, save, curMonth, setCurMonth, curYear, setCurYear, liveRate, updateMonth, renameMonth, setState, activeSpace, logChange, trips, theme } = useApp();
   const ct = chartTheme(theme);
   const tooltipStyle = chartTooltipStyle(theme);
   const [newMonthOpen, setNewMonthOpen] = useState(false);
@@ -31,6 +31,10 @@ export default function TrackerPage() {
   const [nmRate, setNmRate] = useState(liveRate);
   const [nmSolde, setNmSolde] = useState(0);
   const [nmFillMode, setNmFillMode] = useState<'copy' | 'avg3' | 'empty'>('copy');
+  const [nmError, setNmError] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [arSection, setArSection] = useState<'budget' | 'actual'>('budget');
   const [arName, setArName] = useState('');
@@ -395,9 +399,21 @@ export default function TrackerPage() {
 
   const createMonth = () => {
     const name = nmName.trim().toUpperCase();
-    if (!name || state.months.find(mo => mo.id === name)) return;
+    if (!name) return;
+    // Un même nom revient chaque année ("OCTOBRE" existe déjà pour 2025) : plutôt que
+    // d'échouer silencieusement, on suffixe automatiquement l'année déduite du dernier
+    // mois de la liste (cf. inferNextMonthYear) — aucune saisie supplémentaire requise.
+    let id = name;
+    if (state.months.find(mo => mo.id === id)) {
+      id = `${name} ${String(inferNextMonthYear(state.months, name)).slice(-2)}`;
+      if (state.months.find(mo => mo.id === id)) {
+        setNmError(`Un mois « ${id} » existe déjà. Renomme-le d'abord (crayon à côté du mois courant).`);
+        return;
+      }
+    }
+    setNmError('');
     const newMonth: Month = {
-      id: name, rate: nmRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
+      id, rate: nmRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
       budget: [], actual: [], extraBudget: [], extraActual: [],
     };
     const hasHistory = state.months.length > 0;
@@ -426,11 +442,11 @@ export default function TrackerPage() {
     }
     const updated = { ...state, months: [...state.months, newMonth] };
     setState(updated);
-    setCurMonth(name);
+    setCurMonth(id);
     setNewMonthOpen(false);
     save();
     const fillLabel = nmFillMode === 'avg3' ? 'moyenne 3 mois' : nmFillMode === 'copy' ? 'copie M-1' : 'vide';
-    logChange?.('month.create', `Création du mois ${name} (${fillLabel})`);
+    logChange?.('month.create', `Création du mois ${id} (${fillLabel})`);
   };
 
   const deleteMonth = () => {
@@ -441,6 +457,23 @@ export default function TrackerPage() {
     setCurMonth(months.length > 0 ? months[months.length - 1].id : null as unknown as string);
     save();
     logChange?.('month.delete', `Suppression du mois ${removed}`);
+  };
+
+  const openRename = () => {
+    if (!m) return;
+    setRenameValue(m.id);
+    setRenameError('');
+    setRenameOpen(true);
+  };
+
+  const confirmRename = () => {
+    if (!m) return;
+    const oldId = m.id;
+    const trimmed = renameValue.trim().toUpperCase();
+    const err = renameMonth(oldId, renameValue);
+    if (err) { setRenameError(err); return; }
+    setRenameOpen(false);
+    if (trimmed !== oldId) logChange?.('month.rename', `« ${oldId} » renommé en « ${trimmed} »`);
   };
 
   // Édite le budget en gardant AED et EUR synchronisés au taux live.
@@ -693,7 +726,7 @@ export default function TrackerPage() {
     return (
       <div>
         <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
-          <button onClick={() => { setNmRate(liveRate); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
+          <button onClick={() => { setNmRate(liveRate); setNmError(''); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
             + Nouveau mois
           </button>
         </PageHeader>
@@ -707,7 +740,7 @@ export default function TrackerPage() {
   return (
     <div>
       <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Tracker', current: true }]} title="Tracker" subtitle="Budget prévisionnel & dépenses réelles">
-        <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
+        <button onClick={() => { setNmRate(liveRate); setNmName(''); setNmSolde(0); setNmError(''); setNewMonthOpen(true); }} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer">
           + Nouveau mois
         </button>
       </PageHeader>
@@ -766,8 +799,16 @@ export default function TrackerPage() {
                 className="w-8 h-8 flex items-center justify-center rounded-md bg-bg-3 border border-border text-t-2 hover:bg-bg-4 hover:text-t-1 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                 aria-label="Mois précédent"
               >‹</button>
-              <div className="min-w-[120px] px-4 py-1.5 text-center text-sm font-bold tracking-tight bg-bg-3 border border-border-2 rounded-md">
-                {curMonth || '—'}
+              <div className="min-w-[120px] px-3 py-1.5 flex items-center justify-center gap-1.5 text-center text-sm font-bold tracking-tight bg-bg-3 border border-border-2 rounded-md">
+                <span>{curMonth || '—'}</span>
+                {m && (
+                  <button
+                    onClick={openRename}
+                    className="text-t-4 hover:text-accent transition-colors cursor-pointer"
+                    title="Renommer ce mois"
+                    aria-label="Renommer ce mois"
+                  ><Pencil size={12} /></button>
+                )}
               </div>
               <button
                 onClick={goNext}
@@ -1181,7 +1222,11 @@ export default function TrackerPage() {
       <Modal open={newMonthOpen} onClose={() => setNewMonthOpen(false)} title="Créer un nouveau mois">
         <div className="space-y-3.5">
           <FormField label="Nom du mois">
-            <input className="fi" value={nmName} onChange={e => setNmName(e.target.value)} placeholder="Ex: AVRIL" />
+            <input className="fi" value={nmName} onChange={e => { setNmName(e.target.value); setNmError(''); }} placeholder="Ex: AVRIL" />
+            <div className="text-[10px] text-t-4 mt-1">
+              Si ce nom existe déjà pour une année précédente, l&apos;année sera ajoutée automatiquement (ex: OCTOBRE 26).
+            </div>
+            {nmError && <div className="text-[11px] text-danger mt-1">{nmError}</div>}
           </FormField>
           <FormField label="Taux EUR/AED pour ce mois">
             <input className="fi" type="number" value={nmRate} onChange={e => setNmRate(parseFloat(e.target.value) || 0)} step="0.0001" />
@@ -1217,6 +1262,27 @@ export default function TrackerPage() {
           <div className="flex gap-2.5 mt-5">
             <button onClick={createMonth} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">Créer</button>
             <button onClick={() => setNewMonthOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Rename Month Modal */}
+      <Modal open={renameOpen} onClose={() => setRenameOpen(false)} title="Renommer ce mois">
+        <div className="space-y-3.5">
+          <FormField label="Nom du mois">
+            <input
+              className="fi"
+              value={renameValue}
+              onChange={e => { setRenameValue(e.target.value); setRenameError(''); }}
+              placeholder="Ex: OCTOBRE 2025"
+              autoFocus
+              onKeyDown={e => e.key === 'Enter' && confirmRename()}
+            />
+            {renameError && <div className="text-[11px] text-danger mt-1">{renameError}</div>}
+          </FormField>
+          <div className="flex gap-2.5 mt-5">
+            <button onClick={confirmRename} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">Renommer</button>
+            <button onClick={() => setRenameOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>

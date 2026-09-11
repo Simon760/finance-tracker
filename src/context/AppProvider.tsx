@@ -95,6 +95,9 @@ interface AppContextType {
   dashCur: 'EUR' | 'AED';
   setDashCur: (c: 'EUR' | 'AED') => void;
   updateMonth: (id: string, field: keyof Month, val: number) => void;
+  /** Renomme un mois (id). Retourne un message d'erreur si le nouveau nom est invalide
+   * ou déjà pris, sinon null. Rekey aussi revenus.months et trip.swap.monthId. */
+  renameMonth: (oldId: string, newName: string) => string | null;
 
   // Historique
   history: HistoryEntry[];
@@ -1025,6 +1028,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase, activeSpaceId]);
 
+  /**
+   * Renomme un mois. Deux fixes en un : (1) permettre de corriger/relabelliser un
+   * mois, (2) donner un moyen manuel de lever une collision de nom entre années
+   * (ex: renommer l'OCTOBRE 2025 existant pour libérer « OCTOBRE » si l'auto-suffixe
+   * de createMonth — cf. inferNextMonthYear — ne convient pas).
+   *
+   * Rekey ce qui référence le mois par son id : revenus.months (sinon les entrées
+   * de revenus se retrouvent orphelines sous l'ancien nom) et trip.swap.monthId
+   * (le SEUL champ qui stocke un monthId de façon persistante côté Trip — les
+   * rechargements affichés dans Voyages sont recalculés à la volée depuis mo.id,
+   * donc déjà à jour après le rename sans y toucher).
+   */
+  const renameMonth = useCallback((oldId: string, newName: string): string | null => {
+    const trimmed = newName.trim().toUpperCase();
+    if (!trimmed) return 'Le nom ne peut pas être vide.';
+    if (trimmed === oldId) return null;
+    if (state.months.some(m => m.id === trimmed)) return `Un mois « ${trimmed} » existe déjà.`;
+    if (!state.months.some(m => m.id === oldId)) return 'Mois introuvable.';
+    setStateRaw(prev => {
+      const months = prev.months.map(m => m.id === oldId ? { ...m, id: trimmed } : m);
+      const revMonths = { ...(prev.revenus?.months || {}) };
+      if (oldId in revMonths) {
+        revMonths[trimmed] = revMonths[oldId];
+        delete revMonths[oldId];
+      }
+      const revenus = { ...prev.revenus, months: revMonths };
+      // trips n'est PAS space-scopé (AppState.trips top-level, pas de champ sur Space)
+      const trips = (prev.trips || []).map(t =>
+        t.swap.monthId === oldId ? { ...t, swap: { ...t.swap, monthId: trimmed } } : t
+      );
+      const allSpaces = stateToSpaces(prev).map(s =>
+        s.id === activeSpaceId ? { ...s, months, revenus } : s
+      );
+      const updated = { ...prev, months, revenus, trips, spaces: allSpaces, lastUpdate: new Date().toISOString() };
+      try { localStorage.setItem('fdxb_state', JSON.stringify(updated)); } catch {}
+      if (userId) persistToFirebase(updated, userId);
+      return updated;
+    });
+    if (curMonth === oldId) setCurMonth(trimmed);
+    return null;
+  }, [state.months, curMonth, userId, persistToFirebase, activeSpaceId]);
+
   return (
     <AppContext.Provider value={{
       state, setState, save,
@@ -1039,7 +1084,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       curMonth, setCurMonth,
       curYear, setCurYear,
       dashCur, setDashCur,
-      updateMonth,
+      updateMonth, renameMonth,
       history: state.history || [],
       logChange, clearHistory,
       residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry,

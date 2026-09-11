@@ -1,5 +1,5 @@
 import { Month, BudgetRow, ActualRow, ExtraRow, Trip, Poste, RevenuEntry, Transaction } from './types';
-import { isLegacyEarnMonth } from './constants';
+import { isLegacyEarnMonth, monthBaseName, monthYearSuffix, monthIndexOf } from './constants';
 
 // Format
 export function f$(n: number): string {
@@ -14,12 +14,18 @@ export function f0(n: number): string {
  * Abréviation d'un nom de mois pour les axes de graphes.
  * Tronquer à 3 lettres rendait JUIN et JUILLET identiques ("JUI") → on distingue
  * explicitement ces deux-là (JUIN / JUIL), les autres restent sur 3 lettres.
+ * Un id suffixé année (« OCTOBRE 26 », cf. inferNextMonthYear) ajoute un repère
+ * ’26 — sinon deux Octobre de deux années différentes seraient identiques sur un
+ * même graphe.
  */
 export function shortMonth(id: string): string {
-  const n = (id || '').trim().toUpperCase();
-  if (n.startsWith('JUIL')) return 'JUIL';
-  if (n.startsWith('JUIN')) return 'JUIN';
-  return n.slice(0, 3);
+  const year = monthYearSuffix(id);
+  const n = monthBaseName(id);
+  let base: string;
+  if (n.startsWith('JUIL')) base = 'JUIL';
+  else if (n.startsWith('JUIN')) base = 'JUIN';
+  else base = n.slice(0, 3);
+  return year ? `${base} '${String(year).slice(2)}` : base;
 }
 
 /**
@@ -381,24 +387,40 @@ export async function fetchRate(target = 'AED'): Promise<number> {
 
 // Year detection
 export function detectYears(months: Month[]): number[] {
-  const MOIS = ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
-  const moisIdx = (n: string) => MOIS.findIndex(m => m === n || m.replace(/[ÉÈÊË]/g, c => ({ É: 'E', È: 'E', Ê: 'E', Ë: 'E' }[c] || c)) === n || n.startsWith(m.slice(0, 3)));
-
   const yearSet = new Set<number>();
   if (months.length === 0) return [];
 
-  const lastIdx = moisIdx(months[months.length - 1].id);
+  const lastIdx = monthIndexOf(months[months.length - 1].id);
   const nowMonth = new Date().getMonth();
   let yr = new Date().getFullYear();
   if (lastIdx > nowMonth) yr = yr;
 
   let prevIdx = lastIdx;
   for (let i = months.length - 1; i >= 0; i--) {
-    const idx = moisIdx(months[i].id);
+    const idx = monthIndexOf(months[i].id);
     if (idx > prevIdx) yr--;
     prevIdx = idx;
     months[i]._year = yr;
     yearSet.add(yr);
   }
   return Array.from(yearSet).sort();
+}
+
+/**
+ * Année à donner à un NOUVEAU mois dont le nom entre en collision avec un mois déjà
+ * enregistré (ex: on recrée « OCTOBRE » un an après). Déterministe, aucune saisie
+ * demandée à l'utilisateur : compare l'index calendaire du nouveau nom à celui du
+ * dernier mois de la liste (l'ajout se fait toujours en fin de liste, cf. createMonth)
+ * — postérieur ou égal dans l'année → même année que ce dernier mois, sinon année
+ * suivante. `months` n'est PAS encore le nouveau mois, juste l'état avant création.
+ */
+export function inferNextMonthYear(months: Month[], name: string): number {
+  if (months.length === 0) return new Date().getFullYear();
+  detectYears(months); // s'assure que _year est à jour sur le dernier mois
+  const last = months[months.length - 1];
+  const lastYear = last._year ?? new Date().getFullYear();
+  const lastIdx = monthIndexOf(last.id);
+  const targetIdx = monthIndexOf(name);
+  if (lastIdx < 0 || targetIdx < 0) return lastYear + 1;
+  return targetIdx > lastIdx ? lastYear : lastYear + 1;
 }

@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { f$, f0 } from '@/lib/utils';
-import { MOIS_LIST } from '@/lib/constants';
+import { MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
 import { Trip, Transaction } from '@/lib/types';
 import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, Pencil, SlidersHorizontal } from 'lucide-react';
 
@@ -253,13 +253,24 @@ export default function TripsPage() {
 
   // Mois du tracker correspondant à une date (ex: 2026-08-03 → 'AOÛT'), s'il existe.
   // Sert à recaler le champ « Mois (tracker) » quand la date change.
+  //
+  // Un même nom de mois peut exister deux fois (ex: OCTOBRE 2025 et OCTOBRE 2026,
+  // ce dernier suffixé — cf. inferNextMonthYear) : on désambiguïse par l'année de la
+  // date. Le candidat SANS suffixe (l'original) sert de défaut pour l'année qu'aucun
+  // suffixe explicite ne revendique, ce qui marche aussi bien pour une date visant le
+  // mois d'origine que pour une date visant le mois recréé.
   const trackerMonthForDate = (d: string): string | null => {
     if (!d) return null;
     const idx = Number(d.slice(5, 7)) - 1;
     if (isNaN(idx) || idx < 0 || idx > 11) return null;
     const norm = (s: string) => s.trim().toUpperCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '');
     const target = norm(MOIS_LIST[idx]);
-    return state.months.find(m => norm(m.id) === target)?.id ?? null;
+    const candidates = state.months.filter(m => norm(monthBaseName(m.id)) === target);
+    if (candidates.length <= 1) return candidates[0]?.id ?? null;
+    const year = Number(d.slice(0, 4));
+    const exact = candidates.find(m => monthYearSuffix(m.id) === year);
+    const unsuffixed = candidates.find(m => monthYearSuffix(m.id) === null);
+    return (exact || unsuffixed || candidates[candidates.length - 1]).id;
   };
 
   const handleCreate = () => {

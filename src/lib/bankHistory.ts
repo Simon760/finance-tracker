@@ -1,10 +1,10 @@
 import { AppState } from './types';
-import { LEGACY_EARN_MONTHS } from './constants';
-
-const MOIS_ORDER = ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
+import { LEGACY_EARN_MONTHS, monthIndexOf } from './constants';
 
 function monthStartDate(monthId: string, year?: number): Date {
-  const idx = MOIS_ORDER.indexOf(monthId.toUpperCase());
+  // monthIndexOf tolère le suffixe année d'un id en collision (« OCTOBRE 2026 ») —
+  // un indexOf brut sur MOIS_ORDER échouait dessus et retombait au 1er janvier.
+  const idx = monthIndexOf(monthId);
   const y = year || new Date().getFullYear();
   if (idx < 0) return new Date(y, 0, 1);
   return new Date(y, idx, 1);
@@ -47,8 +47,8 @@ export interface BankHistory {
 export function computeBankHistory(state: AppState): BankHistory {
   // Trie les mois dans l'ordre chronologique
   const months = [...(state.months || [])].sort((a, b) => {
-    const ai = MOIS_ORDER.indexOf((a.id || '').toUpperCase());
-    const bi = MOIS_ORDER.indexOf((b.id || '').toUpperCase());
+    const ai = monthIndexOf(a.id || '');
+    const bi = monthIndexOf(b.id || '');
     const ay = a._year || 0;
     const by = b._year || 0;
     if (ay !== by) return ay - by;
