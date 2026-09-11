@@ -294,8 +294,8 @@ export default function MobileTracker() {
 
   const confirmRename = () => {
     if (!m) return;
-    const err = renameMonth(m.id, renameValue);
-    if (err) { setRenameError(err); return; }
+    const result = renameMonth(m.id, renameValue);
+    if (result.error) { setRenameError(result.error); return; }
     setRenameOpen(false);
   };
 
@@ -871,6 +871,7 @@ function RenameMonthSheet({ open, onClose, value, setValue, onConfirm, error }: 
         <div>
           <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Nom du mois</label>
           <input className="fi !h-11" value={value} onChange={e => setValue(e.target.value.toUpperCase())} placeholder="Ex: OCTOBRE 2025" autoFocus />
+          <p className="text-[10px] text-t-4 mt-1">Si ce nom est déjà pris par un autre mois, celui-ci sera automatiquement renommé avec son année pour te le libérer.</p>
           {error && <p className="text-[11px] text-danger mt-1">{error}</p>}
         </div>
         <div className="flex gap-2 pt-1">

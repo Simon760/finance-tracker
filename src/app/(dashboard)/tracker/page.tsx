@@ -470,10 +470,13 @@ export default function TrackerPage() {
     if (!m) return;
     const oldId = m.id;
     const trimmed = renameValue.trim().toUpperCase();
-    const err = renameMonth(oldId, renameValue);
-    if (err) { setRenameError(err); return; }
+    const result = renameMonth(oldId, renameValue);
+    if (result.error) { setRenameError(result.error); return; }
     setRenameOpen(false);
-    if (trimmed !== oldId) logChange?.('month.rename', `« ${oldId} » renommé en « ${trimmed} »`);
+    if (trimmed === oldId) return;
+    let detail = `« ${oldId} » renommé en « ${trimmed} »`;
+    if (result.swapped) detail += ` (« ${result.swapped.fromId} » renommé en « ${result.swapped.toId} » pour libérer le nom)`;
+    logChange?.('month.rename', detail);
   };
 
   // Édite le budget en gardant AED et EUR synchronisés au taux live.
@@ -1278,6 +1281,9 @@ export default function TrackerPage() {
               autoFocus
               onKeyDown={e => e.key === 'Enter' && confirmRename()}
             />
+            <div className="text-[10px] text-t-4 mt-1">
+              Si ce nom est déjà pris par un autre mois, celui-ci sera automatiquement renommé avec son année pour te le libérer.
+            </div>
             {renameError && <div className="text-[11px] text-danger mt-1">{renameError}</div>}
           </FormField>
           <div className="flex gap-2.5 mt-5">

@@ -2,9 +2,9 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
 import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry, Trip, Transaction, Theme } from '@/lib/types';
-import { DEFAULT_POSTES, MOIS_LIST } from '@/lib/constants';
+import { DEFAULT_POSTES, MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
-import { fetchRate } from '@/lib/utils';
+import { fetchRate, detectYears } from '@/lib/utils';
 
 /** Doit rester identique à la clé lue par le script anti-flash de app/layout.tsx. */
 export const THEME_KEY = 'fhq_theme';
@@ -95,9 +95,12 @@ interface AppContextType {
   dashCur: 'EUR' | 'AED';
   setDashCur: (c: 'EUR' | 'AED') => void;
   updateMonth: (id: string, field: keyof Month, val: number) => void;
-  /** Renomme un mois (id). Retourne un message d'erreur si le nouveau nom est invalide
-   * ou déjà pris, sinon null. Rekey aussi revenus.months et trip.swap.monthId. */
-  renameMonth: (oldId: string, newName: string) => string | null;
+  /** Renomme un mois (id). error=null si OK. Si le nom visé était pris par un AUTRE
+   * mois sans suffixe année explicite, ce mois-là est automatiquement renommé avec
+   * son année pour libérer le nom — `swapped` indique alors {fromId, toId} de CE
+   * second renommage. Rekey aussi revenus.months et trip.swap.monthId (des deux
+   * mois en cas de swap). */
+  renameMonth: (oldId: string, newName: string) => { error: string | null; swapped?: { fromId: string; toId: string } };
 
   // Historique
   history: HistoryEntry[];
@@ -1029,35 +1032,83 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [userId, persistToFirebase, activeSpaceId]);
 
   /**
-   * Renomme un mois. Deux fixes en un : (1) permettre de corriger/relabelliser un
-   * mois, (2) donner un moyen manuel de lever une collision de nom entre années
-   * (ex: renommer l'OCTOBRE 2025 existant pour libérer « OCTOBRE » si l'auto-suffixe
-   * de createMonth — cf. inferNextMonthYear — ne convient pas).
+   * Renomme un mois. Deux fixes en un : (1) corriger/relabelliser un mois, (2) lever
+   * une collision de nom entre années — le même problème que createMonth (cf.
+   * inferNextMonthYear), pas juste le signaler. Si le nom demandé est pris par un
+   * AUTRE mois (ex: renommer OCTOBRE 26 → OCTOBRE alors qu'OCTOBRE 2025 existe déjà),
+   * on ne bloque pas : ce mois EXISTANT est automatiquement poussé vers son propre
+   * suffixe année (OCTOBRE → OCTOBRE 25) pour libérer le nom, comme le ferait
+   * l'utilisateur manuellement. Uniquement quand le nom visé n'a lui-même AUCUN
+   * suffixe explicite — sinon (ex: on vise « OCTOBRE 25 » qui existe déjà tel quel)
+   * il n'y a pas de sens à donner au swap, c'est un vrai conflit qu'on remonte.
    *
-   * Rekey ce qui référence le mois par son id : revenus.months (sinon les entrées
-   * de revenus se retrouvent orphelines sous l'ancien nom) et trip.swap.monthId
-   * (le SEUL champ qui stocke un monthId de façon persistante côté Trip — les
-   * rechargements affichés dans Voyages sont recalculés à la volée depuis mo.id,
-   * donc déjà à jour après le rename sans y toucher).
+   * Rekey ce qui référence un mois par son id — POUR LES DEUX ids en cas de swap :
+   * revenus.months (sinon les entrées de revenus se retrouvent orphelines sous
+   * l'ancien nom) et trip.swap.monthId (le SEUL champ qui stocke un monthId de façon
+   * persistante côté Trip — les rechargements affichés dans Voyages sont recalculés
+   * à la volée depuis mo.id, déjà à jour après le rename sans y toucher).
    */
-  const renameMonth = useCallback((oldId: string, newName: string): string | null => {
+  const renameMonth = useCallback((
+    oldId: string, newName: string,
+  ): { error: string | null; swapped?: { fromId: string; toId: string } } => {
     const trimmed = newName.trim().toUpperCase();
-    if (!trimmed) return 'Le nom ne peut pas être vide.';
-    if (trimmed === oldId) return null;
-    if (state.months.some(m => m.id === trimmed)) return `Un mois « ${trimmed} » existe déjà.`;
-    if (!state.months.some(m => m.id === oldId)) return 'Mois introuvable.';
+    if (!trimmed) return { error: 'Le nom ne peut pas être vide.' };
+    if (trimmed === oldId) return { error: null };
+    if (!state.months.some(m => m.id === oldId)) return { error: 'Mois introuvable.' };
+    const collision = state.months.find(m => m.id === trimmed && m.id !== oldId);
+
+    let swapId: string | undefined;
+    let swapNewId: string | undefined;
+    if (collision) {
+      if (monthYearSuffix(trimmed) !== null) {
+        return { error: `Un mois « ${trimmed} » existe déjà.` };
+      }
+      detectYears(state.months); // s'assure que _year est à jour sur tous les mois
+      const collisionYear = collision._year;
+      if (!collisionYear) {
+        return { error: `Un mois « ${trimmed} » existe déjà. Renomme-le d'abord manuellement.` };
+      }
+      swapId = collision.id;
+      swapNewId = `${monthBaseName(collision.id)} ${String(collisionYear).slice(-2)}`;
+      // Exclut aussi oldId : un id qui n'existera plus une fois CE renommage appliqué
+      // ne compte pas comme une collision tierce.
+      if (state.months.some(m => m.id === swapNewId && m.id !== swapId && m.id !== oldId)) {
+        return { error: `Impossible de libérer « ${trimmed} » automatiquement (« ${swapNewId} » existe aussi déjà).` };
+      }
+    }
+
     setStateRaw(prev => {
-      const months = prev.months.map(m => m.id === oldId ? { ...m, id: trimmed } : m);
+      let months = prev.months;
       const revMonths = { ...(prev.revenus?.months || {}) };
+      let trips = prev.trips || [];
+
+      // Le swap DOIT s'appliquer AVANT le renommage principal : oldId et swapId
+      // désignent deux mois distincts tant que ce dernier n'a pas encore pris le
+      // nom `trimmed` — inverser l'ordre ferait matcher `m.id === swapId` sur les
+      // DEUX mois une fois que le premier a déjà pris ce même nom, et les
+      // renommerait tous les deux vers swapNewId.
+      if (swapId && swapNewId) {
+        months = months.map(m => m.id === swapId ? { ...m, id: swapNewId! } : m);
+        if (swapId in revMonths) {
+          revMonths[swapNewId] = revMonths[swapId];
+          delete revMonths[swapId];
+        }
+        trips = trips.map(t =>
+          t.swap.monthId === swapId ? { ...t, swap: { ...t.swap, monthId: swapNewId! } } : t
+        );
+      }
+
+      months = months.map(m => m.id === oldId ? { ...m, id: trimmed } : m);
       if (oldId in revMonths) {
         revMonths[trimmed] = revMonths[oldId];
         delete revMonths[oldId];
       }
-      const revenus = { ...prev.revenus, months: revMonths };
       // trips n'est PAS space-scopé (AppState.trips top-level, pas de champ sur Space)
-      const trips = (prev.trips || []).map(t =>
+      trips = trips.map(t =>
         t.swap.monthId === oldId ? { ...t, swap: { ...t.swap, monthId: trimmed } } : t
       );
+
+      const revenus = { ...prev.revenus, months: revMonths };
       const allSpaces = stateToSpaces(prev).map(s =>
         s.id === activeSpaceId ? { ...s, months, revenus } : s
       );
@@ -1067,7 +1118,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return updated;
     });
     if (curMonth === oldId) setCurMonth(trimmed);
-    return null;
+    else if (swapId && curMonth === swapId) setCurMonth(swapNewId!);
+    return { error: null, swapped: swapId && swapNewId ? { fromId: swapId, toId: swapNewId } : undefined };
   }, [state.months, curMonth, userId, persistToFirebase, activeSpaceId]);
 
   return (

@@ -46,6 +46,16 @@ grouper) passe par `monthBaseName(id)` / `monthYearSuffix(id)` / `monthIndexOf(i
 recalculés à la volée depuis `mo.id`, pas besoin d'y toucher). Bouton crayon à
 côté du mois courant (desktop : pill du nav ; mobile : sheet dédiée).
 
+Si le nom visé est pris par un AUTRE mois **sans suffixe année explicite**, ça ne
+bloque PAS : ce mois-là est automatiquement poussé vers son propre suffixe année
+(`monthBaseName + son _year`, cf. `detectYears`) pour libérer le nom — même
+principe que `createMonth`, appliqué au renommage (l'utilisateur a explicitement
+demandé cette cohérence : « c'est ce que je t'ai demandé de fix à la base »). Le
+blocage franc (`error`) ne survient que si le nom visé porte DÉJÀ un suffixe
+explicite qui collisionne (aucune direction sensée pour un swap), ou si le swap
+lui-même collisionnerait. Retour `{ error, swapped? }`, pas juste une string —
+`swapped` sert à logger/expliquer le second renommage silencieux.
+
 ## Règles de calcul — pièges connus
 1. **`sumAed` / `sumEur` itèrent `state.postes`**, pas `m.actual[]`. Itérer `actual[]` somme des rows orphelines (postes supprimés mais entrées résiduelles). Le HTML fait pareil (`_old/js/services/budget.js`).
 2. **Les transactions stockent `amount` toujours en AED** (cf. `tracker/page.tsx` save handler), converti au taux du **jour de la saisie** — pas au `m.rate` du mois. Donc `t.amount * rate` = **double conversion**, jamais. Et l'inverse est vrai aussi : re-dériver l'AED depuis `row.eur` au taux du mois ne redonne pas le montant saisi (une tx de 1 196 AED s'affichait 1 175). Pour l'AED d'une ligne « Réel », passer par **`rowAedSpent()`** (`lib/utils.ts`) : txns si présentes, sinon repli selon la devise de référence du poste. Pour l'EUR, lire `row.eur`, maintenu par les save handlers.
