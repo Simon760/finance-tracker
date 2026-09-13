@@ -412,9 +412,15 @@ export default function TrackerPage() {
       }
     }
     setNmError('');
+    // Un poste désactivé (« masqué à partir de », cf. Réglages) le reste dans tous les
+    // mois suivants sans action répétée — on part de la liste du dernier mois, qui
+    // porte déjà ses masquages hérités du mois d'avant.
+    const inheritedHidden = state.months.length > 0
+      ? [...(state.months[state.months.length - 1].hiddenPostes || [])]
+      : [];
     const newMonth: Month = {
       id, rate: nmRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
-      budget: [], actual: [], extraBudget: [], extraActual: [],
+      budget: [], actual: [], extraBudget: [], extraActual: [], hiddenPostes: inheritedHidden,
     };
     const hasHistory = state.months.length > 0;
     if (hasHistory && nmFillMode === 'copy') {

@@ -56,6 +56,8 @@ export default function SettingsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLimit, setHistoryLimit] = useState(15);
+  const [disableIdx, setDisableIdx] = useState<number | null>(null);
+  const [disableMonthId, setDisableMonthId] = useState('');
 
   const openAdd = () => {
     setForm({ name: '', cat: 'vital', isAed: true });
@@ -135,6 +137,60 @@ export default function SettingsPage() {
     logChange?.('poste.update', `Réordre poste « ${newPostes[nIdx].name} » ↔ « ${newPostes[idx].name} »`);
   };
 
+  /**
+   * Désactive/réactive un poste régulier À PARTIR D'UN MOIS DONNÉ, sans jamais toucher
+   * aux montants. Ça écrit/retire juste le nom dans `Month.hiddenPostes` (déjà utilisé
+   * partout pour exclure une ligne de l'affichage et des totaux — cf. isHidden dans
+   * utils.ts) pour chaque mois à partir du cutoff, en une seule action au lieu de
+   * cliquer le masquage à la main dans chaque mois. `cutoffMonthId` = null réactive
+   * partout (retire des hiddenPostes de tous les mois).
+   *
+   * createMonth (desktop + mobile) fait hériter hiddenPostes du mois précédent, donc
+   * les mois créés APRÈS cette action restent désactivés automatiquement.
+   */
+  const setPosteActiveFrom = (posteName: string, cutoffMonthId: string | null) => {
+    const cutoffIdx = cutoffMonthId ? state.months.findIndex(mo => mo.id === cutoffMonthId) : -1;
+    const months = state.months.map((mo, i) => {
+      const shouldHide = cutoffMonthId !== null && i >= cutoffIdx;
+      const cur = mo.hiddenPostes || [];
+      const has = cur.includes(posteName);
+      if (shouldHide === has) return mo;
+      return { ...mo, hiddenPostes: shouldHide ? [...cur, posteName] : cur.filter(n => n !== posteName) };
+    });
+    setState({ ...state, months });
+    save();
+    logChange?.('poste.update', cutoffMonthId
+      ? `« ${posteName} » désactivé à partir de ${cutoffMonthId} (historique conservé)`
+      : `« ${posteName} » réactivé sur tous les mois`);
+  };
+
+  // Mois depuis lequel un poste est actuellement désactivé, ou null s'il est actif.
+  // Détecté en remontant depuis le dernier mois tant qu'il reste masqué en continu.
+  const disabledSince = (posteName: string): string | null => {
+    if (state.months.length === 0) return null;
+    if (!(state.months[state.months.length - 1].hiddenPostes || []).includes(posteName)) return null;
+    let i = state.months.length - 1;
+    while (i > 0 && (state.months[i - 1].hiddenPostes || []).includes(posteName)) i--;
+    return state.months[i].id;
+  };
+
+  const openDisable = (idx: number) => {
+    setDisableIdx(idx);
+    setDisableMonthId(state.months[state.months.length - 1]?.id || '');
+  };
+
+  const confirmDisable = () => {
+    if (disableIdx === null || !disableMonthId) return;
+    setPosteActiveFrom(postes[disableIdx].name, disableMonthId);
+    setDisableIdx(null);
+  };
+
+  const reactivate = (idx: number) => {
+    const p = postes[idx];
+    if (!confirm(`Réactiver « ${p.name} » sur tous les mois où il est désactivé ?`)) return;
+    setPosteActiveFrom(p.name, null);
+  };
+
   const exportData = () => {
     const data = JSON.stringify(state, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
@@ -193,18 +249,21 @@ export default function SettingsPage() {
           <span className="text-[13px] font-semibold">Postes budgétaires ({postes.length})</span>
         </div>
         <div className="overflow-x-auto">
-        <table className="w-full border-collapse min-w-[560px]">
+        <table className="w-full border-collapse min-w-[680px]">
           <thead>
             <tr className="bg-bg-2">
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium w-8">#</th>
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Nom</th>
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Catégorie</th>
               <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Devise</th>
-              <th className="text-right px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium w-32">Actions</th>
+              <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Statut</th>
+              <th className="text-right px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium w-48">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {postes.map((p, i) => (
+            {postes.map((p, i) => {
+              const since = disabledSince(p.name);
+              return (
               <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors">
                 <td className="px-4 py-2.5 text-t-3 text-xs">{i + 1}</td>
                 <td className="px-4 py-2.5 text-[13px] font-semibold">{p.name}</td>
@@ -214,16 +273,25 @@ export default function SettingsPage() {
                   </span>
                 </td>
                 <td className="px-4 py-2.5 font-mono text-xs text-t-2">{p.isAed ? 'AED' : 'EUR'}</td>
+                <td className="px-4 py-2.5">
+                  {since
+                    ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-warning bg-warning/10 border-warning/25" title={`Masqué (calculs + affichage) depuis ${since}, historique intact`}>Désactivé depuis {since}</span>
+                    : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-accent bg-accent/10 border-accent/25">Actif</span>}
+                </td>
                 <td className="px-4 py-2.5 text-right">
                   <div className="flex gap-1 justify-end">
                     <button onClick={() => movePoste(i, -1)} className="text-[11px] text-t-3 border border-border px-1.5 py-0.5 rounded cursor-pointer hover:bg-bg-4" title="Monter">↑</button>
                     <button onClick={() => movePoste(i, 1)} className="text-[11px] text-t-3 border border-border px-1.5 py-0.5 rounded cursor-pointer hover:bg-bg-4" title="Descendre">↓</button>
                     <button onClick={() => openEdit(i)} className="text-[11px] text-info bg-info/10 border border-info/25 px-2 py-0.5 rounded cursor-pointer hover:bg-info/20">Edit</button>
+                    {since
+                      ? <button onClick={() => reactivate(i)} className="text-[11px] text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded cursor-pointer hover:bg-accent/20">Réactiver</button>
+                      : <button onClick={() => openDisable(i)} disabled={state.months.length === 0} className="text-[11px] text-warning bg-warning/10 border border-warning/25 px-2 py-0.5 rounded cursor-pointer hover:bg-warning/20 disabled:opacity-40 disabled:cursor-not-allowed" title="Désactiver à partir d'un mois, sans supprimer l'historique">Désactiver…</button>}
                     <button onClick={() => deletePoste(i)} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         </div>
@@ -354,6 +422,25 @@ export default function SettingsPage() {
           <div className="flex gap-2.5 mt-5">
             <button onClick={savePoste} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">{editIdx !== null ? 'Modifier' : 'Créer'}</button>
             <button onClick={() => setAddOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Disable Poste Modal */}
+      <Modal open={disableIdx !== null} onClose={() => setDisableIdx(null)} title="Désactiver ce poste">
+        <div className="space-y-3.5">
+          <p className="text-[12px] text-t-3">
+            « {disableIdx !== null ? postes[disableIdx]?.name : ''} » disparaîtra du tableau et des totaux à partir du mois choisi (inclus) — les mois précédents et leurs montants ne bougent pas. Réversible à tout moment.
+          </p>
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-medium mb-1.5">À partir de</label>
+            <select className="fi" value={disableMonthId} onChange={e => setDisableMonthId(e.target.value)}>
+              {state.months.map(mo => <option key={mo.id} value={mo.id}>{mo.id}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2.5 mt-5">
+            <button onClick={confirmDisable} className="px-4 py-2 bg-warning text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">Désactiver</button>
+            <button onClick={() => setDisableIdx(null)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>
           </div>
         </div>
       </Modal>

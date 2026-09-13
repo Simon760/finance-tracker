@@ -77,6 +77,18 @@ lui-même collisionnerait. Retour `{ error, swapped? }`, pas juste une string �
 - **Graphes** : Recharts pose `fill`/`stroke` en attributs SVG, qui n'acceptent pas `var()`. Les couleurs de chrome passent donc par `chartTheme(theme)` / `chartTooltipStyle(theme)` (`src/lib/chartTheme.ts`). Les palettes de séries (`PIE_COLORS`…) restent en dur, elles lisent sur les deux fonds.
 - Toute nouvelle couleur d'UI passe par un token, pas par un hex.
 
+## Désactiver un poste régulier (Réglages)
+Un poste régulier est une colonne PARTAGÉE par tous les mois (renommer/supprimer via
+Settings affecte donc TOUS les mois — cf. les pièges de `savePoste`/`deletePoste`
+dans `settings/page.tsx`). Pour arrêter d'utiliser un poste à partir d'une date sans
+toucher à l'historique : `setPosteActiveFrom(posteName, cutoffMonthId)` dans
+`settings/page.tsx` écrit/retire simplement le nom dans `Month.hiddenPostes` (déjà
+utilisé partout via `isHidden()`, `lib/utils.ts`) pour chaque mois à partir du
+cutoff — jamais `budget`/`actual`, donc non destructif et réversible (`cutoffMonthId:
+null` réactive partout). `createMonth` (desktop + mobile) hérite `hiddenPostes` du
+mois précédent à la création, donc un poste désactivé le reste dans les mois créés
+après coup sans action répétée.
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu
