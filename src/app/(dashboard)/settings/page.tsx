@@ -166,14 +166,20 @@ export default function SettingsPage() {
       : `« ${posteName} » réactivé sur tous les mois`);
   };
 
-  // Mois depuis lequel un poste est actuellement désactivé, ou null s'il est actif.
-  // Détecté en remontant depuis le dernier mois tant qu'il reste masqué en continu.
-  const disabledSince = (posteName: string): string | null => {
-    if (state.months.length === 0) return null;
-    if (!(state.months[state.months.length - 1].hiddenPostes || []).includes(posteName)) return null;
+  // Statut de masquage d'un poste. `since` = mois depuis lequel il est désactivé en
+  // continu jusqu'au dernier mois (le cas « Désactiver à partir de »), sinon null.
+  // `count` = nb de mois où il est masqué, tous cas confondus — y compris un masquage
+  // ponctuel au milieu de l'historique (icône œil dans le tracker). Depuis que la
+  // bannière du tracker a disparu, Réglages est le SEUL endroit pour restaurer, donc
+  // le bouton Réactiver doit apparaître dès que count > 0, pas seulement pour `since`.
+  const hiddenStatus = (posteName: string): { since: string | null; count: number } => {
+    const count = state.months.filter(mo => (mo.hiddenPostes || []).includes(posteName)).length;
+    if (state.months.length === 0 || !(state.months[state.months.length - 1].hiddenPostes || []).includes(posteName)) {
+      return { since: null, count };
+    }
     let i = state.months.length - 1;
     while (i > 0 && (state.months[i - 1].hiddenPostes || []).includes(posteName)) i--;
-    return state.months[i].id;
+    return { since: state.months[i].id, count };
   };
 
   const openDisable = (idx: number) => {
@@ -306,7 +312,7 @@ export default function SettingsPage() {
           </thead>
           <tbody>
             {postes.map((p, i) => {
-              const since = disabledSince(p.name);
+              const { since, count: hiddenCount } = hiddenStatus(p.name);
               return (
               <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors">
                 <td className="px-4 py-2.5 text-t-3 text-xs">{i + 1}</td>
@@ -325,14 +331,16 @@ export default function SettingsPage() {
                 <td className="px-4 py-2.5">
                   {since
                     ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-warning bg-warning/10 border-warning/25" title={`Masqué (calculs + affichage) depuis ${since}, historique intact`}>Désactivé depuis {since}</span>
-                    : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-accent bg-accent/10 border-accent/25">Actif</span>}
+                    : hiddenCount > 0
+                      ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-warning bg-warning/10 border-warning/25" title="Masqué ponctuellement dans certains mois (icône œil du tracker), historique intact">Masqué dans {hiddenCount} mois</span>
+                      : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-accent bg-accent/10 border-accent/25">Actif</span>}
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   <div className="flex gap-1 justify-end">
                     <button onClick={() => movePoste(i, -1)} className="text-[11px] text-t-3 border border-border px-1.5 py-0.5 rounded cursor-pointer hover:bg-bg-4" title="Monter">↑</button>
                     <button onClick={() => movePoste(i, 1)} className="text-[11px] text-t-3 border border-border px-1.5 py-0.5 rounded cursor-pointer hover:bg-bg-4" title="Descendre">↓</button>
                     <button onClick={() => openEdit(i)} className="text-[11px] text-info bg-info/10 border border-info/25 px-2 py-0.5 rounded cursor-pointer hover:bg-info/20">Edit</button>
-                    {since
+                    {hiddenCount > 0
                       ? <button onClick={() => reactivate(i)} className="text-[11px] text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded cursor-pointer hover:bg-accent/20">Réactiver</button>
                       : <button onClick={() => openDisable(i)} disabled={state.months.length === 0} className="text-[11px] text-warning bg-warning/10 border border-warning/25 px-2 py-0.5 rounded cursor-pointer hover:bg-warning/20 disabled:opacity-40 disabled:cursor-not-allowed" title="Désactiver à partir d'un mois, sans supprimer l'historique">Désactiver…</button>}
                     <button onClick={() => deletePoste(i)} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded cursor-pointer hover:bg-danger/20">✕</button>

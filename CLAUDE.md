@@ -89,6 +89,14 @@ null` réactive partout). `createMonth` (desktop + mobile) hérite `hiddenPostes
 mois précédent à la création, donc un poste désactivé le reste dans les mois créés
 après coup sans action répétée.
 
+**Pas de bannière « Masqués dans X » dans le tracker** (desktop ni mobile) — retirée à
+la demande de l'utilisateur : avec l'héritage ci-dessus elle réapparaissait sur chaque
+nouveau mois, en permanence. Réglages est donc le SEUL endroit pour voir le statut et
+réactiver. Conséquence : `hiddenStatus()` (`settings/page.tsx`) doit couvrir aussi un
+masquage PONCTUEL au milieu de l'historique (icône œil du tracker, pas un « à partir
+de ») — statut « Masqué dans N mois » + bouton Réactiver dès que `count > 0`, sinon ce
+masquage n'aurait plus aucun chemin de restauration.
+
 **Regrouper des postes pour les stats** : `Poste.group?: string` (`lib/types.ts`),
 éditable dans la modale « Modifier » de Réglages. Sert UNIQUEMENT à l'agrégation du
 Dashboard (`avgExp`/`posteTotals` dans `dashboard/page.tsx`, clé `p.group || p.name`

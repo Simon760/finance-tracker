@@ -361,22 +361,6 @@ export default function MobileTracker() {
     save();
   };
 
-  const restoreOneHiddenMobile = (posteName: string) => {
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const cur = mo.hiddenPostes || [];
-      return { ...mo, hiddenPostes: cur.filter(n => n !== posteName) };
-    });
-    setState({ ...state, months });
-    save();
-  };
-
-  const restoreAllHiddenMobile = () => {
-    const months = state.months.map(mo => mo.id === m.id ? { ...mo, hiddenPostes: [] } : mo);
-    setState({ ...state, months });
-    save();
-  };
-
   return (
     <div className="pb-20">
       {/* Month navigator */}
@@ -429,32 +413,7 @@ export default function MobileTracker() {
         <div className="text-[10px] text-t-4 mt-1.5">Tap pour régulariser avec la balance réelle</div>
       </button>
 
-      {/* Banner masqués */}
-      {hidden.length > 0 && (
-        <div className="mb-3 px-3 py-2.5 bg-bg-3 border border-warning/30 rounded-lg text-[11px]">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-t-3 flex items-center gap-1.5">
-              <EyeOff size={11} className="text-warning" />
-              Masqué{hidden.length > 1 ? 's' : ''} ce mois :
-            </span>
-            {hidden.length > 1 && (
-              <button onClick={restoreAllHiddenMobile} className="text-[11px] text-accent font-semibold whitespace-nowrap active:opacity-60">Tout restaurer</button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {hidden.map(name => (
-              <button
-                key={name}
-                onClick={() => restoreOneHiddenMobile(name)}
-                className="inline-flex items-center gap-1 px-2 py-0.5 bg-warning/10 text-warning border border-warning/30 rounded-full text-[10px] font-semibold active:bg-accent/15"
-              >
-                {name}
-                <span className="text-[12px] leading-none opacity-60">×</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Postes masqués : plus de bannière ici — statut et réactivation vivent dans Réglages */}
 
       {/* Postes list */}
       <div className="flex items-center justify-between mb-2.5 px-1">
