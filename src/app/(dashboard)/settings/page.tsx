@@ -73,7 +73,8 @@ export default function SettingsPage() {
 
   const savePoste = () => {
     if (!form.name.trim()) return;
-    const p: Poste = { ...form, name: form.name.trim().toUpperCase() };
+    const groupTrimmed = (form.group || '').trim().toUpperCase();
+    const p: Poste = { ...form, name: form.name.trim().toUpperCase(), group: groupTrimmed || undefined };
     let updated: Poste[];
     if (editIdx !== null) {
       updated = postes.map((item, i) => i === editIdx ? p : item);
@@ -266,7 +267,12 @@ export default function SettingsPage() {
               return (
               <tr key={i} className="border-b border-border hover:bg-white/[.02] transition-colors">
                 <td className="px-4 py-2.5 text-t-3 text-xs">{i + 1}</td>
-                <td className="px-4 py-2.5 text-[13px] font-semibold">{p.name}</td>
+                <td className="px-4 py-2.5 text-[13px] font-semibold">
+                  {p.name}
+                  {p.group && p.group !== p.name && (
+                    <div className="text-[10px] text-t-4 font-normal mt-0.5">groupé : {p.group}</div>
+                  )}
+                </td>
                 <td className="px-4 py-2.5">
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${CAT_STYLES[p.cat]}`}>
                     {p.cat}
@@ -419,6 +425,13 @@ export default function SettingsPage() {
             />
             <span className="text-[12px] text-t-2">Charge fixe <span className="text-t-4">(payée quoi qu'il arrive — exclue du Bilan vs prévisionnel)</span></span>
           </label>
+          <div>
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-medium mb-1.5">Groupe (stats)</label>
+            <input className="fi" value={form.group || ''} onChange={e => setForm({ ...form, group: e.target.value })} placeholder={form.name || 'Laisser vide = groupé sous son propre nom'} />
+            <div className="text-[10px] text-t-4 mt-1">
+              Additionne ce poste avec d&apos;autres dans le Dashboard (même nom de groupe = une seule barre). N&apos;affecte que les stats — le tracker, le budget et l&apos;historique restent inchangés.
+            </div>
+          </div>
           <div className="flex gap-2.5 mt-5">
             <button onClick={savePoste} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-sm cursor-pointer hover:opacity-90">{editIdx !== null ? 'Modifier' : 'Créer'}</button>
             <button onClick={() => setAddOpen(false)} className="px-4 py-2 border border-border text-t-2 text-sm rounded-sm cursor-pointer hover:bg-bg-3">Annuler</button>

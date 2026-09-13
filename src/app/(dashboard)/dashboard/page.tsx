@@ -75,21 +75,26 @@ export default function DashboardPage() {
   const soldeMax = soldeAllVals.length > 0 ? Math.ceil(Math.max(...soldeAllVals) * 1.05 / 5000) * 5000 : 100000;
 
   // Avg expense pie
+  // Regroupe par p.group quand défini (ex: CHARGES SG + CHARGES REVO + CHARGES
+  // FRANCE, désactivés/renommés dans le temps mais comptés comme une seule
+  // catégorie) — sinon groupé sous son propre nom, comportement inchangé.
   const avgExp: Record<string, number> = {};
   ms.forEach(m => {
     state.postes.forEach((p, i) => {
+      const key = p.group || p.name;
       const v = rowEur(m.actual[i] || { aed: 0, eur: null }, m.rate);
-      avgExp[p.name] = (avgExp[p.name] || 0) + (dashCur === 'EUR' ? v : toAed(v, m.rate));
+      avgExp[key] = (avgExp[key] || 0) + (dashCur === 'EUR' ? v : toAed(v, m.rate));
     });
   });
   const pieData = Object.entries(avgExp).filter(([, v]) => v > 10).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value: value / ms.length }));
 
-  // Total par poste
+  // Total par poste (même regroupement que ci-dessus)
   const posteTotals: Record<string, number> = {};
   ms.forEach(m => {
     state.postes.forEach((p, i) => {
+      const key = p.group || p.name;
       const v = rowEur(m.actual[i] || { aed: 0, eur: null }, m.rate);
-      posteTotals[p.name] = (posteTotals[p.name] || 0) + (dashCur === 'EUR' ? v : toAed(v, m.rate));
+      posteTotals[key] = (posteTotals[key] || 0) + (dashCur === 'EUR' ? v : toAed(v, m.rate));
     });
     (m.extraActual || []).forEach(r => {
       const v = r.eur > 0 ? r.eur : rowEur({ aed: r.aed, eur: 0 }, m.rate);

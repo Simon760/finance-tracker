@@ -89,6 +89,17 @@ null` réactive partout). `createMonth` (desktop + mobile) hérite `hiddenPostes
 mois précédent à la création, donc un poste désactivé le reste dans les mois créés
 après coup sans action répétée.
 
+**Regrouper des postes pour les stats** : `Poste.group?: string` (`lib/types.ts`),
+éditable dans la modale « Modifier » de Réglages. Sert UNIQUEMENT à l'agrégation du
+Dashboard (`avgExp`/`posteTotals` dans `dashboard/page.tsx`, clé `p.group || p.name`
+au lieu de `p.name`) — ne touche jamais le tracker, le budget/réel, ni l'historique.
+Pensé pour le cas « CHARGES SG + CHARGES REVO désactivés, remplacés par CHARGES
+FRANCE » (cf. ci-dessus) : les trois partagent le même groupe et s'additionnent en
+une seule barre sur toute la période, malgré des noms différents dans le temps.
+Différent de l'outil « Fusionner » de `DataAudit.tsx` (fusion EXACTE-nom et
+DESTRUCTIVE — somme réellement les valeurs et supprime un poste) : ce champ ne
+fusionne rien, c'est juste une clé d'affichage.
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu

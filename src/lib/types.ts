@@ -8,6 +8,12 @@ export interface Poste {
   /** Charge fixe (loyer, abos...) payée quoi qu'il arrive → exclue du Bilan vs prévisionnel.
    * Si undefined, un défaut par nom s'applique (cf. isPosteFixed). */
   fixed?: boolean;
+  /** Étiquette de regroupement pour les stats (Dashboard) UNIQUEMENT — n'affecte jamais
+   * le tracker, le budget/réel, ni l'historique. Plusieurs postes (variantes de nom, ou
+   * un ancien poste désactivé + son remplaçant) peuvent partager le même groupe pour être
+   * additionnés en une seule barre. Si vide/absent, le poste est groupé sous son propre
+   * nom (comportement identique à avant ce champ). Cf. dashboard/page.tsx. */
+  group?: string;
 }
 
 export interface BudgetRow {
