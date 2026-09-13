@@ -58,6 +58,7 @@ export default function SettingsPage() {
   const [historyLimit, setHistoryLimit] = useState(15);
   const [disableIdx, setDisableIdx] = useState<number | null>(null);
   const [disableMonthId, setDisableMonthId] = useState('');
+  const [extraGroupDrafts, setExtraGroupDrafts] = useState<Record<string, string>>({});
 
   const openAdd = () => {
     setForm({ name: '', cat: 'vital', isAed: true });
@@ -192,6 +193,48 @@ export default function SettingsPage() {
     setPosteActiveFrom(p.name, null);
   };
 
+  /**
+   * Postes ponctuels (extras, ajoutés pour un seul mois dans les Dépenses Réelles) :
+   * contrairement aux postes réguliers, pas d'objet partagé entre mois où stocker un
+   * groupe — chaque mois a sa propre copie du nom. On scanne donc tous les mois pour
+   * lister les noms distincts (avec leur nb d'occurrences, pour repérer d'un coup d'œil
+   * les variantes du type "AUTRE"/"AUTRES"), et le regroupement se stocke à part dans
+   * state.extraGroups (nom brut → groupe), lu par dashboard/page.tsx au moment d'agréger.
+   * Ne touche jamais extraActual/extraBudget dans les mois.
+   */
+  const extraNameStats = (() => {
+    const counts: Record<string, number> = {};
+    state.months.forEach(mo => {
+      (mo.extraActual || []).forEach(r => {
+        const n = (r.name || '').trim().toUpperCase();
+        if (!n) return;
+        counts[n] = (counts[n] || 0) + 1;
+      });
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  })();
+
+  const extraGroupDraft = (name: string): string =>
+    extraGroupDrafts[name] ?? (state.extraGroups?.[name] || '');
+
+  const saveExtraGroups = () => {
+    const extraGroups = { ...(state.extraGroups || {}) };
+    let changed = 0;
+    Object.entries(extraGroupDrafts).forEach(([name, val]) => {
+      const trimmed = val.trim().toUpperCase();
+      const prev = extraGroups[name];
+      if (trimmed === (prev || '')) return;
+      changed++;
+      if (trimmed) extraGroups[name] = trimmed;
+      else delete extraGroups[name];
+    });
+    if (changed === 0) return;
+    setState({ ...state, extraGroups });
+    save();
+    logChange?.('poste.update', `Regroupement de ${changed} poste(s) ponctuel(s) mis à jour`);
+    setExtraGroupDrafts({});
+  };
+
   const exportData = () => {
     const data = JSON.stringify(state, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
@@ -302,6 +345,52 @@ export default function SettingsPage() {
         </table>
         </div>
       </div>
+
+      {/* Postes ponctuels (extras) — regroupement pour les stats */}
+      {extraNameStats.length > 0 && (
+        <div className="bg-bg-3 border border-border rounded-md overflow-hidden mb-5">
+          <div className="flex justify-between items-center px-4 py-3 border-b border-border">
+            <div>
+              <span className="text-[13px] font-semibold">Dépenses ponctuelles ({extraNameStats.length})</span>
+              <div className="text-[10px] text-t-4 mt-0.5">Ajoutées pour un seul mois dans les Dépenses Réelles — regroupe les variantes de nom (ex: « AUTRE »/« AUTRES ») pour les stats du Dashboard, sans toucher aux dépenses elles-mêmes.</div>
+            </div>
+            <button
+              onClick={saveExtraGroups}
+              disabled={Object.keys(extraGroupDrafts).length === 0}
+              className="px-3 py-1.5 bg-accent text-black font-semibold text-[11px] rounded-sm cursor-pointer hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ml-3"
+            >
+              Enregistrer
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[480px]">
+            <thead>
+              <tr className="bg-bg-2">
+                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Nom</th>
+                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium w-24">Occurrences</th>
+                <th className="text-left px-4 py-2 text-[10px] uppercase tracking-wider text-t-4 font-medium">Groupe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {extraNameStats.map(([name, count]) => (
+                <tr key={name} className="border-b border-border last:border-0 hover:bg-white/[.02] transition-colors">
+                  <td className="px-4 py-2.5 text-[13px] font-semibold">{name}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-t-2">{count}</td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      className="fi !py-1.5 !text-xs"
+                      value={extraGroupDraft(name)}
+                      onChange={e => setExtraGroupDrafts({ ...extraGroupDrafts, [name]: e.target.value })}
+                      placeholder={name}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      )}
 
       {/* Outil d'audit et repair de la data */}
       <DataAudit />

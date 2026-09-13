@@ -203,14 +203,14 @@ function dedupEmptyExtras(months: Month[]): Month[] {
 
 function stateToSpaces(s: AppState): Space[] {
   if (s.spaces && s.spaces.length > 0) {
-    // BUG FIX : le top-level state (postes/months/revenus/emmenagement) est la source de vérité
-    // après chaque setState (createMonth, etc.). Mais spaces[activeId] peut être stale (les
-    // setState dans tracker/MobileTracker ne syncent pas back vers spaces[]).
-    // Donc on patche ici en mirrorant le top-level dans le space actif.
+    // BUG FIX : le top-level state (postes/months/revenus/emmenagement/extraGroups) est
+    // la source de vérité après chaque setState (createMonth, etc.). Mais spaces[activeId]
+    // peut être stale (les setState dans tracker/MobileTracker ne syncent pas back vers
+    // spaces[]). Donc on patche ici en mirrorant le top-level dans le space actif.
     if (s.activeSpaceId) {
       return s.spaces.map(sp =>
         sp.id === s.activeSpaceId
-          ? { ...sp, postes: s.postes, months: s.months, revenus: s.revenus, emmenagement: s.emmenagement }
+          ? { ...sp, postes: s.postes, months: s.months, revenus: s.revenus, emmenagement: s.emmenagement, extraGroups: s.extraGroups }
           : sp
       );
     }
@@ -230,6 +230,7 @@ function stateToSpaces(s: AppState): Space[] {
     months: s.months || [],
     revenus: s.revenus || { objectif: 5000, categories: [], months: {} },
     emmenagement: s.emmenagement || [],
+    extraGroups: s.extraGroups,
   }];
 }
 
@@ -242,6 +243,7 @@ function spacesToState(spaces: Space[], activeId: string, rate: number, lastUpda
     months: active.months,
     revenus: active.revenus,
     emmenagement: active.emmenagement,
+    extraGroups: active.extraGroups,
     lastUpdate,
     spaces,
     activeSpaceId: activeId,

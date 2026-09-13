@@ -118,6 +118,12 @@ export interface Space {
   months: Month[];
   revenus: RevenuState;
   emmenagement: EmmenagementItem[];
+  /** Regroupement pour les stats des postes PONCTUELS (extras, ajoutés pour un seul
+   * mois dans les Dépenses Réelles) — clé = nom brut de l'extra (ex: "AUTRE"), valeur
+   * = groupe affiché dans le Dashboard (ex: pour fusionner avec "AUTRES"). Équivalent
+   * de Poste.group mais pour les extras, qui n'ont pas d'objet partagé où stocker ça
+   * directement — cf. dashboard/page.tsx et settings/page.tsx. */
+  extraGroups?: Record<string, string>;
 }
 
 // Historique des modifications — visible uniquement dans Settings
@@ -178,6 +184,8 @@ export interface AppState {
   months: Month[];
   revenus: RevenuState;
   emmenagement: EmmenagementItem[];
+  /** Regroupement pour les stats des extras — cf. commentaire sur Space.extraGroups. */
+  extraGroups?: Record<string, string>;
   lastUpdate?: string;
   // Multi-space: si undefined, on wrappe automatiquement dans spaces[0]
   spaces?: Space[];

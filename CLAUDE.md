@@ -100,6 +100,19 @@ Différent de l'outil « Fusionner » de `DataAudit.tsx` (fusion EXACTE-nom et
 DESTRUCTIVE — somme réellement les valeurs et supprime un poste) : ce champ ne
 fusionne rien, c'est juste une clé d'affichage.
 
+**Regrouper des postes PONCTUELS (extras)** : mêmes principe et raison d'être que
+`Poste.group`, mais les extras (`Month.extraActual[]`) n'ont pas d'objet partagé
+entre mois où stocker un champ — chaque mois a sa propre copie du nom. Le
+regroupement vit donc à part : `AppState.extraGroups?: Record<string, string>`
+(mirroré sur `Space`, cf. `stateToSpaces`/`spacesToState` dans `AppProvider.tsx`),
+nom brut → groupe. Édité dans une section dédiée de Réglages (« Dépenses
+ponctuelles ») qui scanne `state.months[].extraActual` pour lister les noms
+distincts avec leur nb d'occurrences — utile pour repérer d'un coup d'œil des
+variantes comme « AUTRE »/« AUTRES ». `dashboard/page.tsx` lit `extraGroups[r.name]
+|| r.name` dans `avgExp` (« Répartition moyenne », qui INCLUT maintenant les
+extras — avant ce fix elle ne comptait que les postes réguliers) et `posteTotals`
+(« Total par poste »). Ne touche jamais `extraActual`/`extraBudget`.
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu
