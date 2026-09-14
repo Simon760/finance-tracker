@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff, Pencil } from 'lucide-react';
@@ -389,11 +389,11 @@ export default function TrackerPage() {
   // Revenue helpers
   const isRevSynced = (id: string) => !LEGACY_EARN_MONTHS.includes(id);
   const getMonthRevEur = (id: string) => {
-    const entries = state.revenus?.months?.[id] || [];
+    const entries = monthRevenus(state.revenus?.months, id);
     return entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
   };
   const getMonthRevAed = (id: string) => {
-    const entries = state.revenus?.months?.[id] || [];
+    const entries = monthRevenus(state.revenus?.months, id);
     return entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + ((e.cashed || 0) * (e.rate || state.rate)), 0);
   };
 
@@ -690,7 +690,7 @@ export default function TrackerPage() {
 
   // Prévisionnel (optimiste) — adds preview/non-confirmed revenues to confirmed forecast
   const previewEur = m && synced
-    ? ((state.revenus?.months?.[m.id] || []).filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0))
+    ? (monthRevenus(state.revenus?.months, m.id).filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0))
     : 0;
   const previewAed = previewEur * (state.rate || liveRate);
   const prevOpti = prevCompte + previewAed;

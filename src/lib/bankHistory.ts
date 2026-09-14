@@ -1,5 +1,6 @@
 import { AppState } from './types';
 import { LEGACY_EARN_MONTHS, monthIndexOf } from './constants';
+import { monthRevenus } from './utils';
 
 function monthStartDate(monthId: string, year?: number): Date {
   // monthIndexOf tolère le suffixe année d'un id en collision (« OCTOBRE 2026 ») —
@@ -73,7 +74,7 @@ export function computeBankHistory(state: AppState): BankHistory {
     }
 
     // Revenues confirmés du mois (depuis state.revenus)
-    const revs = state.revenus?.months?.[m.id] || [];
+    const revs = monthRevenus(state.revenus?.months, m.id);
     const isLegacyMonth = LEGACY_EARN_MONTHS.includes(m.id);
     if (!isLegacyMonth) {
       revs

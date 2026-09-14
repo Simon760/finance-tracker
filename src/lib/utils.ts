@@ -19,6 +19,50 @@ export function currentRevMonth(now: Date = new Date()): string {
   return MOIS_LIST[now.getMonth()];
 }
 
+/**
+ * Entrées Revenus d'un mois TRACKER — à utiliser partout à la place de
+ * `revenus.months[m.id]`. La table Revenus est indexée par NOM seul (« OCTOBRE »),
+ * alors qu'un mois tracker peut porter un suffixe année (« OCTOBRE 26 », cf. Identité
+ * des mois) : la clé exacte n'existe alors jamais et le tracker affichait 0 revenu.
+ *
+ * Résolution : clé exacte si présente ; sinon, pour un mois suffixé, repli sur le nom
+ * de base — UNIQUEMENT si l'homonyme sans suffixe est un mois legacy (il lit `m.earn`
+ * et ne consomme jamais la table). Sans ce garde-fou, « MARS » et « MARS 27 » liraient
+ * la même clé et les mêmes revenus compteraient deux fois. Couvre donc OCTOBRE 26 →
+ * FÉVRIER 27 ; à partir de MARS 27 la table Revenus devra porter l'année.
+ */
+export function monthRevenus(
+  revenusMonths: Record<string, RevenuEntry[]> | undefined,
+  monthId: string,
+): RevenuEntry[] {
+  if (!revenusMonths) return [];
+  const exact = revenusMonths[monthId];
+  if (exact) return exact;
+  if (monthYearSuffix(monthId) === null) return [];
+  const base = monthBaseName(monthId);
+  if (!isLegacyEarnMonth(base)) return [];
+  const idx = monthIndexOf(base);
+  // Clés de la table avec ou sans accent (« FÉVRIER » vs « FEVRIER ») → comparaison par index
+  const key = Object.keys(revenusMonths).find(k => monthYearSuffix(k) === null && monthIndexOf(k) === idx);
+  return key ? revenusMonths[key] || [] : [];
+}
+
+/**
+ * Revenus confirmés d'un mois tracker en EUR : `m.earn` pour un mois legacy, sinon la
+ * somme des entrées confirmées de la table (résolues par `monthRevenus`). C'est LA
+ * valeur « Revenus » du tracker ; les totaux (Vue Globale) la somment mois par mois
+ * pour rester réconciliables avec lui.
+ */
+export function monthRevenuConfirmedEur(
+  m: Month,
+  revenusMonths: Record<string, RevenuEntry[]> | undefined,
+): number {
+  if (isLegacyEarnMonth(m.id)) return m.earn || 0;
+  return monthRevenus(revenusMonths, m.id)
+    .filter(e => !e.status || e.status === 'confirmed')
+    .reduce((s, e) => s + (e.cashed || 0), 0);
+}
+
 // Format
 export function f$(n: number): string {
   return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,7 +112,7 @@ export function monthBankBalance(
   revenusMonths: Record<string, RevenuEntry[]> | undefined,
   fallbackRate: number,
 ): number {
-  const entries = revenusMonths?.[m.id] || [];
+  const entries = monthRevenus(revenusMonths, m.id);
   const earnLocal = isLegacyEarnMonth(m.id)
     ? (m.earn || 0) * m.rate
     : entries

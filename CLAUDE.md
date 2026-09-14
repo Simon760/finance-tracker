@@ -77,6 +77,16 @@ sans année : la page est implicitement « l'année en cours ». Deux règles qu
   (estompé, badge « À VENIR », delta/%/vs M-1 à « — ») et ses barres restent visibles
   mais estompées (`<Cell fillOpacity>`), hors total.
 
+**Lecture côté tracker** : la table n'ayant pas d'année, un mois tracker suffixé
+(« OCTOBRE 26 ») n'a jamais de clé exacte. **Toujours passer par `monthRevenus(revenusMonths,
+m.id)`** (`lib/utils.ts`) au lieu de `revenus.months[m.id]` : clé exacte sinon repli sur le
+nom de base, UNIQUEMENT si l'homonyme sans suffixe est un mois legacy (il lit `m.earn`,
+jamais la table) — sans ce garde-fou « MARS » / « MARS 27 » compteraient deux fois les mêmes
+revenus. Couvre donc OCTOBRE 26 → FÉVRIER 27 ; **à partir de MARS 27 la table Revenus devra
+porter l'année**. `monthRevenuConfirmedEur(m, …)` = la valeur « Revenus » du tracker (earn
+legacy ou entrées confirmées) ; Vue Globale (desktop + mobile) somme ça mois tracker par mois
+tracker pour rester réconciliable avec lui, au lieu d'itérer les clés de la table.
+
 ## UI conventions
 - KPIs : `<KpiCard>` (`components/ui/Card.tsx`), `hero` pour grandes valeurs
 - Panneau détail : `<SlideOver>`

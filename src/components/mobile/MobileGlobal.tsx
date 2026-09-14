@@ -3,8 +3,8 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance, bankRealDelta } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS, isLegacyEarnMonth, INSTALL_CAPITAL } from '@/lib/constants';
+import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur } from '@/lib/utils';
+import { INSTALL_CAPITAL } from '@/lib/constants';
 import { ChevronRight, TrendingUp } from 'lucide-react';
 
 export default function MobileGlobal() {
@@ -14,16 +14,12 @@ export default function MobileGlobal() {
   const spaceStats = useMemo(() => {
     return spaces.map(space => {
       const totalSpent = space.months.reduce((s, m) => s + sumEur(m, space.postes, m.extraActual), 0);
-      // Les mois legacy lisent Month.earn ci-dessous : on exclut leurs entrées de la
-      // table Revenus, sinon ils sont comptés deux fois.
-      const totalRevConfirmed = Object.entries(space.revenus?.months || {}).reduce((total, [monthId, entries]) => {
-        if (isLegacyEarnMonth(monthId)) return total;
-        return total + (entries || []).filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
-      }, 0);
-      const legacyEarn = space.months
-        .filter(m => LEGACY_EARN_MONTHS.includes(m.id))
-        .reduce((s, m) => s + (m.earn || 0), 0);
-      const totalRevenue = totalRevConfirmed + legacyEarn;
+      // Somme mois tracker par mois tracker (Month.earn pour un mois legacy, table
+      // Revenus sinon, résolue par monthRevenus) — même valeur que la colonne Revenus
+      // du tracker, donc réconciliable avec lui. Itérer les CLÉS de la table en
+      // sautant les noms legacy ratait « OCTOBRE 26 », dont les revenus vivent sous la
+      // clé « OCTOBRE » (nom legacy) faute d'année dans la table.
+      const totalRevenue = space.months.reduce((s, m) => s + monthRevenuConfirmedEur(m, space.revenus?.months), 0);
 
       // La balance affichée est la variation RÉELLE du compte depuis le capital
       // d'installation, pas revenus − dépenses : les deux diffèrent de tous les

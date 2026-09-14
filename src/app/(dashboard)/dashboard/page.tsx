@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import RankedBars from '@/components/ui/RankedBars';
-import { f$, f0, toAed, rowEur, sumEur, shortMonth } from '@/lib/utils';
+import { f$, f0, toAed, rowEur, sumEur, shortMonth, monthRevenus } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 // import BankStatsCard from '@/components/BankStatsCard'; // retiré temporairement
 import {
@@ -29,7 +29,7 @@ export default function DashboardPage() {
 
   const monthEarnEur = (m: typeof ms[0]) => {
     if (!LEGACY_EARN_MONTHS.includes(m.id)) {
-      const entries = state.revenus?.months?.[m.id] || [];
+      const entries = monthRevenus(state.revenus?.months, m.id);
       return entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
     }
     return m.earn || 0;
@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
   const monthEarnAed = (m: typeof ms[0]) => {
     if (!LEGACY_EARN_MONTHS.includes(m.id)) {
-      const entries = state.revenus?.months?.[m.id] || [];
+      const entries = monthRevenus(state.revenus?.months, m.id);
       return entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + ((e.cashed || 0) * (e.rate || state.rate)), 0);
     }
     return toAed(m.earn || 0, m.rate);

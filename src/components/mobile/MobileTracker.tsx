@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, inferNextMonthYear, pocketCashEur, budgetEurOf } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -51,7 +51,7 @@ export default function MobileTracker() {
 
   // Revenue helpers (sync with revenus table)
   const isSynced = m ? !LEGACY_EARN_MONTHS.includes(m.id) : false;
-  const revEntries = m ? (state.revenus?.months?.[m.id] || []) : [];
+  const revEntries = m ? monthRevenus(state.revenus?.months, m.id) : [];
   const earnEur = m
     ? (isSynced ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0) : (m.earn || 0))
     : 0;
