@@ -1,5 +1,23 @@
 import { Month, BudgetRow, ActualRow, ExtraRow, Trip, Poste, RevenuEntry, Transaction } from './types';
-import { isLegacyEarnMonth, monthBaseName, monthYearSuffix, monthIndexOf } from './constants';
+import { isLegacyEarnMonth, monthBaseName, monthYearSuffix, monthIndexOf, MOIS_LIST } from './constants';
+
+/**
+ * Table Revenus (`state.revenus.months`) : les mois sont indexés par NOM seul
+ * (« OCTOBRE »), sans année — la page Revenus est implicitement « l'année en cours ».
+ * Un mois dont l'index calendaire dépasse celui d'aujourd'hui n'a donc PAS commencé :
+ * ses entrées (saisies en prévision) restent consultables dans l'onglet du mois, mais
+ * ne comptent dans AUCUNE stat annuelle (totaux, moyennes, % objectif, par source,
+ * par client). Si on est en septembre, les stats vont de janvier à septembre inclus.
+ */
+export function isFutureRevMonth(name: string, now: Date = new Date()): boolean {
+  const idx = monthIndexOf(name);
+  return idx >= 0 && idx > now.getMonth();
+}
+
+/** Nom (clé Revenus) du mois calendaire courant — onglet d'atterrissage de la page Revenus. */
+export function currentRevMonth(now: Date = new Date()): string {
+  return MOIS_LIST[now.getMonth()];
+}
 
 // Format
 export function f$(n: number): string {

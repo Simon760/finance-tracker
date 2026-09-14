@@ -7,11 +7,11 @@ import MobileRevenus from '@/components/mobile/MobileRevenus';
 import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
 import RankedBars from '@/components/ui/RankedBars';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth } from '@/lib/utils';
+import { f$, f0, fetchRate, sameWeekdayDatesInMonth, isFutureRevMonth, currentRevMonth, shortMonth } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
@@ -135,7 +135,10 @@ export default function RevenusPage() {
     return MOIS_LIST.filter(m => existing.includes(m));
   }, [rev.months]);
 
-  const effectiveTab = curTab || orderedMonths[orderedMonths.length - 1] || '';
+  // Atterrissage sur le mois CALENDAIRE courant (comme le tracker de dépenses), pas sur le
+  // dernier mois qui a des données — sinon saisir des revenus en prévision pour le mois
+  // suivant faisait ouvrir la page sur ce mois-là.
+  const effectiveTab = curTab || currentRevMonth();
 
   const categories = rev.categories || [];
 
@@ -158,7 +161,7 @@ export default function RevenusPage() {
   const openAdd = (month?: string) => {
     const today = new Date().toISOString().split('T')[0];
     setForm({ date: today, client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed', currency: 'EUR' });
-    setFormMonth(month || orderedMonths[orderedMonths.length - 1] || '');
+    setFormMonth(month || effectiveTab || orderedMonths[orderedMonths.length - 1] || '');
     setEditIdx(null);
     setRateTouched(false); // le taux suit le live jusqu'à modification manuelle
     setRepeatWeekly(false);
@@ -296,11 +299,13 @@ export default function RevenusPage() {
     const pctMonth = obj > 0 ? (monthCashed / obj) * 100 : 0;
 
     // Bar chart for monthly tracker view (whole year)
+    // Les mois à venir (pas encore commencés) restent visibles mais estompés : ce sont des
+    // prévisions, pas des encaissements.
     const barData = MOIS_LIST.map(month => {
       const entries = rev.months[month] || [];
       const confirmed = entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       const pending = entries.filter(e => e.status === 'pending').reduce((s, e) => s + (e.cashed || 0), 0);
-      return { name: month.slice(0, 3), Confirmé: confirmed, 'En attente': pending };
+      return { name: month.slice(0, 3), Confirmé: confirmed, 'En attente': pending, future: isFutureRevMonth(month) };
     });
 
     // Cat totals for current month (inline — cheap)
@@ -442,8 +447,12 @@ export default function RevenusPage() {
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <ReferenceLine y={obj} stroke="#ef4444" strokeDasharray="6 4" strokeWidth={2} />
-                <Bar dataKey="Confirmé" fill="#10b981" radius={4} />
-                <Bar dataKey="En attente" fill="#f59e0b" radius={4} />
+                <Bar dataKey="Confirmé" fill="#10b981" radius={4}>
+                  {barData.map((d, i) => <Cell key={i} fillOpacity={d.future ? 0.3 : 1} />)}
+                </Bar>
+                <Bar dataKey="En attente" fill="#f59e0b" radius={4}>
+                  {barData.map((d, i) => <Cell key={i} fillOpacity={d.future ? 0.3 : 1} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -466,48 +475,59 @@ export default function RevenusPage() {
     let yearContracted = 0, yearCashed = 0;
     let prevCashed: number | null = null;
 
+    // Un mois pas encore commencé (revenus saisis en prévision pour le mois suivant) est
+    // exclu de TOUTES les stats annuelles : si on est en septembre, tout se calcule de
+    // janvier à septembre inclus. Il reste listé dans le tableau, estompé, hors total.
     const monthData = (MOIS_LIST as readonly string[]).map(m => {
       const me = rm[m] || [];
+      const future = isFutureRevMonth(m);
       const mc = me.reduce((s, e) => s + (e.contracted || 0), 0);
       const mk = me.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
-      yearContracted += mc;
-      yearCashed += mk;
+      if (!future) {
+        yearContracted += mc;
+        yearCashed += mk;
+      }
       const md = mk - obj;
       const mp = obj > 0 ? (mk / obj * 100) : 0;
-      const vsM1 = prevCashed !== null ? (mk - prevCashed) : null;
+      const vsM1 = !future && prevCashed !== null ? (mk - prevCashed) : null;
       const hasData = me.length > 0;
-      if (hasData) prevCashed = mk;
-      return { name: m, contracted: mc, cashed: mk, delta: md, pct: mp, vsM1, hasData };
+      if (hasData && !future) prevCashed = mk;
+      return { name: m, contracted: mc, cashed: mk, delta: md, pct: mp, vsM1, hasData, future };
     });
+    const futureWithData = monthData.filter(m => m.future && m.hasData).map(m => m.name);
 
     const yearPct = yearObj > 0 ? (yearCashed / yearObj * 100) : 0;
-    const activeMonths = monthData.filter(m => m.hasData).length;
+    const activeMonths = monthData.filter(m => m.hasData && !m.future).length;
     const avg = activeMonths > 0 ? yearCashed / activeMonths : 0;
     const yearPL = yearCashed - yearObj;
 
-    // Source summary
+    // Source summary (mois à venir exclus)
     const srcTotals: Record<string, number> = {};
-    Object.values(rm).flat().forEach(e => {
-      if (!e.status || e.status === 'confirmed') {
-        srcTotals[e.cat || 'Autre'] = (srcTotals[e.cat || 'Autre'] || 0) + (e.cashed || 0);
-      }
+    Object.entries(rm).forEach(([monthName, entries]) => {
+      if (isFutureRevMonth(monthName)) return;
+      (entries || []).forEach(e => {
+        if (!e.status || e.status === 'confirmed') {
+          srcTotals[e.cat || 'Autre'] = (srcTotals[e.cat || 'Autre'] || 0) + (e.cashed || 0);
+        }
+      });
     });
     const srcEntries = Object.entries(srcTotals).sort((a, b) => b[1] - a[1]);
 
-    // Bar chart data
+    // Bar chart data — les mois à venir gardent leur barre, estompée (prévision)
     const evoData = (MOIS_LIST as readonly string[]).map(m => {
       const entries = rm[m] || [];
       return {
         name: m.slice(0, 3),
         Encaissé: entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0),
         Contracté: entries.reduce((s, e) => s + (e.contracted || 0), 0),
+        future: isFutureRevMonth(m),
       };
     });
 
-    // Quarterly
+    // Quarterly (mois à venir exclus : un trimestre entamé ne compte que ses mois commencés)
     const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
     const qData = quarters.map((q, qi) => {
-      const ms = (MOIS_LIST as readonly string[]).slice(qi * 3, qi * 3 + 3);
+      const ms = (MOIS_LIST as readonly string[]).slice(qi * 3, qi * 3 + 3).filter(m => !isFutureRevMonth(m));
       const total = ms.reduce((s, m) => s + (rm[m] || []).filter(e => !e.status || e.status === 'confirmed').reduce((s2, e) => s2 + (e.cashed || 0), 0), 0);
       return { name: q, Encaissé: total };
     });
@@ -532,6 +552,7 @@ export default function RevenusPage() {
       catCounts: Record<string, number>;
     }>();
     Object.entries(rm).forEach(([monthName, entries]) => {
+      if (isFutureRevMonth(monthName)) return;
       (entries || []).forEach(e => {
         const isConfirmed = !e.status || e.status === 'confirmed';
         if (!isConfirmed) return;
@@ -615,7 +636,15 @@ export default function RevenusPage() {
 
           {/* Annual Summary card */}
           <div className="bg-bg-3 border border-border rounded-lg p-5 shadow-inset-border">
-            <div className="text-[13px] font-semibold tracking-tight mb-4">📊 Résumé annuel {new Date().getFullYear()}</div>
+            <div className="text-[13px] font-semibold tracking-tight mb-4">
+              📊 Résumé annuel {new Date().getFullYear()}
+              <span className="text-[10px] text-t-4 font-medium ml-2">JAN → {shortMonth(currentRevMonth())}</span>
+            </div>
+            {futureWithData.length > 0 && (
+              <div className="text-[10px] text-t-4 -mt-2.5 mb-4">
+                {futureWithData.join(', ')} : saisi en prévision, non compté (mois pas encore commencé)
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               <div>
                 <div className="text-[9px] text-t-3 uppercase tracking-[0.12em] font-semibold">Total encaissé</div>
@@ -687,15 +716,27 @@ export default function RevenusPage() {
             </thead>
             <tbody>
               {monthData.filter(m => m.hasData).map(m => (
-                <tr key={m.name} className="border-b border-border tr-hover cursor-pointer transition-colors" onClick={() => { setCurTab(m.name); setPage('tracker'); }}>
-                  <td className="px-4 py-2.5 text-[13px] font-semibold text-accent tracking-tight">{m.name}</td>
+                <tr key={m.name} className={`border-b border-border tr-hover cursor-pointer transition-colors ${m.future ? 'opacity-50' : ''}`} onClick={() => { setCurTab(m.name); setPage('tracker'); }}>
+                  <td className="px-4 py-2.5 text-[13px] font-semibold text-accent tracking-tight">
+                    {m.name}
+                    {m.future && <span className="ml-2 text-[9px] font-semibold tracking-[0.05em] px-1.5 py-[2px] rounded text-info bg-info/10">À VENIR</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-right font-mono text-xs mono-value text-t-2">{f$(obj)} €</td>
                   <td className="px-4 py-2.5 text-right font-mono text-xs mono-value">{f$(m.contracted)} €</td>
                   <td className="px-4 py-2.5 text-right font-mono text-xs mono-value font-semibold">{f$(m.cashed)} €</td>
-                  <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold mono-value ${m.delta >= 0 ? 'text-accent' : 'text-danger'}`}>{m.delta >= 0 ? '+' : ''}{f$(m.delta)} €</td>
-                  <td className="px-4 py-2.5 text-right">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${m.pct >= 100 ? 'text-accent bg-accent/10 border-accent/25' : 'text-warning bg-warning/10 border-warning/25'}`}>{m.pct.toFixed(0)}%</span>
-                  </td>
+                  {m.future ? (
+                    <>
+                      <td className="px-4 py-2.5 text-right text-t-4">—</td>
+                      <td className="px-4 py-2.5 text-right text-t-4">—</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold mono-value ${m.delta >= 0 ? 'text-accent' : 'text-danger'}`}>{m.delta >= 0 ? '+' : ''}{f$(m.delta)} €</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${m.pct >= 100 ? 'text-accent bg-accent/10 border-accent/25' : 'text-warning bg-warning/10 border-warning/25'}`}>{m.pct.toFixed(0)}%</span>
+                      </td>
+                    </>
+                  )}
                   <td className="px-4 py-2.5 text-right">
                     {m.vsM1 !== null ? (
                       <span className={`font-mono text-xs font-semibold mono-value ${m.vsM1 >= 0 ? 'text-accent' : 'text-danger'}`}>{m.vsM1 >= 0 ? '+' : ''}{f$(m.vsM1)} €</span>
@@ -738,8 +779,12 @@ export default function RevenusPage() {
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <ReferenceLine y={obj} stroke="#ef4444" strokeDasharray="6 4" strokeWidth={2} />
-                <Bar dataKey="Encaissé" fill="rgba(16,185,129,.6)" radius={4} />
-                <Bar dataKey="Contracté" fill="rgba(59,130,246,.35)" radius={4} />
+                <Bar dataKey="Encaissé" fill="rgba(16,185,129,.6)" radius={4}>
+                  {evoData.map((d, i) => <Cell key={i} fillOpacity={d.future ? 0.35 : 1} />)}
+                </Bar>
+                <Bar dataKey="Contracté" fill="rgba(59,130,246,.35)" radius={4}>
+                  {evoData.map((d, i) => <Cell key={i} fillOpacity={d.future ? 0.35 : 1} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

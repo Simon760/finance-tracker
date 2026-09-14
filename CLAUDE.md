@@ -62,6 +62,21 @@ lui-même collisionnerait. Retour `{ error, swapped? }`, pas juste une string �
 3. **Prévisionnel (confirmé)** = `soldeStart + earnAed - aA` (cf. `_old/js/pages/tracker.js:98`). Utilisé aussi comme balance bancaire dans Networth & Global.
 4. **Revenus confirmés** = `entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0)`. Mois "legacy" (cf. `LEGACY_EARN_MONTHS` dans `src/lib/constants.ts`) n'utilisent PAS la table revenus, on lit `m.earn` directement.
 
+## Revenus — mois calendaire courant et mois « à venir »
+La table Revenus (`state.revenus.months`) est indexée par NOM de mois seul (« OCTOBRE »),
+sans année : la page est implicitement « l'année en cours ». Deux règles qui en découlent
+(`isFutureRevMonth()` / `currentRevMonth()` dans `lib/utils.ts`) :
+- **Atterrissage** : l'onglet par défaut est le mois CALENDAIRE courant (desktop + mobile),
+  pas le dernier mois qui a des données — sinon saisir des revenus en prévision pour le
+  mois suivant faisait ouvrir la page dessus. Mobile : le mois courant est toujours
+  navigable même vide (union avec les mois qui ont des données).
+- **Stats annuelles** (`renderGlobal` : total, moyenne / mois actif, % objectif, par
+  source, par client, trimestres) : un mois dont l'index dépasse celui d'aujourd'hui n'a
+  pas commencé et ne compte PAS — en septembre, tout se calcule de janvier à septembre
+  inclus, quel que soit le `status` des entrées. Le mois reste listé dans le tableau
+  (estompé, badge « À VENIR », delta/%/vs M-1 à « — ») et ses barres restent visibles
+  mais estompées (`<Cell fillOpacity>`), hors total.
+
 ## UI conventions
 - KPIs : `<KpiCard>` (`components/ui/Card.tsx`), `hero` pour grandes valeurs
 - Panneau détail : `<SlideOver>`

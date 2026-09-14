@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth } from '@/lib/utils';
+import { f$, f0, fetchRate, sameWeekdayDatesInMonth, currentRevMonth } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -21,13 +21,21 @@ export default function MobileRevenus() {
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
   const categories = rev.categories || [];
 
+  // Mois navigables = ceux qui ont des données + le mois CALENDAIRE courant, même vide :
+  // on atterrit dessus (comme le tracker de dépenses) et pas sur le dernier mois saisi —
+  // sinon des revenus entrés en prévision pour le mois suivant faisaient ouvrir la page
+  // sur ce mois-là.
   const orderedMonths = useMemo(() => {
-    const existing = Object.keys(rev.months || {});
-    return (MOIS_LIST as readonly string[]).filter(m => existing.includes(m));
+    const existing = new Set([...Object.keys(rev.months || {}), currentRevMonth()]);
+    return (MOIS_LIST as readonly string[]).filter(m => existing.has(m));
   }, [rev.months]);
+  const hasAnyData = useMemo(
+    () => Object.values(rev.months || {}).some(entries => (entries || []).length > 0),
+    [rev.months]
+  );
 
   const [curTab, setCurTab] = useState<string>('');
-  const effectiveTab = curTab || orderedMonths[orderedMonths.length - 1] || '';
+  const effectiveTab = curTab || currentRevMonth();
   const curIdx = orderedMonths.indexOf(effectiveTab);
 
   // Suggestions clients par fréquence
@@ -197,7 +205,7 @@ export default function MobileRevenus() {
     logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(before?.cashed || 0)} € (${month})`);
   };
 
-  useEffect(() => { if (!curTab && orderedMonths.length) setCurTab(orderedMonths[orderedMonths.length - 1]); }, [curTab, orderedMonths]);
+  useEffect(() => { if (!curTab) setCurTab(currentRevMonth()); }, [curTab]);
 
   const goPrev = () => { if (curIdx > 0) setCurTab(orderedMonths[curIdx - 1]); };
   const goNext = () => { if (curIdx >= 0 && curIdx < orderedMonths.length - 1) setCurTab(orderedMonths[curIdx + 1]); };
@@ -215,7 +223,7 @@ export default function MobileRevenus() {
   const pctAtteinte = obj > 0 ? Math.round((monthCashed / obj) * 100) : 0;
   const delta = monthCashed - obj;
 
-  if (orderedMonths.length === 0) {
+  if (!hasAnyData) {
     return (
       <div className="mt-10 text-center pb-20">
         <Receipt className="mx-auto text-t-4 mb-3" size={42} />
