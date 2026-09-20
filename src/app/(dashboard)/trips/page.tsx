@@ -7,7 +7,7 @@ import Modal from '@/components/ui/Modal';
 import { f$, f0 } from '@/lib/utils';
 import { MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
 import { Trip, Transaction } from '@/lib/types';
-import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, Pencil, SlidersHorizontal } from 'lucide-react';
+import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, SlidersHorizontal } from 'lucide-react';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 // Formate un YYYY-MM-DD en libellé lisible FR (ex: "jeudi 2 juillet")
@@ -47,6 +47,28 @@ export default function TripsPage() {
   const sortedTrips = useMemo(() => {
     return [...trips].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
   }, [trips]);
+  // Les voyages terminés passent en liste compacte (une ligne chacun) sous les cartes :
+  // à raison d'une carte pleine par voyage, l'historique finissait par prendre plus de
+  // place que le voyage en cours, le seul qui mérite une carte.
+  const openTrips = useMemo(() => sortedTrips.filter(t => t.status !== 'ended'), [sortedTrips]);
+  const endedTrips = useMemo(() => sortedTrips.filter(t => t.status === 'ended'), [sortedTrips]);
+  const [endedOpen, setEndedOpen] = useState(true);
+
+  // Budget (swaps) / dépensé / restant d'un voyage — même calcul que le panneau détail
+  const tripSummary = (trip: Trip) => {
+    const allTxns = state.months.flatMap(mo =>
+      [...(mo.actual || []), ...(mo.extraActual || [])].flatMap(row =>
+        (row.txns || []).filter(t => t.tripId === trip.id)
+      )
+    );
+    const budget = allTxns.filter(t => t.tripKind === 'swap').reduce((s, t) => s + (t.eur || 0), 0);
+    const spent = allTxns.filter(t => t.tripKind === 'expense').reduce((s, t) => s + (t.eur || 0), 0);
+    // Inclut l'ajustement manuel ; arrondi au centime (+ 0 pour éviter « -0,00 » quand
+    // le reliquat est un résidu flottant négatif)
+    const remaining = Math.round((budget - spent + (trip.adjustment || 0)) * 100) / 100 + 0;
+    const pct = budget > 0 ? ((budget - remaining) / budget) * 100 : 0;
+    return { budget, spent, remaining, pct };
+  };
 
   const today = todayStr();
   const activeTrip = trips.find(t => t.startDate <= today && (!t.endDate || t.endDate >= today) && t.status !== 'ended');
@@ -101,7 +123,8 @@ export default function TripsPage() {
     const budget = tripSwaps.reduce((s, sw) => s + sw.eur, 0);
     const spent = tripExpenses.reduce((s, e) => s + (e.t.eur || 0), 0);
     const adjustment = selectedTrip.adjustment || 0; // réconciliation manuelle du solde
-    const remaining = budget - spent + adjustment;
+    // Arrondi au centime + 0 : sans ça un résidu flottant affichait « -0,00 EUR » en rouge
+    const remaining = Math.round((budget - spent + adjustment) * 100) / 100 + 0;
     // Consommé dérivé du Restant réel (cohérent avec l'ajustement)
     const pct = budget > 0 ? ((budget - remaining) / budget) * 100 : 0;
     return { budget, spent, adjustment, remaining, pct };
@@ -370,56 +393,103 @@ export default function TripsPage() {
           <button onClick={() => setNewOpen(true)} className="px-5 py-2 bg-accent text-black font-semibold text-[13px] rounded-full">+ Nouveau voyage</button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 mb-5 max-md:grid-cols-1">
-          {sortedTrips.map(trip => {
-            const allTxns = state.months.flatMap(mo =>
-              [...(mo.actual || []), ...(mo.extraActual || [])].flatMap(row =>
-                (row.txns || []).filter(t => t.tripId === trip.id)
-              )
-            );
-            const budget = allTxns.filter(t => t.tripKind === 'swap').reduce((s, t) => s + (t.eur || 0), 0);
-            const spent = allTxns.filter(t => t.tripKind === 'expense').reduce((s, t) => s + (t.eur || 0), 0);
-            const remaining = budget - spent + (trip.adjustment || 0); // inclut l'ajustement manuel
-            const pct = budget > 0 ? ((budget - remaining) / budget) * 100 : 0;
-            const isActive = trip.id === activeTrip?.id;
-            return (
-              <div
-                key={trip.id}
-                onClick={() => setSelectedTripId(trip.id)}
-                className={`bg-bg-3 border rounded-xl p-4 cursor-pointer transition-all hover:border-border-2 ${isActive ? 'border-accent' : 'border-border'} ${selectedTripId === trip.id ? 'ring-2 ring-accent/30' : ''}`}
+        <>
+          {/* Voyages en cours / à venir : une carte pleine chacun */}
+          {openTrips.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 mb-5 max-md:grid-cols-1">
+              {openTrips.map(trip => {
+                const { budget, spent, remaining, pct } = tripSummary(trip);
+                const isActive = trip.id === activeTrip?.id;
+                return (
+                  <div
+                    key={trip.id}
+                    onClick={() => setSelectedTripId(trip.id)}
+                    className={`bg-bg-3 border rounded-xl p-4 cursor-pointer transition-all hover:border-border-2 ${isActive ? 'border-accent' : 'border-border'} ${selectedTripId === trip.id ? 'ring-2 ring-accent/30' : ''}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[15px] font-semibold tracking-tight">{trip.name}</span>
+                      {isActive
+                        ? <span className="text-[9px] font-bold uppercase text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded-full">EN COURS</span>
+                        : trip.startDate > today && <span className="text-[9px] font-bold uppercase text-info bg-info/10 border border-info/25 px-2 py-0.5 rounded-full">À VENIR</span>}
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-t-3 mb-3">
+                      <Calendar size={11} />
+                      <span>{trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ' (en cours)'}</span>
+                      <span className="text-t-4">·</span>
+                      <span>{trip.country}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[11px]">
+                      <div className="bg-bg-2 rounded-md px-2 py-1.5">
+                        <div className="text-t-4 text-[9px] uppercase tracking-wider">Budget</div>
+                        <div className="font-bold mono-value">{f$(budget)} {trip.currency}</div>
+                      </div>
+                      <div className="bg-bg-2 rounded-md px-2 py-1.5">
+                        <div className="text-t-4 text-[9px] uppercase tracking-wider">Dépensé</div>
+                        <div className={`font-bold mono-value ${pct > 100 ? 'text-danger' : 'text-t-1'}`}>{f$(spent)} {trip.currency}</div>
+                      </div>
+                      <div className="bg-bg-2 rounded-md px-2 py-1.5">
+                        <div className="text-t-4 text-[9px] uppercase tracking-wider">Restant</div>
+                        <div className={`font-bold mono-value ${remaining < 0 ? 'text-danger' : 'text-accent'}`}>{f$(remaining)} {trip.currency}</div>
+                      </div>
+                    </div>
+                    <div className="h-1 bg-bg-2 rounded-full overflow-hidden mt-2">
+                      <div className={`h-full ${pct > 100 ? 'bg-danger' : pct > 80 ? 'bg-warning' : 'bg-accent'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Voyages terminés : liste compacte repliable, une ligne par voyage */}
+          {endedTrips.length > 0 && (
+            <div className="bg-bg-3 border border-border rounded-xl mb-5 overflow-hidden">
+              <button
+                onClick={() => setEndedOpen(o => !o)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-bg-4/60 transition-colors"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[15px] font-semibold tracking-tight">{trip.name}</span>
-                  {isActive && <span className="text-[9px] font-bold uppercase text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded-full">EN COURS</span>}
-                  {trip.status === 'ended' && <span className="text-[9px] font-bold uppercase text-t-4 bg-bg-4 px-2 py-0.5 rounded-full">TERMINÉ</span>}
+                <ChevronDown size={14} className={`text-t-3 transition-transform ${endedOpen ? '' : '-rotate-90'}`} />
+                <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Terminés</span>
+                <span className="text-[11px] text-t-4 mono-value">{endedTrips.length}</span>
+              </button>
+              {endedOpen && (
+                <div className="border-t border-border">
+                  {endedTrips.map(trip => {
+                    const { budget, spent, remaining, pct } = tripSummary(trip);
+                    const over = remaining < 0;
+                    return (
+                      <div
+                        key={trip.id}
+                        onClick={() => setSelectedTripId(trip.id)}
+                        className={`flex items-center gap-4 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer tr-hover transition-colors max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1.5 ${selectedTripId === trip.id ? 'bg-accent/5' : ''}`}
+                      >
+                        <div className="flex-1 min-w-0 max-md:basis-full">
+                          <div className="text-[13px] font-semibold tracking-tight truncate">{trip.name}</div>
+                          <div className="text-[11px] text-t-3 truncate">
+                            {trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ''} · {trip.country}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 shrink-0 max-md:w-full max-md:justify-between max-md:gap-3">
+                          <div className="text-right max-md:text-left">
+                            <div className="text-[12px] mono-value text-t-1">
+                              {f$(spent)}<span className="text-t-4 font-medium"> / {f$(budget)} {trip.currency}</span>
+                            </div>
+                            <div className={`text-[11px] mono-value ${over ? 'text-danger' : 'text-accent'}`}>
+                              {remaining > 0 ? '+' : ''}{f$(remaining)} {trip.currency}
+                            </div>
+                          </div>
+                          <div className="w-14 h-1 bg-bg-2 rounded-full overflow-hidden shrink-0">
+                            <div className={`h-full ${pct > 100 ? 'bg-danger' : pct > 80 ? 'bg-warning' : 'bg-accent'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-t-3 mb-3">
-                  <Calendar size={11} />
-                  <span>{trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ' (en cours)'}</span>
-                  <span className="text-t-4">·</span>
-                  <span>{trip.country}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-[11px]">
-                  <div className="bg-bg-2 rounded-md px-2 py-1.5">
-                    <div className="text-t-4 text-[9px] uppercase tracking-wider">Budget</div>
-                    <div className="font-bold mono-value">{f$(budget)} {trip.currency}</div>
-                  </div>
-                  <div className="bg-bg-2 rounded-md px-2 py-1.5">
-                    <div className="text-t-4 text-[9px] uppercase tracking-wider">Dépensé</div>
-                    <div className={`font-bold mono-value ${pct > 100 ? 'text-danger' : 'text-t-1'}`}>{f$(spent)} {trip.currency}</div>
-                  </div>
-                  <div className="bg-bg-2 rounded-md px-2 py-1.5">
-                    <div className="text-t-4 text-[9px] uppercase tracking-wider">Restant</div>
-                    <div className={`font-bold mono-value ${remaining < 0 ? 'text-danger' : 'text-accent'}`}>{f$(remaining)} {trip.currency}</div>
-                  </div>
-                </div>
-                <div className="h-1 bg-bg-2 rounded-full overflow-hidden mt-2">
-                  <div className={`h-full ${pct > 100 ? 'bg-danger' : pct > 80 ? 'bg-warning' : 'bg-accent'}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Trip detail panel */}
