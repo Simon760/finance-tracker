@@ -369,22 +369,6 @@ export default function TripsPage() {
         </button>
       </PageHeader>
 
-      {activeTrip && (
-        <div className="bg-accent/10 border border-accent/30 rounded-xl p-4 mb-5 flex items-center gap-4">
-          <Plane size={20} className="text-accent shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-accent font-bold">Voyage en cours</div>
-            <div className="text-[15px] font-bold tracking-tight">{activeTrip.name}</div>
-            <div className="text-[11px] text-t-3 mt-0.5">
-              {activeTrip.country} · {activeTrip.startDate}{activeTrip.endDate ? ' → ' + activeTrip.endDate : ' (en cours)'}
-            </div>
-          </div>
-          <button onClick={() => setSelectedTripId(activeTrip.id)} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-full flex items-center gap-1 cursor-pointer hover:opacity-90 whitespace-nowrap">
-            Ouvrir <ArrowRight size={14} />
-          </button>
-        </div>
-      )}
-
       {sortedTrips.length === 0 ? (
         <div className="bg-bg-3 border border-border rounded-lg p-10 text-center">
           <Plane className="mx-auto text-t-4 mb-3" size={32} />
@@ -394,7 +378,9 @@ export default function TripsPage() {
         </div>
       ) : (
         <>
-          {/* Voyages en cours / à venir : une carte pleine chacun */}
+          {/* Voyages en cours / à venir : une carte pleine chacun. Le voyage EN COURS est
+              la carte « héros » (pleine largeur, teinte accent, bouton Ouvrir) — elle
+              remplace l'ancien bandeau qui répétait les mêmes infos juste au-dessus. */}
           {openTrips.length > 0 && (
             <div className="grid grid-cols-2 gap-3 mb-5 max-md:grid-cols-1">
               {openTrips.map(trip => {
@@ -404,20 +390,36 @@ export default function TripsPage() {
                   <div
                     key={trip.id}
                     onClick={() => setSelectedTripId(trip.id)}
-                    className={`bg-bg-3 border rounded-xl p-4 cursor-pointer transition-all hover:border-border-2 ${isActive ? 'border-accent' : 'border-border'} ${selectedTripId === trip.id ? 'ring-2 ring-accent/30' : ''}`}
+                    className={`border rounded-xl p-4 cursor-pointer transition-all ${isActive ? 'col-span-2 max-md:col-span-1 bg-accent/10 border-accent/30 hover:border-accent' : 'bg-bg-3 border-border hover:border-border-2'} ${selectedTripId === trip.id ? 'ring-2 ring-accent/30' : ''}`}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-[15px] font-semibold tracking-tight">{trip.name}</span>
-                      {isActive
-                        ? <span className="text-[9px] font-bold uppercase text-accent bg-accent/10 border border-accent/25 px-2 py-0.5 rounded-full">EN COURS</span>
-                        : trip.startDate > today && <span className="text-[9px] font-bold uppercase text-info bg-info/10 border border-info/25 px-2 py-0.5 rounded-full">À VENIR</span>}
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] text-t-3 mb-3">
-                      <Calendar size={11} />
-                      <span>{trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ' (en cours)'}</span>
-                      <span className="text-t-4">·</span>
-                      <span>{trip.country}</span>
-                    </div>
+                    {isActive ? (
+                      <div className="flex items-center gap-4 mb-3">
+                        <Plane size={20} className="text-accent shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] uppercase tracking-wider text-accent font-bold">Voyage en cours</div>
+                          <div className="text-[15px] font-bold tracking-tight truncate">{trip.name}</div>
+                          <div className="text-[11px] text-t-3 mt-0.5">
+                            {trip.country} · {trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ' (en cours)'}
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedTripId(trip.id)} className="px-4 py-2 bg-accent text-black font-semibold text-sm rounded-full flex items-center gap-1 cursor-pointer hover:opacity-90 whitespace-nowrap">
+                          Ouvrir <ArrowRight size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[15px] font-semibold tracking-tight">{trip.name}</span>
+                          {trip.startDate > today && <span className="text-[9px] font-bold uppercase text-info bg-info/10 border border-info/25 px-2 py-0.5 rounded-full">À VENIR</span>}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-t-3 mb-3">
+                          <Calendar size={11} />
+                          <span>{trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ' (en cours)'}</span>
+                          <span className="text-t-4">·</span>
+                          <span>{trip.country}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="grid grid-cols-3 gap-2 text-[11px]">
                       <div className="bg-bg-2 rounded-md px-2 py-1.5">
                         <div className="text-t-4 text-[9px] uppercase tracking-wider">Budget</div>
