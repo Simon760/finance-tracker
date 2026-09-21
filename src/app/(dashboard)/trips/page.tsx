@@ -53,6 +53,7 @@ export default function TripsPage() {
   const openTrips = useMemo(() => sortedTrips.filter(t => t.status !== 'ended'), [sortedTrips]);
   const endedTrips = useMemo(() => sortedTrips.filter(t => t.status === 'ended'), [sortedTrips]);
   const [endedOpen, setEndedOpen] = useState(true);
+  useEffect(() => { setEndedOpen(!selectedTripId); }, [selectedTripId]);
 
   // Budget (swaps) / dépensé / restant d'un voyage — même calcul que le panneau détail
   const tripSummary = (trip: Trip) => {
@@ -361,6 +362,57 @@ export default function TripsPage() {
     setRForm({ aedOut: 0, localIn: 0, date: todayStr(), monthId: rForm.monthId });
   };
 
+  // Voyages terminés : liste compacte repliable, une ligne par voyage. Placée sous les
+  // cartes quand aucun détail n'est ouvert ; dès qu'une pocket est ouverte elle descend
+  // SOUS le panneau détail, repliée — le détail est alors le sujet, pas l'historique.
+  const endedSection = endedTrips.length > 0 && (
+    <div className="bg-bg-3 border border-border rounded-xl mb-5 overflow-hidden">
+      <button
+        onClick={() => setEndedOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-bg-4/60 transition-colors"
+      >
+        <ChevronDown size={14} className={`text-t-3 transition-transform ${endedOpen ? '' : '-rotate-90'}`} />
+        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Terminés</span>
+        <span className="text-[11px] text-t-4 mono-value">{endedTrips.length}</span>
+      </button>
+      {endedOpen && (
+        <div className="border-t border-border">
+          {endedTrips.map(trip => {
+            const { budget, spent, remaining, pct } = tripSummary(trip);
+            const over = remaining < 0;
+            return (
+              <div
+                key={trip.id}
+                onClick={() => setSelectedTripId(trip.id)}
+                className={`flex items-center gap-4 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer tr-hover transition-colors max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1.5 ${selectedTripId === trip.id ? 'bg-accent/5' : ''}`}
+              >
+                <div className="flex-1 min-w-0 max-md:basis-full">
+                  <div className="text-[13px] font-semibold tracking-tight truncate">{trip.name}</div>
+                  <div className="text-[11px] text-t-3 truncate">
+                    {trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ''} · {trip.country}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 shrink-0 max-md:w-full max-md:justify-between max-md:gap-3">
+                  <div className="text-right max-md:text-left">
+                    <div className="text-[12px] mono-value text-t-1">
+                      {f$(spent)}<span className="text-t-4 font-medium"> / {f$(budget)} {trip.currency}</span>
+                    </div>
+                    <div className={`text-[11px] mono-value ${over ? 'text-danger' : 'text-accent'}`}>
+                      {remaining > 0 ? '+' : ''}{f$(remaining)} {trip.currency}
+                    </div>
+                  </div>
+                  <div className="w-14 h-1 bg-bg-2 rounded-full overflow-hidden shrink-0">
+                    <div className={`h-full ${pct > 100 ? 'bg-danger' : pct > 80 ? 'bg-warning' : 'bg-accent'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <PageHeader breadcrumb={[{ label: 'Global' }, { label: 'Voyages', current: true }]} title="Voyages" subtitle="Suivi des swaps et dépenses en devise locale">
@@ -443,54 +495,8 @@ export default function TripsPage() {
             </div>
           )}
 
-          {/* Voyages terminés : liste compacte repliable, une ligne par voyage */}
-          {endedTrips.length > 0 && (
-            <div className="bg-bg-3 border border-border rounded-xl mb-5 overflow-hidden">
-              <button
-                onClick={() => setEndedOpen(o => !o)}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-bg-4/60 transition-colors"
-              >
-                <ChevronDown size={14} className={`text-t-3 transition-transform ${endedOpen ? '' : '-rotate-90'}`} />
-                <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Terminés</span>
-                <span className="text-[11px] text-t-4 mono-value">{endedTrips.length}</span>
-              </button>
-              {endedOpen && (
-                <div className="border-t border-border">
-                  {endedTrips.map(trip => {
-                    const { budget, spent, remaining, pct } = tripSummary(trip);
-                    const over = remaining < 0;
-                    return (
-                      <div
-                        key={trip.id}
-                        onClick={() => setSelectedTripId(trip.id)}
-                        className={`flex items-center gap-4 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer tr-hover transition-colors max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1.5 ${selectedTripId === trip.id ? 'bg-accent/5' : ''}`}
-                      >
-                        <div className="flex-1 min-w-0 max-md:basis-full">
-                          <div className="text-[13px] font-semibold tracking-tight truncate">{trip.name}</div>
-                          <div className="text-[11px] text-t-3 truncate">
-                            {trip.startDate}{trip.endDate ? ' → ' + trip.endDate : ''} · {trip.country}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4 shrink-0 max-md:w-full max-md:justify-between max-md:gap-3">
-                          <div className="text-right max-md:text-left">
-                            <div className="text-[12px] mono-value text-t-1">
-                              {f$(spent)}<span className="text-t-4 font-medium"> / {f$(budget)} {trip.currency}</span>
-                            </div>
-                            <div className={`text-[11px] mono-value ${over ? 'text-danger' : 'text-accent'}`}>
-                              {remaining > 0 ? '+' : ''}{f$(remaining)} {trip.currency}
-                            </div>
-                          </div>
-                          <div className="w-14 h-1 bg-bg-2 rounded-full overflow-hidden shrink-0">
-                            <div className={`h-full ${pct > 100 ? 'bg-danger' : pct > 80 ? 'bg-warning' : 'bg-accent'}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Sans détail ouvert, les terminés restent sous les cartes (position naturelle) */}
+          {!selectedTrip && endedSection}
         </>
       )}
 
@@ -670,6 +676,9 @@ export default function TripsPage() {
           </div>
         </div>
       )}
+
+      {/* Détail ouvert : les terminés passent en bas, repliés */}
+      {selectedTrip && endedSection}
 
       {/* New trip modal */}
       <Modal open={newOpen} onClose={() => setNewOpen(false)} title="Nouveau voyage">
