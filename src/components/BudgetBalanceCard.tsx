@@ -15,6 +15,7 @@ interface Props {
   forecast?: {
     earnEur: number;       // revenus confirmés (EUR)
     previewEur: number;    // revenus en prévision (EUR, status='preview')
+    previewAed?: number;   // les mêmes en AED, entrée par entrée (USD : montant × taux de swap)
     prevCompteAed: number; // prévisionnel compte actuel (AED) = soldeStart + earnAed − aABank + adjustment
     pocketEur?: number;    // cash restant dans les pockets voyage (déjà sorti du compte)
   };
@@ -56,7 +57,7 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
   const revDepConf = forecast ? forecast.earnEur - projTotalEur : 0;
   const revDepAll = forecast ? forecast.earnEur + forecast.previewEur - projTotalEur : 0;
   const bankEndAed = forecast ? forecast.prevCompteAed - toAed(remainingEur, liveRate) : 0;
-  const bankEndAllAed = forecast ? bankEndAed + toAed(forecast.previewEur, liveRate) : 0;
+  const bankEndAllAed = forecast ? bankEndAed + (forecast.previewAed ?? toAed(forecast.previewEur, liveRate)) : 0;
   // Le cash encore en pocket voyage est déjà sorti du compte : on le rajoute pour
   // obtenir le patrimoine réel (compte + pockets).
   const pocketEur = forecast?.pocketEur || 0;

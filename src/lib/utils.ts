@@ -47,6 +47,78 @@ export function monthRevenus(
   return key ? revenusMonths[key] || [] : [];
 }
 
+/** Taux officiel USD→AED (peg) — défaut du taux de swap d'une entrée Revenus en USD. */
+export const USD_AED_PEG = 3.6725;
+
+const isRevConfirmed = (e: RevenuEntry) => !e.status || e.status === 'confirmed';
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Une entrée Revenus au taux EUR/AED donné — même convention que `saveEntry` (page
+ * Revenus) : `cashed`/`contracted` en EUR, `rate` = AED crédité ÷ EUR, pour que
+ * `cashed × rate` redonne l'AED exact.
+ * - EUR : l'EUR est fixe, l'AED en découle (rate = taux donné).
+ * - USD : l'AED est fixe (montant × taux de swap, le dirham est peggé au dollar) ; l'EUR
+ *   vaut montant ÷ EUR/USD, EUR/USD étant dérivé du taux EUR/AED via le peg — pas besoin
+ *   d'un second taux live, et le tracker (qui n'a que l'EUR/AED) donne le même résultat.
+ * - AED : l'AED est fixe, l'EUR en découle.
+ * Entrée non-EUR sans montant d'origine (ancien format) : rien de recalculable, inchangée.
+ */
+export function revenuAtRate(e: RevenuEntry, eurAed: number): RevenuEntry {
+  if (!(eurAed > 0)) return e;
+  const cur = e.currency || 'EUR';
+  if (cur === 'EUR') return { ...e, rate: eurAed };
+  if (e.origAmount == null) return e;
+  const perEur = cur === 'USD' ? eurAed / USD_AED_PEG : eurAed;
+  const aed = cur === 'USD' ? e.origAmount * (e.origToAed || USD_AED_PEG) : e.origAmount;
+  const cashed = round2(e.origAmount / perEur);
+  return {
+    ...e,
+    cashed,
+    contracted: e.origContracted != null ? round2(e.origContracted / perEur) : e.contracted,
+    origRate: Math.round(perEur * 100000) / 100000,
+    rate: cashed > 0 ? Math.round((aed / cashed) * 100000) / 100000 : eurAed,
+  };
+}
+
+/**
+ * Entrée Revenus telle qu'affichée et sommée. Confirmée → figée (valeurs stockées, taux
+ * du jour de la confirmation). Prévision / en attente → recalculée au taux du jour, comme
+ * le budget du tracker : sinon une prévision saisie des semaines à l'avance (récurrence
+ * hebdo) gardait le taux du jour de saisie. La confirmation fige ces mêmes valeurs
+ * (`revenuAtRate` au taux live, cf. `confirmEntry`) → aucun saut au moment de confirmer.
+ */
+export function revenuLive(e: RevenuEntry, eurAed: number): RevenuEntry {
+  return isRevConfirmed(e) ? e : revenuAtRate(e, eurAed);
+}
+
+/** `revenuLive` sur toute la table — pour la LECTURE uniquement (jamais réécrite en base). */
+export function revenusMonthsLive(
+  months: Record<string, RevenuEntry[]> | undefined,
+  eurAed: number,
+): Record<string, RevenuEntry[]> {
+  const out: Record<string, RevenuEntry[]> = {};
+  Object.entries(months || {}).forEach(([k, es]) => { out[k] = (es || []).map(e => revenuLive(e, eurAed)); });
+  return out;
+}
+
+/**
+ * Revenus confirmés d'un mois tracker en AED (devise locale) : AED réellement crédité
+ * de chaque entrée (`cashed × rate`), ou `m.earn × m.rate` pour un mois legacy. Même
+ * calcul que `monthBankBalance` — desktop ET mobile passent par là (le mobile faisait
+ * `EUR × m.rate`, soit le taux de création du mois : −233 AED sur septembre 2026).
+ */
+export function monthRevenuConfirmedAed(
+  m: Month,
+  revenusMonths: Record<string, RevenuEntry[]> | undefined,
+  fallbackRate: number,
+): number {
+  if (isLegacyEarnMonth(m.id)) return (m.earn || 0) * m.rate;
+  return monthRevenus(revenusMonths, m.id)
+    .filter(isRevConfirmed)
+    .reduce((s, e) => s + (e.cashed || 0) * (e.rate || fallbackRate), 0);
+}
+
 /**
  * Revenus confirmés d'un mois tracker en EUR : `m.earn` pour un mois legacy, sinon la
  * somme des entrées confirmées de la table (résolues par `monthRevenus`). C'est LA
@@ -112,12 +184,7 @@ export function monthBankBalance(
   revenusMonths: Record<string, RevenuEntry[]> | undefined,
   fallbackRate: number,
 ): number {
-  const entries = monthRevenus(revenusMonths, m.id);
-  const earnLocal = isLegacyEarnMonth(m.id)
-    ? (m.earn || 0) * m.rate
-    : entries
-        .filter(e => !e.status || e.status === 'confirmed')
-        .reduce((sum: number, e: RevenuEntry) => sum + ((e.cashed || 0) * (e.rate || fallbackRate)), 0);
+  const earnLocal = monthRevenuConfirmedAed(m, revenusMonths, fallbackRate);
   const spentLocal = sumAedBank(m, postes, m.extraActual || []);
   return (m.soldeStart || 0) + earnLocal - spentLocal + (m.adjustment || 0);
 }

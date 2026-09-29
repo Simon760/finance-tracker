@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -55,9 +55,12 @@ export default function MobileTracker() {
   const earnEur = m
     ? (isSynced ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0) : (m.earn || 0))
     : 0;
-  const previewEur = m && isSynced
-    ? revEntries.filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0)
-    : 0;
+  // Prévisions au taux du jour (cf. revenuLive) — mêmes valeurs que desktop
+  const previewEntries = m && isSynced
+    ? revEntries.filter(e => e.status === 'preview').map(e => revenuLive(e, liveRate))
+    : [];
+  const previewEur = previewEntries.reduce((s, e) => s + (e.cashed || 0), 0);
+  const previewAed = previewEntries.reduce((s, e) => s + (e.cashed || 0) * (e.rate || liveRate), 0);
 
   // Aggregates
   const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
@@ -66,7 +69,9 @@ export default function MobileTracker() {
   const aE = m ? sumEur(m, state.postes, m.extraActual || []) : 0;
   const aABank = m ? sumAedBank(m, state.postes, m.extraActual || []) : 0;
   const diff = earnEur - aE;
-  const earnAed = m ? earnEur * m.rate : 0;
+  // AED réellement crédité par entrée (cashed × rate), comme desktop et Vue Globale —
+  // `earnEur × m.rate` prenait le taux de création du mois (−233 AED sur sept. 2026).
+  const earnAed = m ? monthRevenuConfirmedAed(m, state.revenus?.months, state.rate || liveRate) : 0;
   const adjustment = m?.adjustment || 0;
   const prevCompte = m ? (m.soldeStart || 0) + earnAed - aABank + adjustment : 0;
 
@@ -451,7 +456,7 @@ export default function MobileTracker() {
 
       {/* Bilan vs prévisionnel */}
       <div className="mt-5">
-        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact forecast={{ earnEur, previewEur, prevCompteAed: prevCompte, pocketEur: pocketCashEur(trips, state.months) }} />
+        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact forecast={{ earnEur, previewEur, previewAed, prevCompteAed: prevCompte, pocketEur: pocketCashEur(trips, state.months) }} />
       </div>
 
       {/* Stats du mois — à retravailler */}

@@ -87,6 +87,22 @@ porter l'année**. `monthRevenuConfirmedEur(m, …)` = la valeur « Revenus » d
 legacy ou entrées confirmées) ; Vue Globale (desktop + mobile) somme ça mois tracker par mois
 tracker pour rester réconciliable avec lui, au lieu d'itérer les clés de la table.
 
+**Taux de change des revenus non confirmés** : une prévision / entrée en attente n'est
+pas encore encaissée → affichée et sommée AU TAUX DU JOUR, comme le budget du tracker
+(`revenuLive` / `revenusMonthsLive`, `lib/utils.ts`). Recalculé à la LECTURE, jamais
+réécrit en base : les pages Revenus lisent `viewMonths`, les handlers d'écriture lisent
+`rev.months` brut (mêmes index). Ancre : USD/AED → l'AED est fixe (montant × taux de
+swap, dirham peggé au dollar), l'EUR en découle (EUR/USD dérivé de l'EUR/AED live via
+`USD_AED_PEG`) ; EUR → l'EUR est fixe, l'AED en découle. **La confirmation fige ces
+mêmes valeurs** (`revenuAtRate` au taux live dans `confirmEntry`, desktop + mobile) →
+aucun saut au clic ; avant, seules les entrées EUR étaient rafraîchies et une entrée USD
+gardait l'EUR du jour de SAISIE (récurrence hebdo = des semaines d'écart). L'édition
+d'une entrée non confirmée pré-remplit aux valeurs live ; celle d'une confirmée reste
+neutre (taux historique). Tracker : AED des prévisions = somme de l'AED de CHAQUE
+entrée (`previewAed`, passé aussi à `BudgetBalanceCard`), pas l'EUR total reconverti.
+Revenus confirmés en AED : `monthRevenuConfirmedAed()` partout (desktop, mobile,
+`monthBankBalance`) — le mobile faisait `EUR × m.rate`.
+
 ## UI conventions
 - KPIs : `<KpiCard>` (`components/ui/Card.tsx`), `hero` pour grandes valeurs
 - Panneau détail : `<SlideOver>`

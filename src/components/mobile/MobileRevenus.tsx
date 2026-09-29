@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth, currentRevMonth } from '@/lib/utils';
+import { f$, f0, fetchRate, sameWeekdayDatesInMonth, currentRevMonth, revenuAtRate, revenuLive, revenusMonthsLive } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -36,6 +36,10 @@ export default function MobileRevenus() {
 
   const [curTab, setCurTab] = useState<string>('');
   const effectiveTab = curTab || currentRevMonth();
+
+  // Table telle qu'AFFICHÉE / sommée (prévisions au taux du jour, cf. revenuLive) — les
+  // handlers d'écriture lisent toujours rev.months brut, mêmes index d'entrées.
+  const viewMonths = useMemo(() => revenusMonthsLive(rev.months, liveRate), [rev.months, liveRate]);
   const curIdx = orderedMonths.indexOf(effectiveTab);
 
   // Suggestions clients par fréquence
@@ -120,7 +124,11 @@ export default function MobileRevenus() {
   };
 
   const openEdit = (month: string, idx: number) => {
-    const e = rev.months[month][idx];
+    // Non confirmée : pré-remplie au taux du jour (mêmes valeurs que la liste), taux
+    // EUR/AED qui continue de suivre le live.
+    const raw = rev.months[month][idx];
+    const confirmed = !raw.status || raw.status === 'confirmed';
+    const e = revenuLive(raw, liveRate);
     // Pré-remplit dans la devise d'origine (orig*) — saveEntry reconvertira en EUR
     // avec le même origRate → sauvegarder sans rien changer est neutre.
     if (e.currency && e.currency !== 'EUR' && e.origAmount != null) {
@@ -131,7 +139,7 @@ export default function MobileRevenus() {
     setFormMonth(month);
     setEditIdx({ month, idx });
     setShowClientSugg(false);
-    setRateTouched(true); // édition : taux historique conservé (bouton Live pour re-sync)
+    setRateTouched(confirmed); // confirmée : taux historique conservé (bouton Live pour re-sync)
     setRepeatWeekly(false); // la récurrence ne s'applique qu'à la création
     setSheetOpen(true);
   };
@@ -197,12 +205,13 @@ export default function MobileRevenus() {
     const months = { ...(rev.months || {}) };
     months[month] = [...months[month]];
     const before = months[month][idx];
-    // Rate rafraîchi au live UNIQUEMENT pour les entrées EUR (AED/USD : rate dérivé du swap)
-    const isEur = !before?.currency || before.currency === 'EUR';
-    months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: isEur ? liveRate : (before?.rate || liveRate) };
+    // Fige les valeurs au taux du jour — celles que la prévision affichait déjà
+    // (cf. revenuAtRate / revenuLive dans lib/utils).
+    const frozen = { ...revenuAtRate(before, liveRate), status: 'confirmed' as const };
+    months[month][idx] = frozen;
     setState({ ...state, revenus: { ...rev, months } });
     save();
-    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(before?.cashed || 0)} € (${month})`);
+    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(frozen.cashed || 0)} € (${month})`);
   };
 
   useEffect(() => { if (!curTab) setCurTab(currentRevMonth()); }, [curTab]);
@@ -210,7 +219,7 @@ export default function MobileRevenus() {
   const goPrev = () => { if (curIdx > 0) setCurTab(orderedMonths[curIdx - 1]); };
   const goNext = () => { if (curIdx >= 0 && curIdx < orderedMonths.length - 1) setCurTab(orderedMonths[curIdx + 1]); };
 
-  const curEntries = rev.months[effectiveTab] || [];
+  const curEntries = viewMonths[effectiveTab] || [];
   const sortedEntries = useMemo(
     () => curEntries.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date || '').localeCompare(a.e.date || '')),
     [curEntries]

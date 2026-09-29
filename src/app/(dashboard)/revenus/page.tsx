@@ -7,7 +7,7 @@ import MobileRevenus from '@/components/mobile/MobileRevenus';
 import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
 import RankedBars from '@/components/ui/RankedBars';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth, isFutureRevMonth, currentRevMonth, shortMonth } from '@/lib/utils';
+import { f$, f0, fetchRate, sameWeekdayDatesInMonth, isFutureRevMonth, currentRevMonth, shortMonth, revenuAtRate, revenuLive, revenusMonthsLive } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
@@ -140,6 +140,11 @@ export default function RevenusPage() {
   // suivant faisait ouvrir la page sur ce mois-là.
   const effectiveTab = curTab || currentRevMonth();
 
+  // Table telle qu'AFFICHÉE / sommée : prévisions et entrées en attente recalculées au
+  // taux du jour (cf. revenuLive). Les handlers d'écriture (save / delete / confirm)
+  // lisent toujours rev.months brut — les index d'entrées sont identiques entre les deux.
+  const viewMonths = useMemo(() => revenusMonthsLive(rev.months, liveRate), [rev.months, liveRate]);
+
   const categories = rev.categories || [];
 
   // Liste des clients déjà vus, triée par fréquence (desc). Sert à la datalist d'auto-complétion.
@@ -169,7 +174,11 @@ export default function RevenusPage() {
   };
 
   const openEdit = (month: string, idx: number) => {
-    const e = rev.months[month][idx];
+    // Non confirmée : pré-remplie au taux du jour (mêmes valeurs que le tableau), et le
+    // taux EUR/AED continue de suivre le live — elle n'est pas encore encaissée.
+    const raw = rev.months[month][idx];
+    const confirmed = !raw.status || raw.status === 'confirmed';
+    const e = revenuLive(raw, liveRate);
     // Pré-remplit dans la devise d'origine (orig*) pour éviter toute double conversion :
     // le form contient les montants dans form.currency, saveEntry reconvertira en EUR
     // avec le même origRate → sauvegarder sans rien changer est neutre.
@@ -180,7 +189,8 @@ export default function RevenusPage() {
     }
     setFormMonth(month);
     setEditIdx({ month, idx });
-    setRateTouched(true); // édition : on garde le taux historique (bouton Live pour re-sync)
+    // Confirmée : on garde le taux historique (bouton Live pour re-sync)
+    setRateTouched(confirmed);
     setRepeatWeekly(false); // la récurrence ne s'applique qu'à la création
     setAddOpen(true);
   };
@@ -249,13 +259,14 @@ export default function RevenusPage() {
     const months = { ...(rev.months || {}) };
     months[month] = [...months[month]];
     const before = months[month][idx];
-    // Rate rafraîchi au live UNIQUEMENT pour les entrées EUR — pour AED/USD, rate est
-    // dérivé du taux de swap saisi et l'écraser fausserait l'AED crédité au compte.
-    const isEur = !before?.currency || before.currency === 'EUR';
-    months[month][idx] = { ...months[month][idx], status: 'confirmed', rate: isEur ? liveRate : (before?.rate || liveRate) };
+    // Fige les valeurs au taux du jour — celles que la prévision affichait déjà (cf.
+    // revenuLive). EUR : l'AED suit le live ; USD/AED : l'AED crédité reste celui du
+    // montant d'origine × taux de swap, seul l'EUR est figé au taux du jour.
+    const frozen = { ...revenuAtRate(before, liveRate), status: 'confirmed' as const };
+    months[month][idx] = frozen;
     setState({ ...state, revenus: { ...rev, months } });
     save();
-    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(before?.cashed || 0)} € (${month})`);
+    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(frozen.cashed || 0)} € (${month})`);
   };
 
   const updateObjectif = (val: number) => {
@@ -281,7 +292,7 @@ export default function RevenusPage() {
   // ─── TRACKER VIEW ───
   const renderTracker = () => {
     const curMonthName = effectiveTab;
-    const curEntries = rev.months[curMonthName] || [];
+    const curEntries = viewMonths[curMonthName] || [];
     // Tri chronologique pour l'affichage, en gardant l'index d'origine pour edit/delete/confirm
     const sortedEntries = curEntries
       .map((e, i) => ({ e, i }))
@@ -302,7 +313,7 @@ export default function RevenusPage() {
     // Les mois à venir (pas encore commencés) restent visibles mais estompés : ce sont des
     // prévisions, pas des encaissements.
     const barData = MOIS_LIST.map(month => {
-      const entries = rev.months[month] || [];
+      const entries = viewMonths[month] || [];
       const confirmed = entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       const pending = entries.filter(e => e.status === 'pending').reduce((s, e) => s + (e.cashed || 0), 0);
       return { name: month.slice(0, 3), Confirmé: confirmed, 'En attente': pending, future: isFutureRevMonth(month) };
@@ -470,7 +481,7 @@ export default function RevenusPage() {
 
   // ─── GLOBAL / ANNUAL VIEW ───
   const renderGlobal = () => {
-    const rm = rev.months || {};
+    const rm = viewMonths;
     const yearObj = obj * 12;
     let yearContracted = 0, yearCashed = 0;
     let prevCashed: number | null = null;
