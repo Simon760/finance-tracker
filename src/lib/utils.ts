@@ -167,8 +167,11 @@ export function shortMonth(id: string): string {
  * prenaient le DERNIER mois de la liste, souvent un mois futur encore vide → solde 0.
  */
 export function lastMonthWithBalance(months: Month[]): Month | undefined {
-  for (let i = (months || []).length - 1; i >= 0; i--) {
-    if ((months[i].soldeStart || 0) > 0) return months[i];
+  // Mois pas encore commencés exclus : un mois de simulation avec un solde de départ
+  // saisi devenait sinon le « solde actuel » (patrimoine, solde réel).
+  const started = startedMonths(months || []);
+  for (let i = started.length - 1; i >= 0; i--) {
+    if ((started[i].soldeStart || 0) > 0) return started[i];
   }
   return undefined;
 }
@@ -207,7 +210,7 @@ export function bankRealDelta(
   fallbackRate: number,
   baseline?: { aed: number; label: string },
 ): { delta: number; flows: number; from: string | null; start: number } {
-  const all = months || [];
+  const all = startedMonths(months || []); // mois de simulation futurs exclus
   const tracked = all.filter(m => (m.soldeStart || 0) > 0);
   if (tracked.length === 0) return { delta: 0, flows: 0, from: null, start: 0 };
   const last = tracked[tracked.length - 1];
@@ -519,20 +522,60 @@ export function detectYears(months: Month[]): number[] {
   const yearSet = new Set<number>();
   if (months.length === 0) return [];
 
-  const lastIdx = monthIndexOf(months[months.length - 1].id);
-  const nowMonth = new Date().getMonth();
-  let yr = new Date().getFullYear();
-  if (lastIdx > nowMonth) yr = yr;
-
-  let prevIdx = lastIdx;
+  // Années RELATIVES au dernier mois (= 0), en remontant la liste (chronologique) : un
+  // index calendaire qui « recule » d'un mois au précédent = changement d'année.
+  const rel: number[] = new Array(months.length);
+  let r = 0;
+  let prevIdx = monthIndexOf(months[months.length - 1].id);
   for (let i = months.length - 1; i >= 0; i--) {
     const idx = monthIndexOf(months[i].id);
-    if (idx > prevIdx) yr--;
+    if (idx > prevIdx) r--;
     prevIdx = idx;
-    months[i]._year = yr;
-    yearSet.add(yr);
+    rel[i] = r;
+  }
+
+  // Ancrage absolu. Un suffixe année explicite (« NOVEMBRE 26 », posé automatiquement à
+  // chaque collision de nom) fait foi. Sinon, l'année du DERNIER mois est celle qui le
+  // place le plus près d'aujourd'hui, avec au plus 3 mois d'avance (mois créé à l'avance
+  // pour simuler) — avant, il était toujours supposé dans l'année civile en cours : un
+  // JANVIER créé en décembre tombait 11 mois dans le passé, et tout l'historique avec.
+  let base: number | null = null;
+  for (let i = months.length - 1; i >= 0; i--) {
+    const y = monthYearSuffix(months[i].id);
+    if (y !== null) { base = y - rel[i]; break; }
+  }
+  if (base === null) {
+    const now = new Date();
+    const lastIdx = monthIndexOf(months[months.length - 1].id);
+    const diff = lastIdx - now.getMonth();
+    base = now.getFullYear();
+    if (lastIdx >= 0 && diff > 3) base--;
+    else if (lastIdx >= 0 && diff < -9) base++;
+  }
+
+  for (let i = 0; i < months.length; i++) {
+    months[i]._year = base + rel[i];
+    yearSet.add(months[i]._year!);
   }
   return Array.from(yearSet).sort();
+}
+
+/**
+ * Mois tracker déjà COMMENCÉS (jusqu'au mois calendaire en cours inclus). Un mois créé
+ * à l'avance pour simuler des dépenses (ex : NOVEMBRE 26 saisi en octobre) n'a aucun
+ * impact sur les stats tant qu'il n'a pas commencé : Dashboard, Vue Globale, Net Worth,
+ * solde réel, agrégats de période du tracker passent tous par ici. Il reste bien sûr
+ * visible et éditable dans le tracker lui-même. Nom de mois non reconnu → conservé.
+ */
+export function startedMonths(months: Month[], now: Date = new Date()): Month[] {
+  if (!months || months.length === 0) return [];
+  detectYears(months);
+  const nowKey = now.getFullYear() * 12 + now.getMonth();
+  return months.filter(m => {
+    const idx = monthIndexOf(m.id);
+    if (idx < 0 || m._year == null) return true;
+    return m._year * 12 + idx <= nowKey;
+  });
 }
 
 /**

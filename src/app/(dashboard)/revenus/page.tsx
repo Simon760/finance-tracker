@@ -7,7 +7,7 @@ import MobileRevenus from '@/components/mobile/MobileRevenus';
 import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
 import RankedBars from '@/components/ui/RankedBars';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth, isFutureRevMonth, currentRevMonth, shortMonth, revenuAtRate, revenuLive, revenusMonthsLive } from '@/lib/utils';
+import { f$, f0, fetchRate, sameWeekdayDatesInMonth, isFutureRevMonth, currentRevMonth, revenuAtRate, revenuLive, revenusMonthsLive } from '@/lib/utils';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
@@ -481,7 +481,15 @@ export default function RevenusPage() {
 
   // ─── GLOBAL / ANNUAL VIEW ───
   const renderGlobal = () => {
-    const rm = viewMonths;
+    // Stats arrêtées à la DATE DU JOUR : dans les mois commencés, une entrée datée après
+    // aujourd'hui ne compte pas encore. Les mois à venir gardent leurs entrées (listés
+    // estompés, déjà exclus des totaux via `future` ci-dessous).
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const rm: Record<string, RevenuEntry[]> = {};
+    Object.entries(viewMonths).forEach(([k, es]) => {
+      rm[k] = isFutureRevMonth(k) ? es : es.filter(e => !e.date || e.date <= todayKey);
+    });
     const yearObj = obj * 12;
     let yearContracted = 0, yearCashed = 0;
     let prevCashed: number | null = null;
@@ -649,7 +657,7 @@ export default function RevenusPage() {
           <div className="bg-bg-3 border border-border rounded-lg p-5 shadow-inset-border">
             <div className="text-[13px] font-semibold tracking-tight mb-4">
               📊 Résumé annuel {new Date().getFullYear()}
-              <span className="text-[10px] text-t-4 font-medium ml-2">JAN → {shortMonth(currentRevMonth())}</span>
+              <span className="text-[10px] text-t-4 font-medium ml-2">jusqu&apos;au {todayKey.slice(8)}/{todayKey.slice(5, 7)}</span>
             </div>
             {futureWithData.length > 0 && (
               <div className="text-[10px] text-t-4 -mt-2.5 mb-4">

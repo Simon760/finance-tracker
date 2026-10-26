@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive } from '@/lib/utils';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive, startedMonths } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff, Pencil } from 'lucide-react';
@@ -644,8 +644,10 @@ export default function TrackerPage() {
     save();
   };
 
-  // Period aggregation
-  const periodMonths = periodMode ? filtered.slice(periodFrom, periodTo + 1) : [];
+  // Period aggregation — mois pas encore commencés (simulations) exclus des totaux et
+  // moyennes, comme partout ailleurs (cf. startedMonths) ; ils restent navigables.
+  const startedIds = new Set(startedMonths(state.months).map(mo => mo.id));
+  const periodMonths = periodMode ? filtered.slice(periodFrom, periodTo + 1).filter(mo => startedIds.has(mo.id)) : [];
   const periodAgg = periodMode ? {
     totalBudgetEur: periodMonths.reduce((s, pm) => s + sumEurBudget(pm, state.postes, liveRate), 0),
     totalActualEur: periodMonths.reduce((s, pm) => s + sumEur(pm, state.postes, pm.extraActual), 0),

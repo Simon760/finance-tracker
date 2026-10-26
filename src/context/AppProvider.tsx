@@ -39,14 +39,18 @@ function pickInitialMonth(months: Month[]): string | null {
   const currentRaw = MOIS_LIST[now.getMonth()];
   const currentNorm = normalizeMonthName(currentRaw); // ex: "JUIN"
   const currentYear = now.getFullYear();
+  // Nom SANS suffixe année : « OCTOBRE 26 » doit matcher OCTOBRE (sinon on atterrissait
+  // sur l'OCTOBRE de l'année précédente, seul à matcher le nom exact).
+  const baseNorm = (id: string) => normalizeMonthName(monthBaseName(id));
+  detectYears(months); // _year à jour (il n'est sinon fiable qu'après un render Tracker)
 
   // Tier 1: match nom normalisé + année
   for (const m of months) {
-    if (normalizeMonthName(m.id) === currentNorm && m._year === currentYear) return m.id;
+    if (baseNorm(m.id) === currentNorm && m._year === currentYear) return m.id;
   }
   // Tier 2: match nom normalisé seul (peu importe l'année), en parcourant à l'envers (plus récent gagne)
   for (let i = months.length - 1; i >= 0; i--) {
-    if (normalizeMonthName(months[i].id) === currentNorm) return months[i].id;
+    if (baseNorm(months[i].id) === currentNorm) return months[i].id;
   }
   // Tier 3: fallback dernier mois enregistré
   return months[months.length - 1].id;

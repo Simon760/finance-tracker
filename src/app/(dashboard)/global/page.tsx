@@ -7,7 +7,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import MobileGlobal from '@/components/mobile/MobileGlobal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
-import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur } from '@/lib/utils';
+import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths } from '@/lib/utils';
 import { PIE_COLORS, INSTALL_CAPITAL } from '@/lib/constants';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 import {
@@ -25,13 +25,15 @@ export default function GlobalPage() {
 
   const spaceStats = useMemo(() => {
     return spaces.map(space => {
-      const totalSpent = space.months.reduce((s, m) => s + sumEur(m, space.postes, m.extraActual), 0);
+      // Mois pas encore commencés (simulations) exclus des totaux — cf. startedMonths
+      const months = startedMonths(space.months);
+      const totalSpent = months.reduce((s, m) => s + sumEur(m, space.postes, m.extraActual), 0);
       // Somme mois tracker par mois tracker (Month.earn pour un mois legacy, table
       // Revenus sinon, résolue par monthRevenus) — même valeur que la colonne Revenus
       // du tracker, donc réconciliable avec lui. Itérer les CLÉS de la table en
       // sautant les noms legacy ratait « OCTOBRE 26 », dont les revenus vivent sous la
       // clé « OCTOBRE » (nom legacy) faute d'année dans la table.
-      const totalRevenue = space.months.reduce((s, m) => s + monthRevenuConfirmedEur(m, space.revenus?.months), 0);
+      const totalRevenue = months.reduce((s, m) => s + monthRevenuConfirmedEur(m, space.revenus?.months), 0);
 
       // La balance affichée est la variation RÉELLE du compte depuis le capital
       // d'installation, pas revenus − dépenses : les deux diffèrent de tous les
@@ -50,7 +52,7 @@ export default function GlobalPage() {
         emoji: space.emoji,
         currency: space.localCurrency,
         status: space.status,
-        monthCount: space.months.length,
+        monthCount: months.length,
         totalSpent,
         totalRevenue,
         balance: totalRevenue - totalSpent,
@@ -114,7 +116,7 @@ export default function GlobalPage() {
 
   // Monthly evolution across all spaces
   const allMonthNames = new Set<string>();
-  spaces.forEach(s => s.months.forEach(m => allMonthNames.add(m.id)));
+  spaces.forEach(s => startedMonths(s.months).forEach(m => allMonthNames.add(m.id)));
   const monthList = Array.from(allMonthNames);
 
   const evoData = monthList.map(mId => {

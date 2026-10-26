@@ -103,6 +103,24 @@ entrée (`previewAed`, passé aussi à `BudgetBalanceCard`), pas l'EUR total rec
 Revenus confirmés en AED : `monthRevenuConfirmedAed()` partout (desktop, mobile,
 `monthBankBalance`) — le mobile faisait `EUR × m.rate`.
 
+## Mois pas encore commencés (simulations) — hors de toutes les stats
+L'utilisateur crée des mois à l'avance pour SIMULER ses dépenses (ex : NOVEMBRE 26
+saisi en octobre, avec budget et solde de départ). Un tel mois ne doit impacter AUCUNE
+donnée agrégée tant qu'il n'a pas commencé — il reste visible et éditable dans le
+tracker. Tout agrégat passe par **`startedMonths(months)`** (`lib/utils.ts`) : Dashboard
+(`ms`), Vue Globale desktop + mobile (totaux, nb de mois, graphe), `lastMonthWithBalance`
+et `bankRealDelta` (patrimoine / solde réel — un mois de simulation avec un `soldeStart`
+devenait sinon le « solde actuel »), agrégat de période du tracker. Côté Revenus, mêmes
+règle (`isFutureRevMonth`) + stats annuelles arrêtées à la DATE du jour : dans les mois
+commencés, une entrée datée après aujourd'hui ne compte pas encore (« jusqu'au JJ/MM »).
+
+`startedMonths` repose sur `detectYears()`, ancré sur le suffixe année explicite le plus
+récent (« NOVEMBRE 26 ») ; sans suffixe, le dernier mois prend l'année qui le place au
+plus près d'aujourd'hui avec ≤ 3 mois d'avance (avant : toujours l'année civile en cours
+→ un JANVIER créé en décembre tombait 11 mois dans le passé). `pickInitialMonth`
+(`AppProvider`) compare aussi le nom SANS suffixe : il atterrissait sur l'OCTOBRE de
+l'année précédente au lieu d'« OCTOBRE 26 ».
+
 ## UI conventions
 - KPIs : `<KpiCard>` (`components/ui/Card.tsx`), `hero` pour grandes valeurs
 - Panneau détail : `<SlideOver>`

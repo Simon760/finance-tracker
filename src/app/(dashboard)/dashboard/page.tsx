@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import RankedBars from '@/components/ui/RankedBars';
-import { f$, f0, toAed, rowEur, sumEur, shortMonth, monthRevenus } from '@/lib/utils';
+import { f$, f0, toAed, rowEur, sumEur, shortMonth, monthRevenus, startedMonths } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 // import BankStatsCard from '@/components/BankStatsCard'; // retiré temporairement
 import {
@@ -16,7 +16,9 @@ import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 export default function DashboardPage() {
   const { state, dashCur, setDashCur, activeSpace, theme } = useApp();
   const ct = chartTheme(theme);
-  const ms = state.months;
+  // Mois pas encore commencés (simulations créées à l'avance) exclus de TOUT le Dashboard :
+  // totaux, moyennes (« Répartition moyenne » divisait par le nb total de mois), graphes.
+  const ms = startedMonths(state.months);
 
   if (ms.length === 0) {
     return (
