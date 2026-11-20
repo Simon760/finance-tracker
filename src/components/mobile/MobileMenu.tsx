@@ -83,7 +83,7 @@ export default function MobileMenu() {
 
       <MLabel>Réglages</MLabel>
       <MCard className="mb-4">
-        <MRow icon={<MIcon><Settings size={17} /></MIcon>} title="Paramètres" sub="Postes, récurrences, données, historique" chevron onClick={() => router.push('/settings')} />
+        <MRow icon={<MIcon><Settings size={17} /></MIcon>} title="Réglages" sub="Postes, récurrences, données, historique" chevron onClick={() => router.push('/settings')} />
         <MDivider />
         <MRow
           icon={<MIcon>{theme === 'dark' ? <Moon size={17} /> : <Sun size={17} />}</MIcon>}

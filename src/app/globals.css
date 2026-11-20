@@ -363,3 +363,11 @@ html[data-ui="mobile"] input.m-amount {
   letter-spacing: -0.03em;
   caret-color: rgb(var(--accent));
 }
+
+/* Outil technique affiché tel quel dans un volet mobile (audit des données) : on le
+   rend seulement utilisable au doigt, sans le redessiner. */
+html[data-ui="mobile"] .m-legacy { font-size: 13px; }
+html[data-ui="mobile"] .m-legacy > div { background: transparent; border: 0; box-shadow: none; margin: 0; }
+html[data-ui="mobile"] .m-legacy button { min-height: 40px; padding-left: 12px; padding-right: 12px; font-size: 13px; }
+html[data-ui="mobile"] .m-legacy table { font-size: 12px; }
+html[data-ui="mobile"] .m-legacy input { min-height: 40px; }

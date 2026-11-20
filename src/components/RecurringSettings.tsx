@@ -9,6 +9,9 @@ import { RecurringRule } from '@/lib/types';
 import { useRecurring } from '@/lib/useRecurring';
 import { ruleSchedule } from '@/lib/recurring';
 import { f$, todayISO } from '@/lib/utils';
+import { useIsMobile } from '@/lib/useIsMobile';
+import BottomSheet from '@/components/mobile/BottomSheet';
+import { MBadge, MButton, MCard, MDivider, MField, MLabel, MNum, MRow, MSeg } from '@/components/mobile/ui';
 
 const WEEKDAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
@@ -47,6 +50,7 @@ export default function RecurringSettings() {
   const { state } = useApp();
   const { rules, saveRule, deleteRule } = useRecurring();
   const { confirm } = useDialog();
+  const isMobile = useIsMobile();
   const postes = (state.postes || []).map(p => p.name);
   const cats = state.revenus?.categories || [];
 
@@ -88,6 +92,97 @@ export default function RecurringSettings() {
 
   const expenses = rules.filter(r => r.kind === 'expense');
   const revenues = rules.filter(r => r.kind === 'revenue');
+
+  // ─── UI mobile (affichée dans un volet de Réglages) : mêmes règles, mêmes actions ───
+  if (isMobile === true) {
+    const group = (title: string, list: RecurringRule[], kind: RecurringRule['kind'], empty: string) => (
+      <div className="mb-4">
+        <MLabel right={<button type="button" onClick={() => openAdd(kind)} className="text-[13px] text-t-1 font-medium h-8 px-1">Ajouter</button>}>{title}</MLabel>
+        <MCard surface="sheet">
+          {list.length === 0 && <div className="px-4 py-5 text-center text-[13px] text-t-3">{empty}</div>}
+          {list.map((r, k) => (
+            <div key={r.id} className={r.active ? '' : 'opacity-60'}>
+              {k > 0 && <MDivider />}
+              <MRow
+                title={r.label}
+                badge={<>{!r.active && <MBadge>En pause</MBadge>}{r.kind === 'expense' && !postes.includes(r.poste || '') && <MBadge tone="warning">Poste introuvable</MBadge>}</>}
+                sub={`${ruleSchedule(r)} · ${r.kind === 'expense' ? r.poste : r.cat || 'sans catégorie'}`}
+                right={<span className={`mono-value ${r.kind === 'revenue' ? 'text-accent' : ''}`}>{f$(r.amount)} {r.currency}</span>}
+                chevron
+                onClick={() => openEdit(r)}
+              />
+            </div>
+          ))}
+        </MCard>
+      </div>
+    );
+    return (
+      <>
+        <p className="text-[13px] text-t-3 px-4 pb-4 leading-relaxed">Ce qui revient à date fixe. Une dépense est proposée dans l’accueil dès qu’elle est échue ; les revenus du mois sont proposés dans Revenus, en prévision. Rien n’est ajouté sans ton accord.</p>
+        {group('Dépenses', expenses, 'expense', 'Loyer, abonnements, forfait…')}
+        {group('Revenus', revenues, 'revenue', 'Un client payé chaque semaine ou chaque mois')}
+
+        <BottomSheet open={open} onClose={() => setOpen(false)} title={isEdit ? 'Modifier la récurrence' : 'Nouvelle récurrence'} fullHeight footer={<MButton onClick={submit}>{isEdit ? 'Enregistrer' : 'Créer'}</MButton>}>
+          <MSeg className="w-full mb-2" value={form.kind} options={[['expense', 'Dépense'], ['revenue', 'Revenu']] as const} onChange={setKind} />
+          <div className="flex flex-col items-center pt-2 pb-4">
+            <MNum className="m-amount text-center px-6" value={form.amount} onChange={n => setForm({ ...form, amount: n })} ariaLabel="Montant" />
+            <MSeg
+              className="mt-2.5"
+              value={form.currency}
+              options={(form.kind === 'expense' ? ['AED', 'EUR'] : ['EUR', 'AED', 'USD']).map(c => [c, c] as const) as readonly (readonly [RecurringRule['currency'], string])[]}
+              onChange={c => setForm({ ...form, currency: c })}
+            />
+          </div>
+          <MCard surface="sheet" className="mb-3">
+            <MField label={form.kind === 'expense' ? 'Libellé' : 'Client'}>
+              <input className="m-input text-right" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} placeholder={form.kind === 'expense' ? 'Loyer' : 'Nom du client'} />
+            </MField>
+            <MDivider />
+            {form.kind === 'expense' ? (
+              <MField label="Poste">
+                <select className="m-input text-right" dir="rtl" value={form.poste || ''} onChange={e => setForm({ ...form, poste: e.target.value })}>
+                  {!postes.includes(form.poste || '') && <option value={form.poste || ''}>{form.poste || 'Choisir'}</option>}
+                  {postes.map(po => <option key={po} value={po}>{po}</option>)}
+                </select>
+              </MField>
+            ) : (
+              <MField label="Catégorie">
+                <select className="m-input text-right" dir="rtl" value={form.cat || ''} onChange={e => setForm({ ...form, cat: e.target.value })}>
+                  <option value="">Aucune</option>
+                  {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </MField>
+            )}
+          </MCard>
+          <MSeg className="w-full mb-3" value={form.freq} options={[['monthly', 'Chaque mois'], ['weekly', 'Chaque semaine']] as const} onChange={f => setForm({ ...form, freq: f })} />
+          <MCard surface="sheet">
+            {form.freq === 'monthly' ? (
+              <MField label="Jour du mois"><MNum className="text-right" value={form.day} onChange={n => setForm({ ...form, day: Math.round(n) || 1 })} placeholder="1" /></MField>
+            ) : (
+              <MField label="Jour">
+                <select className="m-input text-right" dir="rtl" value={form.weekday ?? 5} onChange={e => setForm({ ...form, weekday: parseInt(e.target.value, 10) })}>
+                  {[1, 2, 3, 4, 5, 6, 0].map(d => <option key={d} value={d}>{WEEKDAYS[d]}</option>)}
+                </select>
+              </MField>
+            )}
+            <MDivider />
+            <MField label="À partir du"><input className="m-input text-right" type="date" value={form.from || ''} onChange={e => setForm({ ...form, from: e.target.value })} /></MField>
+          </MCard>
+          <p className="text-[12px] text-t-4 px-4 pt-2 leading-relaxed">
+            Rien n’est proposé avant cette date : laisse aujourd’hui si ce qui précède est déjà saisi.
+            {form.freq === 'monthly' && (form.day || 1) > 28 ? ' Un mois plus court utilise son dernier jour.' : ''}
+          </p>
+          {error && <p className="text-[13px] text-danger px-4 pt-2">{error}</p>}
+          {isEdit && (
+            <div className="pt-3">
+              <MButton variant="ghost" onClick={() => { saveRule({ ...form, active: !form.active }); setOpen(false); }}>{form.active ? 'Mettre en pause' : 'Reprendre'}</MButton>
+              <button type="button" onClick={() => { const r = form; setOpen(false); remove(r); }} className="w-full flex items-center justify-center gap-2 h-12 mt-1 text-[15px] font-medium text-danger active:opacity-60"><Trash2 size={16} />Supprimer</button>
+            </div>
+          )}
+        </BottomSheet>
+      </>
+    );
+  }
 
   const renderRow = (r: RecurringRule) => {
     const orphan = r.kind === 'expense' && !postes.includes(r.poste || '');
