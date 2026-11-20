@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppProvider';
 import { Month, Transaction } from '@/lib/types';
 import { f0, f$ } from '@/lib/utils';
 import { mergePostes } from '@/lib/postes';
+import { useDialog } from '@/components/ui/Dialog';
 
 interface RowDiagnostic {
   monthId: string;
@@ -19,12 +20,13 @@ interface RowDiagnostic {
 }
 
 export default function DataAudit() {
-  const { state, setState, save } = useApp();
+  const { state, setState, save, getState } = useApp();
+  const { confirm, alert } = useDialog();
   const [open, setOpen] = useState(false);
   const [monthDetail, setMonthDetail] = useState<string | null>(null);
 
-  const postes = state.postes || [];
-  const months: Month[] = state.months || [];
+  const postes = useMemo(() => state.postes || [], [state.postes]);
+  const months: Month[] = useMemo(() => state.months || [], [state.months]);
 
   const diags: RowDiagnostic[] = months.map(m => {
     const budgetLen = (m.budget || []).length;
@@ -94,7 +96,7 @@ export default function DataAudit() {
   }, [months, posteNamesSet]);
 
   // Fusionne un extra conflict dans le poste régulier (somme valeurs, append txns) puis le supprime
-  const mergeExtraIntoPoste = (monthId: string, section: 'budget' | 'actual', extraIdx: number) => {
+  const mergeExtraIntoPoste = async (monthId: string, section: 'budget' | 'actual', extraIdx: number) => {
     const month = months.find(m => m.id === monthId);
     if (!month) return;
     const extra = section === 'budget' ? month.extraBudget?.[extraIdx] : month.extraActual?.[extraIdx];
@@ -102,10 +104,10 @@ export default function DataAudit() {
     const posteIdx = postes.findIndex(p => normalizeName(p.name) === normalizeName(extra.name));
     if (posteIdx < 0) return;
 
-    if (!confirm(`Fusionner l'extra "${extra.name}" (${section}) du mois ${monthId} dans le poste régulier homonyme ?\n\n• Les valeurs aed/eur seront ajoutées au m.${section === 'budget' ? 'budget' : 'actual'}[${posteIdx}]\n${section === 'actual' ? `• Les ${(extra.txns || []).length} transactions seront concaténées\n` : ''}• L'extra sera supprimé\n\nBackup recommandé avant.`)) return;
+    if (!(await confirm(`Fusionner l'extra "${extra.name}" (${section}) du mois ${monthId} dans le poste régulier homonyme ?\n\n• Les valeurs aed/eur seront ajoutées au m.${section === 'budget' ? 'budget' : 'actual'}[${posteIdx}]\n${section === 'actual' ? `• Les ${(extra.txns || []).length} transactions seront concaténées\n` : ''}• L'extra sera supprimé\n\nBackup recommandé avant.`, { title: 'Fusionner dans le poste', confirmLabel: 'Fusionner' }))) return;
 
     const updated = {
-      ...state,
+      ...getState(),
       months: months.map(mo => {
         if (mo.id !== monthId) return mo;
         const newM = { ...mo };
@@ -139,24 +141,24 @@ export default function DataAudit() {
 
   // Fusionne tous les doublons d'un nom en gardant le 1er index, supprimant les autres
   // Pour chaque mois: sum aed/eur dans budget+actual du 1er, append txns; puis splice les autres.
-  const mergeDuplicates = (name: string, idxs: number[]) => {
+  const mergeDuplicates = async (name: string, idxs: number[]) => {
     if (idxs.length < 2) return;
-    if (!confirm(`Fusionner ${idxs.length} entrées "${name}" en une seule ?\n\n• Les valeurs budget et réel de chaque mois seront SOMMÉES dans la 1ère entrée\n• Les transactions seront concaténées\n• Les autres entrées seront supprimées (splice clean des indices dans tous les mois)\n\nÀ faire après backup ! (Settings → Exporter)`)) return;
+    if (!(await confirm(`Fusionner ${idxs.length} entrées "${name}" en une seule ?\n\n• Les valeurs budget et réel de chaque mois seront SOMMÉES dans la 1ère entrée\n• Les transactions seront concaténées\n• Les autres entrées seront supprimées dans tous les mois\n\nÀ faire après backup ! (Réglages → Exporter)`, { title: 'Fusionner les doublons', confirmLabel: 'Fusionner', danger: true }))) return;
 
     // Somme + concaténation + retrait des lignes dans chaque mois : cf. lib/postes
     const merged = mergePostes(postes, months, idxs);
-    const updated = { ...state, postes: merged.postes, months: merged.months };
+    const updated = { ...getState(), postes: merged.postes, months: merged.months };
     setState(updated);
     save();
     alert(`Fusion OK : ${idxs.length} entrées "${name}" → 1 entrée.`);
   };
 
   // Helpers d'action sur les extras
-  const deleteExtra = (monthId: string, section: 'budget' | 'actual', idx: number) => {
+  const deleteExtra = async (monthId: string, section: 'budget' | 'actual', idx: number) => {
     const name = section === 'budget' ? state.months.find(m => m.id === monthId)?.extraBudget?.[idx]?.name : state.months.find(m => m.id === monthId)?.extraActual?.[idx]?.name;
-    if (!confirm(`Supprimer cet extra (${section}) « ${name} » du mois ${monthId} ?`)) return;
+    if (!(await confirm(`Supprimer cet extra (${section}) « ${name} » du mois ${monthId} ?`, { danger: true }))) return;
     const updated = {
-      ...state,
+      ...getState(),
       months: state.months.map(m => {
         if (m.id !== monthId) return m;
         if (section === 'budget') {
@@ -231,10 +233,10 @@ export default function DataAudit() {
   };
 
   // Trim m.budget / m.actual à la longueur de state.postes (retire les orphelins en queue uniquement)
-  const trimOrphansTail = (monthId: string) => {
-    if (!confirm(`Trim les rows orphelines en queue de ${monthId} ? (Garde seulement les ${postes.length} premières entrées de budget/actual, équivalentes aux ${postes.length} postes courants)`)) return;
+  const trimOrphansTail = async (monthId: string) => {
+    if (!(await confirm(`Retirer les lignes orphelines en queue de ${monthId} ?\n\nSeules les ${postes.length} premières lignes de budget / réel sont conservées (une par poste actuel).`, { confirmLabel: 'Retirer', danger: true }))) return;
     const updated = {
-      ...state,
+      ...getState(),
       months: state.months.map(m => {
         if (m.id !== monthId) return m;
         return {

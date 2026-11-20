@@ -8,11 +8,13 @@ import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur } from '@/lib/utils';
 import { INSTALL_CAPITAL } from '@/lib/constants';
 import { EmmenagementItem } from '@/lib/types';
+import { useDialog } from '@/components/ui/Dialog';
 
 const CATS = ['Meubles', 'Électroménager', 'Décoration', 'Cuisine', 'Autre'];
 
 export default function SetupPage() {
-  const { state, setState, save, liveRate, activeSpace } = useApp();
+  const { state, setState, save, getState, liveRate, activeSpace } = useApp();
+  const { confirm } = useDialog();
   const items = state.emmenagement || [];
 
   const [addOpen, setAddOpen] = useState(false);
@@ -59,9 +61,9 @@ export default function SetupPage() {
     save();
   };
 
-  const deleteItem = (idx: number) => {
-    if (!confirm('Supprimer ?')) return;
-    setState({ ...state, emmenagement: items.filter((_, i) => i !== idx) });
+  const deleteItem = async (idx: number) => {
+    if (!(await confirm(`Supprimer « ${items[idx]?.poste || 'cette ligne'} » ?`, { danger: true }))) return;
+    setState({ ...getState(), emmenagement: items.filter((_, i) => i !== idx) });
     save();
   };
 

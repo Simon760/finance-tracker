@@ -5,6 +5,8 @@ import { AppState, Month, Space, HistoryEntry, ResidencyEntry, Trip, Transaction
 import { DEFAULT_POSTES, MOIS_LIST, monthBaseName, monthYearSuffix, monthIndexOf } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate, detectYears, todayISO } from '@/lib/utils';
+import { normalizeLoadedState } from '@/lib/normalize';
+import { useDialog } from '@/components/ui/Dialog';
 
 /** Doit rester identique à la clé lue par le script anti-flash de app/layout.tsx. */
 export const THEME_KEY = 'fhq_theme';
@@ -61,6 +63,8 @@ interface AppContextType {
   state: AppState;
   setState: (s: AppState) => void;
   save: () => void;
+  /** Dernier état connu — à utiliser à la place de `state` APRÈS un `await` (cf. AppProvider). */
+  getState: () => AppState;
 
   // Spaces
   spaces: Space[];
@@ -127,7 +131,8 @@ interface AppContextType {
     monthId: string; // mois cible pour la swap-tx
   }) => string; // returns trip id
   updateTrip: (id: string, updates: Partial<Trip>) => void;
-  deleteTrip: (id: string) => void;
+  /** Demande confirmation ; résout à `true` si le voyage a bien été supprimé. */
+  deleteTrip: (id: string) => Promise<boolean>;
   /** Ajoute une dépense voyage (tx tripId+tripKind=expense). Cible un poste régulier
    * (posteIdx) OU un extra du mois (extraName si fourni). */
   addTripExpense: (params: {
@@ -167,29 +172,6 @@ const defaultState: AppState = {
 };
 
 // Convert flat state to spaces array (backward compat)
-// Auto-heal : retire les extras (postes du mois) en DOUBLON et VIDES — lignes fantômes
-// laissées par d'anciennes corruptions / desyncs état↔space. Ne touche JAMAIS une ligne
-// qui a des transactions ou un montant. Appliqué au chargement (localStorage + login).
-function dedupEmptyExtras(months: Month[]): Month[] {
-  let anyChanged = false;
-  const out = months.map(mo => {
-    const ea = mo.extraActual;
-    if (!ea || ea.length < 2) return mo;
-    const seen = new Set<string>();
-    let moChanged = false;
-    const cleaned = ea.filter(r => {
-      const nm = (r.name || '').trim().toUpperCase();
-      const empty = !(r.txns && r.txns.length) && !r.aed && !r.eur;
-      if (seen.has(nm) && empty) { moChanged = true; return false; }
-      seen.add(nm);
-      return true;
-    });
-    if (moChanged) { anyChanged = true; return { ...mo, extraActual: cleaned }; }
-    return mo;
-  });
-  return anyChanged ? out : months;
-}
-
 function stateToSpaces(s: AppState): Space[] {
   if (s.spaces && s.spaces.length > 0) {
     // BUG FIX : le top-level state (postes/months/revenus/emmenagement/extraGroups) est
@@ -276,12 +258,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const savedState = localStorage.getItem('fdxb_state');
     if (uid && savedState) {
       try {
-        const data: AppState = JSON.parse(savedState);
-        if (!data.postes) data.postes = JSON.parse(JSON.stringify(DEFAULT_POSTES));
-        if (!data.months) data.months = [];
-        if (!data.revenus) data.revenus = { objectif: 5000, categories: [], months: {} };
-        if (!data.emmenagement) data.emmenagement = [];
-        data.months = dedupEmptyExtras(data.months); // auto-heal des extras fantômes
+        const data: AppState = normalizeLoadedState(JSON.parse(savedState));
         setStateRaw(data);
         setLiveRate(data.rate);
         setUserId(uid);
@@ -318,6 +295,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateRaw(s);
     setLiveRate(s.rate);
   }, []);
+
+  // Dernier état connu, lisible depuis un handler ASYNCHRONE. Après un `await confirm(…)`
+  // le `state` capturé par le handler date d'avant l'ouverture de la fenêtre : repartir
+  // de `getState()` évite d'écraser ce qui a bougé entre-temps (taux rafraîchi…).
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const getState = useCallback(() => stateRef.current, []);
+  const { confirm } = useDialog();
 
   const persistToFirebase = useCallback((s: AppState, uid: string) => {
     setSyncStatus('saving');
@@ -436,11 +421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (userPin !== pin) return false;
       const data = await fbGet<AppState>(`users/${id}/state`);
       if (data) {
-        if (!data.postes) data.postes = JSON.parse(JSON.stringify(DEFAULT_POSTES));
-        if (!data.months) data.months = [];
-        if (!data.revenus) data.revenus = { objectif: 5000, categories: [], months: {} };
-        if (!data.emmenagement) data.emmenagement = [];
-        data.months = dedupEmptyExtras(data.months); // auto-heal des extras fantômes
+        normalizeLoadedState(data);
         setState(data);
         localStorage.setItem('fdxb_state', JSON.stringify(data));
         // Set active space
@@ -724,35 +705,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [userId, persistToFirebase]);
 
-  const deleteTrip = useCallback((id: string) => {
-    setStateRaw(prev => {
-      const before = (prev.trips || []).find(t => t.id === id);
-      // Compte les tx qui vont être supprimées (actual + extraActual)
-      let swapCount = 0;
-      let expenseCount = 0;
-      let totalAedRemoved = 0;
-      prev.months.forEach(mo => {
-        (mo.actual || []).forEach(row => {
-          (row.txns || []).forEach(t => {
-            if (t.tripId === id) {
-              if (t.tripKind === 'swap') swapCount++;
-              else expenseCount++;
-              totalAedRemoved += t.amount || 0;
-            }
-          });
-        });
-        (mo.extraActual || []).forEach(row => {
-          (row.txns || []).forEach(t => {
-            if (t.tripId === id) {
-              if (t.tripKind === 'swap') swapCount++;
-              else expenseCount++;
-              totalAedRemoved += t.amount || 0;
-            }
-          });
+  const deleteTrip = useCallback(async (id: string): Promise<boolean> => {
+    // Compte les tx qui vont être supprimées (actual + extraActual) pour la confirmation.
+    // Fait AVANT le setState : un updater doit rester pur (la fenêtre native s'ouvrait
+    // deux fois en développement).
+    const cur = stateRef.current;
+    const before = (cur.trips || []).find(t => t.id === id);
+    let swapCount = 0;
+    let expenseCount = 0;
+    let totalAedRemoved = 0;
+    cur.months.forEach(mo => {
+      [...(mo.actual || []), ...(mo.extraActual || [])].forEach(row => {
+        (row.txns || []).forEach(t => {
+          if (t.tripId !== id) return;
+          if (t.tripKind === 'swap') swapCount++;
+          else expenseCount++;
+          totalAedRemoved += t.amount || 0;
         });
       });
-      if (!confirm(`Supprimer ce voyage et TOUTES ses transactions ?\n\n• ${swapCount} swap-tx + ${expenseCount} dépense(s)\n• ${Math.round(totalAedRemoved)} AED retirés du tracker (ton compte AED retrouvera son état d'avant le swap)\n\nCette action est irréversible.`)) return prev;
+    });
+    const ok = await confirm(
+      `Supprimer ce voyage et TOUTES ses transactions ?\n\n• ${swapCount} swap-tx + ${expenseCount} dépense(s)\n• ${Math.round(totalAedRemoved)} AED retirés du tracker (ton compte AED retrouvera son état d'avant le swap)\n\nCette action est irréversible.`,
+      { title: 'Supprimer le voyage', danger: true },
+    );
+    if (!ok) return false;
 
+    setStateRaw(prev => {
       const list = (prev.trips || []).filter(t => t.id !== id);
       // Supprime physiquement les tx tagged tripId — actual + extras
       const months = prev.months.map(mo => {
@@ -810,7 +788,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (userId) persistToFirebase(updated, userId);
       return updated;
     });
-  }, [userId, persistToFirebase]);
+    return true;
+  }, [userId, persistToFirebase, confirm]);
 
   const addTripExpense = useCallback((params: {
     tripId: string; posteIdx: number; monthId: string;
@@ -1128,7 +1107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      state, setState, save,
+      state, setState, save, getState,
       spaces, activeSpace, activeSpaceId, setActiveSpaceId,
       createSpace, updateSpace, deleteSpace,
       userId, setUserId, isLoggedIn: !!userId,

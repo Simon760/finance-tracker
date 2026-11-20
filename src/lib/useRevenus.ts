@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
+import { useDialog } from '@/components/ui/Dialog';
 import { RevenuEntry } from './types';
 import { MOIS_LIST, monthIndexOf } from './constants';
 import { f$, fetchRate, sameWeekdayDatesInMonth, todayISO } from './utils';
@@ -25,7 +26,8 @@ const BLANK: RevenuEntry = { date: '', client: '', cat: '', contracted: 0, cashe
  * l'écriture uniquement.
  */
 export function useRevenus() {
-  const { state, setState, save, liveRate, logChange } = useApp();
+  const { state, setState, save, getState, liveRate, logChange } = useApp();
+  const { confirm } = useDialog();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
   const categories = rev.categories || [];
 
@@ -164,12 +166,17 @@ export function useRevenus() {
     setFormOpen(false);
   };
 
-  const deleteEntry = (month: string, idx: number) => {
+  const deleteEntry = async (month: string, idx: number) => {
     const key = keyOf(month);
     const removed = rev.months?.[key]?.[idx];
     if (!removed) return;
-    if (!confirm('Supprimer cette entrée ?')) return;
-    commit(removeRevenu(rev.months, key, idx));
+    if (!(await confirm(`Supprimer ce revenu ?\n\n${removed.client || '—'} · ${f$(removed.cashed || 0)} €`, { danger: true }))) return;
+    // Après l'attente : on repart du dernier état, et on vérifie que l'entrée visée est
+    // toujours la même (elle a pu bouger pendant que la fenêtre était ouverte).
+    const s = getState();
+    if (s.revenus?.months?.[key]?.[idx] !== removed) return;
+    setState({ ...s, revenus: { ...s.revenus, months: removeRevenu(s.revenus.months, key, idx) } });
+    save();
     logChange?.('revenu.delete', `Suppr revenu ${removed.client || '—'} · ${f$(removed.cashed || 0)} € (${key})`);
   };
 

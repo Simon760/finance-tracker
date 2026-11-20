@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AppProvider } from '@/context/AppProvider';
+import { DialogProvider } from '@/components/ui/Dialog';
 
 export const metadata: Metadata = {
   title: 'FinanceHQ',
@@ -19,7 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="font-sans">
-        <AppProvider>{children}</AppProvider>
+        {/* DialogProvider au-dessus d'AppProvider : ce dernier ouvre aussi des confirmations */}
+        <DialogProvider><AppProvider>{children}</AppProvider></DialogProvider>
       </body>
     </html>
   );

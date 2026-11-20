@@ -8,11 +8,12 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive, startedMonths, isLegacyMonth, monthRevenuConfirmedEur, monthRevenuConfirmedAed, todayISO } from '@/lib/utils';
-import { Month, Transaction, ActualRow } from '@/lib/types';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive, startedMonths, isLegacyMonth, monthRevenuConfirmedEur, monthRevenuConfirmedAed, todayISO } from '@/lib/utils';
+import { Transaction, ActualRow } from '@/lib/types';
 import { EyeOff, Pencil } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { applyRegul, clearRegul } from '@/lib/regul';
+import { newMonthId, buildNewMonth } from '@/lib/months';
 import RegulHistory from '@/components/RegulHistory';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
@@ -389,61 +390,18 @@ export default function TrackerPage() {
 
   // Revenue helpers
   const createMonth = () => {
-    const name = nmName.trim().toUpperCase();
-    if (!name) return;
-    // Un même nom revient chaque année ("OCTOBRE" existe déjà pour 2025) : plutôt que
-    // d'échouer silencieusement, on suffixe automatiquement l'année déduite du dernier
-    // mois de la liste (cf. inferNextMonthYear) — aucune saisie supplémentaire requise.
-    let id = name;
-    if (state.months.find(mo => mo.id === id)) {
-      id = `${name} ${String(inferNextMonthYear(state.months, name)).slice(-2)}`;
-      if (state.months.find(mo => mo.id === id)) {
-        setNmError(`Un mois « ${id} » existe déjà. Renomme-le d'abord (crayon à côté du mois courant).`);
-        return;
-      }
-    }
+    // Id (suffixe année automatique en cas de collision) et contenu du mois : logique
+    // partagée avec le mobile, cf. lib/months.
+    const res = newMonthId(state.months, nmName);
+    if ('error' in res) { if (nmName.trim()) setNmError(res.error); return; }
     setNmError('');
-    // Un poste désactivé (« masqué à partir de », cf. Réglages) le reste dans tous les
-    // mois suivants sans action répétée — on part de la liste du dernier mois, qui
-    // porte déjà ses masquages hérités du mois d'avant.
-    const inheritedHidden = state.months.length > 0
-      ? [...(state.months[state.months.length - 1].hiddenPostes || [])]
-      : [];
-    const newMonth: Month = {
-      id, rate: nmRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
-      budget: [], actual: [], extraBudget: [], extraActual: [], hiddenPostes: inheritedHidden,
-    };
-    const hasHistory = state.months.length > 0;
-    if (hasHistory && nmFillMode === 'copy') {
-      const last = state.months[state.months.length - 1];
-      state.postes.forEach((_, i) => {
-        newMonth.budget.push({ aed: last.budget[i]?.aed || 0, eur: last.budget[i]?.eur ?? null });
-        newMonth.actual.push({ aed: 0, eur: null });
-      });
-      if (last.soldeEnd > 0) newMonth.soldeStart = last.soldeEnd;
-    } else if (hasHistory && nmFillMode === 'avg3') {
-      const window = state.months.slice(-3);
-      const last = state.months[state.months.length - 1];
-      state.postes.forEach((_, i) => {
-        // Moyenne sur les ACTUALS des 3 derniers mois (réalité, pas plan)
-        const aedVals = window.map(mo => mo.actual?.[i]?.aed || 0).filter(v => v > 0);
-        const eurVals = window.map(mo => mo.actual?.[i]?.eur || 0).filter(v => v > 0);
-        const aedAvg = aedVals.length ? aedVals.reduce((s, v) => s + v, 0) / aedVals.length : (last.budget[i]?.aed || 0);
-        const eurAvg = eurVals.length ? eurVals.reduce((s, v) => s + v, 0) / eurVals.length : (last.budget[i]?.eur ?? null);
-        newMonth.budget.push({ aed: Math.round(aedAvg), eur: eurAvg ? Math.round(eurAvg * 100) / 100 : null });
-        newMonth.actual.push({ aed: 0, eur: null });
-      });
-      if (last.soldeEnd > 0) newMonth.soldeStart = last.soldeEnd;
-    } else {
-      state.postes.forEach(() => { newMonth.budget.push({ aed: 0, eur: null }); newMonth.actual.push({ aed: 0, eur: null }); });
-    }
-    const updated = { ...state, months: [...state.months, newMonth] };
-    setState(updated);
-    setCurMonth(id);
+    const newMonth = buildNewMonth(state.months, state.postes, { id: res.id, rate: nmRate, soldeStart: nmSolde, fill: nmFillMode });
+    setState({ ...state, months: [...state.months, newMonth] });
+    setCurMonth(res.id);
     setNewMonthOpen(false);
     save();
-    const fillLabel = nmFillMode === 'avg3' ? 'moyenne 3 mois' : nmFillMode === 'copy' ? 'copie M-1' : 'vide';
-    logChange?.('month.create', `Création du mois ${id} (${fillLabel})`);
+    const fillLabel = state.months.length === 0 || nmFillMode === 'empty' ? 'vide' : nmFillMode === 'avg3' ? 'moyenne 3 mois' : 'copie M-1';
+    logChange?.('month.create', `Création du mois ${res.id} (${fillLabel})`);
   };
 
   const openRename = () => {

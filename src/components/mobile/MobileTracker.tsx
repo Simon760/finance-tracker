@@ -2,19 +2,22 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed, monthRevenuConfirmedEur, isLegacyMonth, todayISO } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed, monthRevenuConfirmedEur, isLegacyMonth, todayISO } from '@/lib/utils';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt, EyeOff } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { applyRegul, clearRegul } from '@/lib/regul';
+import { newMonthId, buildNewMonth } from '@/lib/months';
 import RegulHistory from '@/components/RegulHistory';
+import { useDialog } from '@/components/ui/Dialog';
 
 const todayStr = () => todayISO(); // date LOCALE (cf. todayISO)
 
 export default function MobileTracker() {
-  const { state, save, curMonth, setCurMonth, setState, liveRate, trips, renameMonth, logChange } = useApp();
+  const { state, save, getState, curMonth, setCurMonth, setState, liveRate, trips, renameMonth, logChange } = useApp();
+  const { confirm } = useDialog();
   const months = state.months;
   const idx = months.findIndex(mo => mo.id === curMonth);
   const m: Month | undefined = idx >= 0 ? months[idx] : undefined;
@@ -231,8 +234,10 @@ export default function MobileTracker() {
 
   const deleteTx = (posteIdx: number, txIdx: number) => {
     if (!m) return;
-    const rate = state.rate;
-    const updatedMonths = state.months.map(mo => {
+    // Appelé après une confirmation asynchrone → on repart du dernier état connu
+    const base = getState();
+    const rate = base.rate;
+    const updatedMonths = base.months.map(mo => {
       if (mo.id !== m.id) return mo;
       const actual = [...mo.actual];
       const row = { ...actual[posteIdx] };
@@ -244,54 +249,23 @@ export default function MobileTracker() {
       actual[posteIdx] = row;
       return { ...mo, actual };
     });
-    setState({ ...state, months: updatedMonths });
+    setState({ ...base, months: updatedMonths });
     save();
   };
 
   const createMonth = () => {
-    const name = nmName.trim().toUpperCase();
-    if (!name) return;
-    // Un même nom revient chaque année ("OCTOBRE" existe déjà pour 2025) : plutôt que
-    // d'échouer silencieusement, on suffixe automatiquement l'année déduite du dernier
-    // mois de la liste (cf. inferNextMonthYear) — aucune saisie supplémentaire requise.
-    let id = name;
-    if (state.months.find(mo => mo.id === id)) {
-      id = `${name} ${String(inferNextMonthYear(state.months, name)).slice(-2)}`;
-      if (state.months.find(mo => mo.id === id)) {
-        setNmError(`Un mois « ${id} » existe déjà. Renomme-le d'abord (crayon à côté du mois).`);
-        return;
-      }
-    }
+    // Même logique que le desktop (lib/months) ; sur mobile le budget est toujours
+    // recopié du mois précédent (création rapide) et le taux est le taux du jour.
+    const res = newMonthId(state.months, nmName);
+    if ('error' in res) { if (nmName.trim()) setNmError(res.error); return; }
     setNmError('');
-    // Un poste désactivé (« masqué à partir de », cf. Réglages) le reste dans tous les
-    // mois suivants sans action répétée — on part de la liste du dernier mois, qui
-    // porte déjà ses masquages hérités du mois d'avant.
-    const inheritedHidden = state.months.length > 0
-      ? [...(state.months[state.months.length - 1].hiddenPostes || [])]
-      : [];
-    const newM: Month = {
-      id, rate: liveRate, earn: 0, soldeStart: nmSolde, soldeEnd: 0,
-      budget: [], actual: [], extraBudget: [], extraActual: [], hiddenPostes: inheritedHidden,
-    };
-    // Copie M-1 par défaut sur mobile (rapide)
-    if (state.months.length > 0) {
-      const last = state.months[state.months.length - 1];
-      state.postes.forEach((_, i) => {
-        newM.budget.push({ aed: last.budget[i]?.aed || 0, eur: last.budget[i]?.eur ?? null });
-        newM.actual.push({ aed: 0, eur: null });
-      });
-      if (last.soldeEnd > 0) newM.soldeStart = last.soldeEnd;
-    } else {
-      state.postes.forEach(() => {
-        newM.budget.push({ aed: 0, eur: null });
-        newM.actual.push({ aed: 0, eur: null });
-      });
-    }
+    const newM = buildNewMonth(state.months, state.postes, { id: res.id, rate: liveRate, soldeStart: nmSolde, fill: 'copy' });
     setState({ ...state, months: [...state.months, newM] });
-    setCurMonth(id);
+    setCurMonth(res.id);
     setNewMonthOpen(false);
     setNmName(''); setNmSolde(0);
     save();
+    logChange?.('month.create', `Création du mois ${res.id} (${state.months.length === 0 ? 'vide' : 'copie M-1'})`);
   };
 
   const openRename = () => {
@@ -532,7 +506,7 @@ export default function MobileTracker() {
                         <button onClick={() => openEditTx(detailIdx, ti)} className="w-8 h-8 flex items-center justify-center rounded-full bg-info/10 text-info border border-info/25 active:bg-info/20">
                           <Pencil size={13} />
                         </button>
-                        <button onClick={() => { if (confirm('Supprimer cette transaction ?')) deleteTx(detailIdx, ti); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-danger/10 text-danger border border-danger/25 active:bg-danger/20">
+                        <button onClick={async () => { if (await confirm('Supprimer cette transaction ?', { danger: true })) deleteTx(detailIdx, ti); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-danger/10 text-danger border border-danger/25 active:bg-danger/20">
                           <Trash2 size={13} />
                         </button>
                       </div>

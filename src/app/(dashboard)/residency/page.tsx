@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import Card, { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
+import { useDialog } from '@/components/ui/Dialog';
 import { ResidencyEntry, ResidencyCountry } from '@/lib/types';
 import { Plus, Pencil, X, ChevronLeft, ChevronRight, AlertTriangle, Plane } from 'lucide-react';
 
@@ -241,6 +242,7 @@ function computeYear(year: number, entries: ResidencyEntry[]): Computed {
 // ---- composant ----
 export default function ResidencyPage() {
   const { residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry } = useApp();
+  const { confirm, alert } = useDialog();
 
   const nowYear = new Date().getUTCFullYear();
   const initialYear = nowYear < MIN_YEAR ? MIN_YEAR : nowYear;
@@ -317,9 +319,9 @@ export default function ResidencyPage() {
   }
 
   function handleSave() {
-    if (!fStart) return alert('Date de début requise');
-    if (!fOngoing && !fEnd) return alert('Date de fin requise (ou cocher "en cours")');
-    if (!fOngoing && fEnd < fStart) return alert('Date de fin avant date de début');
+    if (!fStart) { alert('Date de début requise'); return; }
+    if (!fOngoing && !fEnd) { alert('Date de fin requise (ou cocher "en cours")'); return; }
+    if (!fOngoing && fEnd < fStart) { alert('Date de fin avant date de début'); return; }
     const payload: Omit<ResidencyEntry, 'id'> = {
       country: fCountry,
       start: fStart,
@@ -333,8 +335,8 @@ export default function ResidencyPage() {
     resetForm();
   }
 
-  function handleDelete(id: string) {
-    if (!confirm('Supprimer ce séjour ?')) return;
+  async function handleDelete(id: string) {
+    if (!(await confirm('Supprimer ce séjour ?', { danger: true }))) return;
     deleteResidencyEntry(id);
   }
 

@@ -533,7 +533,7 @@ export default function TripsPage() {
                   Réouvrir
                 </button>
               )}
-              <button onClick={() => { deleteTrip(selectedTrip.id); setSelectedTripId(null); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2.5 py-1 rounded-md cursor-pointer hover:bg-danger/20 flex items-center gap-1">
+              <button onClick={async () => { if (await deleteTrip(selectedTrip.id)) setSelectedTripId(null); }} className="text-[11px] text-danger bg-danger/10 border border-danger/25 px-2.5 py-1 rounded-md cursor-pointer hover:bg-danger/20 flex items-center gap-1">
                 <Trash2 size={11} /> Supprimer
               </button>
             </div>

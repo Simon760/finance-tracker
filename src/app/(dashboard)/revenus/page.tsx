@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal';
 import RankedBars from '@/components/ui/RankedBars';
 import { f$, f0, sameWeekdayDatesInMonth, todayISO } from '@/lib/utils';
 import { useRevenus } from '@/lib/useRevenus';
+import { useDialog } from '@/components/ui/Dialog';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
@@ -85,7 +86,8 @@ const STATUS_ROW_BORDER: Record<string, string> = {
 
 export default function RevenusPage() {
   const isMobile = useIsMobile();
-  const { state, setState, save, activeSpace, theme } = useApp();
+  const { state, setState, save, getState, activeSpace, theme } = useApp();
+  const { confirm, prompt } = useDialog();
   const ct = chartTheme(theme);
   const tooltipStyle = chartTooltipStyle(theme);
 
@@ -113,16 +115,18 @@ export default function RevenusPage() {
     save();
   };
 
-  const addCategory = () => {
-    const cat = prompt('Nom de la catégorie :');
-    if (!cat || categories.includes(cat.trim())) return;
-    setState({ ...state, revenus: { ...rev, categories: [...categories, cat.trim()] } });
+  const addCategory = async () => {
+    const cat = (await prompt('Nom de la catégorie :', { title: 'Nouvelle catégorie', confirmLabel: 'Ajouter', placeholder: 'Ex : CONSULTING' }))?.trim();
+    if (!cat || categories.includes(cat)) return;
+    const s = getState();
+    setState({ ...s, revenus: { ...s.revenus, categories: [...categories, cat] } });
     save();
   };
 
-  const removeCategory = (cat: string) => {
-    if (!confirm(`Supprimer la catégorie "${cat}" ?`)) return;
-    setState({ ...state, revenus: { ...rev, categories: categories.filter(c => c !== cat) } });
+  const removeCategory = async (cat: string) => {
+    if (!(await confirm(`Supprimer la catégorie "${cat}" ?`, { danger: true }))) return;
+    const s = getState();
+    setState({ ...s, revenus: { ...s.revenus, categories: categories.filter(c => c !== cat) } });
     save();
   };
 

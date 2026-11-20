@@ -9,6 +9,8 @@ import DataAudit from '@/components/DataAudit';
 import { isPosteFixed } from '@/lib/budgetBalance';
 import { todayISO } from '@/lib/utils';
 import { removePosteAt, swapPostes } from '@/lib/postes';
+import { normalizeLoadedState, looksLikeBackup } from '@/lib/normalize';
+import { useDialog } from '@/components/ui/Dialog';
 
 const CAT_OPTIONS = ['vital', 'lifestyle', 'finance', 'logement'] as const;
 const CAT_STYLES: Record<string, string> = {
@@ -48,7 +50,8 @@ function fmtRelTs(iso: string): string {
 }
 
 export default function SettingsPage() {
-  const { state, setState, save, liveRate, history, clearHistory, logChange } = useApp();
+  const { state, setState, save, getState, liveRate, history, clearHistory, logChange } = useApp();
+  const { confirm, alert } = useDialog();
   const postes = state.postes || [];
 
   const [addOpen, setAddOpen] = useState(false);
@@ -90,14 +93,18 @@ export default function SettingsPage() {
     logChange?.(editIdx !== null ? 'poste.update' : 'poste.create', `${editIdx !== null ? 'Modif' : 'Création'} poste « ${p.name} » (${p.cat})`);
   };
 
-  const deletePoste = (idx: number) => {
+  const deletePoste = async (idx: number) => {
     const removed = postes[idx];
-    if (!confirm(`Supprimer ${removed.name} ?\n\nLes valeurs de budget et de dépenses associées dans TOUS les mois seront aussi retirées (splice propre pour préserver l'alignement des autres postes).`)) return;
+    const ok = await confirm(
+      `Supprimer ${removed.name} ?\n\nSes valeurs de budget et de dépenses seront retirées de TOUS les mois (${state.months.length}). Les autres postes ne bougent pas.`,
+      { title: 'Supprimer le poste', danger: true },
+    );
+    if (!ok) return;
 
     // Retire le poste ET sa ligne dans chaque mois (cf. lib/postes : seul endroit autorisé
     // à déplacer des lignes, l'alignement des autres postes y est testé).
     const next = removePosteAt(postes, state.months, idx);
-    setState({ ...state, postes: next.postes, months: next.months });
+    setState({ ...getState(), postes: next.postes, months: next.months });
     save();
     logChange?.('poste.delete', `Suppression poste « ${removed.name} » (+ valeurs associées de ${state.months.length} mois)`);
   };
@@ -167,9 +174,9 @@ export default function SettingsPage() {
     setDisableIdx(null);
   };
 
-  const reactivate = (idx: number) => {
+  const reactivate = async (idx: number) => {
     const p = postes[idx];
-    if (!confirm(`Réactiver « ${p.name} » sur tous les mois où il est désactivé ?`)) return;
+    if (!(await confirm(`Réactiver « ${p.name} » sur tous les mois où il est désactivé ?`, { confirmLabel: 'Réactiver' }))) return;
     setPosteActiveFrom(p.name, null);
   };
 
@@ -226,18 +233,29 @@ export default function SettingsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const importData = () => {
+  const importData = async () => {
+    let data: unknown;
     try {
-      const data = JSON.parse(importText);
-      if (data && typeof data === 'object') {
-        setState(data);
-        save();
-        setImportOpen(false);
-        alert('Données importées avec succès');
-      }
+      data = JSON.parse(importText);
     } catch {
-      alert('JSON invalide');
+      await alert('JSON invalide', { title: 'Import impossible' });
+      return;
     }
+    // Garde-fou : un JSON valide quelconque (« {} ») remplaçait toutes les données par du vide
+    if (!looksLikeBackup(data)) {
+      await alert('Ce JSON ne ressemble pas à une sauvegarde FinanceHQ (aucun mois ni espace dedans). Rien n\'a été modifié.', { title: 'Import impossible' });
+      return;
+    }
+    const nbMois = (data.months || []).length;
+    const ok = await confirm(
+      `Remplacer TOUTES les données actuelles (${state.months.length} mois) par cette sauvegarde (${nbMois} mois) ?\n\nPense à exporter l'état actuel avant : l'opération ne s'annule pas.`,
+      { title: 'Importer une sauvegarde', confirmLabel: 'Remplacer', danger: true },
+    );
+    if (!ok) return;
+    setState(normalizeLoadedState(data)); // mêmes défauts que le chargement normal
+    save();
+    setImportOpen(false);
+    await alert('Données importées avec succès');
   };
 
   return (
@@ -438,8 +456,8 @@ export default function SettingsPage() {
                     <span className="text-[10px] text-t-4">Fin de l&apos;historique</span>
                   )}
                   <button
-                    onClick={() => {
-                      if (confirm('Effacer tout l\'historique ? Cette action est irréversible.')) {
+                    onClick={async () => {
+                      if (await confirm('Effacer tout l\'historique ? Cette action est irréversible.', { confirmLabel: 'Effacer', danger: true })) {
                         clearHistory();
                       }
                     }}

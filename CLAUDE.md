@@ -28,12 +28,15 @@ chaque changement des mois (pour `state.months` ET `spaces[].months`), donc à j
 toutes les pages — la lecture des revenus par période en dépend. Dans du code pur / des
 tests, appeler `detectYears()` (ou poser `_year`) avant de s'en servir.
 
-**Collision de nom** : `createMonth` (desktop + mobile) suffixe automatiquement
-l'année à 2 chiffres (« OCTOBRE 26 ») via `inferNextMonthYear()` (`utils.ts`) —
-déterministe, dérivé du dernier mois de la liste, aucune saisie demandée. Format
-choisi pour matcher le contournement manuel que l'utilisateur avait déjà utilisé
-avant ce fix (voir son month réel « OCTOBRE 26 » dans les données de prod). Le
-suffixe à 4 chiffres reste toléré en lecture (renommage manuel libre).
+**Collision de nom** : la création d'un mois passe par `newMonthId()` + `buildNewMonth()`
+(`lib/months.ts`, logique unique desktop + mobile, testée). `newMonthId` suffixe
+automatiquement l'année à 2 chiffres (« OCTOBRE 26 ») via `inferNextMonthYear()`
+(`utils.ts`) — déterministe, dérivé du dernier mois de la liste, aucune saisie demandée.
+La collision se juge sur le MOIS CALENDAIRE, pas sur la chaîne exacte : « DÉCEMBRE »
+collisionne avec « DECEMBRE » (avant, l'accent suffisait à créer un second mois sans
+suffixe — le « DÉCEMBRE » de 2026 en prod vient de là). Format choisi pour matcher le
+contournement manuel que l'utilisateur avait déjà utilisé avant ce fix (voir son mois
+réel « OCTOBRE 26 »). Le suffixe à 4 chiffres reste toléré en lecture.
 
 **Tout code qui doit reconnaître un nom de mois depuis un id** (afficher, dater,
 grouper) passe par `monthBaseName(id)` / `monthYearSuffix(id)` / `monthIndexOf(id)`
@@ -143,6 +146,13 @@ l'année précédente au lieu d'« OCTOBRE 26 ».
 ## UI conventions
 - KPIs : `<KpiCard>` (`components/ui/Card.tsx`), `hero` pour grandes valeurs
 - Panneau détail : `<SlideOver>`
+- **Confirmations / alertes / saisies** : `const { confirm, alert, prompt } = useDialog()`
+  (`components/ui/Dialog.tsx`, promesses) — **jamais** `window.confirm/alert/prompt`
+  (fenêtres grises hors thème ; appelées depuis un `setState`, elles s'ouvraient deux fois
+  en dev). `{ danger: true }` pour une action destructrice. Le handler devient `async` :
+  **après le `await`, repartir de `getState()`** (exposé par `useApp()`) et non du `state`
+  capturé avant l'ouverture de la fenêtre — sinon on écrase ce qui a bougé entre-temps
+  (taux rafraîchi). `DialogProvider` est monté AU-DESSUS d'`AppProvider` (`app/layout.tsx`).
 - **Tous les chiffres en gras** via `.mono-value` — ne pas overrider avec `style={{ fontWeight: 400 }}` inline
 - **Alignement numérique tableaux** : spans avec `pr-2 inline-block border border-transparent` pour matcher le border-box du `CellInput` (1px transparent + 8px padding)
 
@@ -237,6 +247,18 @@ Toggle dans Sidebar. Ajoute `.amounts-hidden` sur `<body>` → CSS `::after` mas
 
 **Pages mobile dédiées actuellement** : Tracker, Revenus, Vue Globale.
 **Pages utilisant encore la UI desktop** (responsive via `max-md:` + tables wrappées `overflow-x-auto`) : Dashboard, Net Worth, Résidence, Setup, Settings.
+
+### Logique partagée desktop / mobile
+Les deux UI ne doivent différer que par le RENDU. Toute règle métier vit dans `lib/` :
+- `lib/useRevenus.ts` — page Revenus entière (période, formulaire, écritures) ;
+- `lib/months.ts` — id et contenu d'un nouveau mois ;
+- `lib/regul.ts` — régularisation du solde ; `lib/postes.ts` — structure des postes ;
+- `lib/normalize.ts` — `normalizeLoadedState()` appliqué aux TROIS chemins de chargement
+  (localStorage, Firebase, import) ; `looksLikeBackup()` protège l'import (un JSON valide
+  quelconque, « {} », remplaçait toutes les données par du vide), qui demande en plus une
+  confirmation.
+Restent dupliqués dans `tracker/page.tsx` et `MobileTracker.tsx` (à extraire quand on y
+retouche, pas avant) : la sauvegarde d'une transaction et l'ajout d'un poste ponctuel.
 
 ### ⚠️ Règle de parité mobile (workflow utilisateur)
 **Chaque feature ajoutée sur la UI desktop DOIT être portée en mobile dans le même commit/push.** L'utilisateur ne valide pas un feature mobile manquante après-coup.
