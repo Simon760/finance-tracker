@@ -8,13 +8,14 @@ import { todayISO } from '@/lib/utils';
 import GlobalSearch from '@/components/GlobalSearch';
 import {
   LayoutGrid, BarChart3, DollarSign, Home, Settings, Eye, EyeOff,
-  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane, Sun, Moon, Search,
+  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane, Sun, Moon, Search, FlaskConical,
 } from 'lucide-react';
 
 const spaceNavItems = [
   { href: '/tracker', label: 'Tracker', icon: LayoutGrid },
   { href: '/revenus', label: 'Revenus', icon: DollarSign },
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
+  { href: '/simulation', label: 'Simulateur', icon: FlaskConical },
   { href: '/setup', label: 'Setup', icon: Home },
 ];
 
