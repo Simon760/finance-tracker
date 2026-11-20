@@ -133,10 +133,10 @@ export function MSeg<T extends string>({ value, options, onChange, className = '
 }
 
 /** Action ronde sous le gros chiffre (Dépense, Revenu, Régul…). */
-export function MAction({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+export function MAction({ icon, label, onClick, surface = 'page' }: { icon: ReactNode; label: string; onClick: () => void; surface?: Surface }) {
   return (
     <button type="button" onClick={onClick} className="flex flex-col items-center gap-1.5 min-w-[64px] active:opacity-60 transition-opacity">
-      <span className="w-[46px] h-[46px] rounded-full bg-bg-3 flex items-center justify-center text-t-1">{icon}</span>
+      <span className={`w-[46px] h-[46px] rounded-full ${surfaceBg(surface)} flex items-center justify-center text-t-1`}>{icon}</span>
       <span className="text-[12px] text-t-2 font-medium tracking-tight">{label}</span>
     </button>
   );

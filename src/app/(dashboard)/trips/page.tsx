@@ -7,7 +7,12 @@ import Modal from '@/components/ui/Modal';
 import { f$, f0, todayISO } from '@/lib/utils';
 import { MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
 import { Trip, Transaction } from '@/lib/types';
-import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, SlidersHorizontal } from 'lucide-react';
+import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, SlidersHorizontal, ArrowDownLeft, Check, RotateCcw } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { useDialog } from '@/components/ui/Dialog';
+import { shortDay } from '@/lib/labels';
+import BottomSheet from '@/components/mobile/BottomSheet';
+import { MAction, MBadge, MBar, MButton, MCard, MDivider, MEmpty, MField, MIcon, MLabel, MNum, MPill, MRow } from '@/components/mobile/ui';
 
 const todayStr = () => todayISO(); // date LOCALE (cf. todayISO)
 // Formate un YYYY-MM-DD en libellé lisible FR (ex: "jeudi 2 juillet")
@@ -15,6 +20,8 @@ const fmtDay = (ds: string) => new Date(ds + 'T00:00:00').toLocaleDateString('fr
 
 export default function TripsPage() {
   const { state, trips, createTrip, deleteTrip, addTripExpense, deleteTripExpense, updateTripExpense, addTripSwap, updateTrip, curMonth } = useApp();
+  const isMobile = useIsMobile();
+  const { confirm } = useDialog();
 
   const [newOpen, setNewOpen] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
@@ -412,6 +419,276 @@ export default function TripsPage() {
       )}
     </div>
   );
+
+  // ─── UI mobile : mêmes données et mêmes actions ; le détail d'un voyage s'ouvre en volet ───
+  if (isMobile === true) {
+    const cap = (m: string) => m.charAt(0) + m.slice(1).toLowerCase();
+    const monthOpts = state.months.map(mo => <option key={mo.id} value={mo.id}>{mo.id}</option>);
+    const tripRow = (trip: Trip, k: number) => {
+      const { budget, remaining } = tripSummary(trip);
+      return (
+        <div key={trip.id}>
+          {k > 0 && <MDivider />}
+          <MRow
+            icon={<MIcon><Plane size={17} /></MIcon>}
+            title={trip.name}
+            badge={activeTrip?.id === trip.id ? <MBadge tone="accent">En cours</MBadge> : undefined}
+            sub={`${shortDay(trip.startDate, today)}${trip.endDate ? ` → ${shortDay(trip.endDate, today)}` : ''} · ${trip.country}`}
+            right={<span className={`mono-value ${remaining < 0 ? 'text-danger' : ''}`}>{f$(remaining)} {trip.currency}</span>}
+            rightSub={<span className="mono-value">sur {f0(budget)}</span>}
+            chevron
+            onClick={() => setSelectedTripId(trip.id)}
+          />
+        </div>
+      );
+    };
+    const openExpense = () => {
+      if (!selectedTrip) return;
+      setEditing(null);
+      const date = selDay || todayStr();
+      setEForm({ ...eForm, monthId: trackerMonthForDate(date) || selectedTrip.swap.monthId || curMonth || '', date, label: '', eur: 0 });
+      setExpenseOpen(true);
+    };
+    const removeExpense = async () => {
+      if (!selectedTrip || !editing) return;
+      if (!(await confirm('Supprimer cette dépense du voyage ?', { danger: true }))) return;
+      deleteTripExpense(selectedTrip.id, editing.monthId, editing.posteIdx, editing.txIdx, editing.extraName);
+      setExpenseOpen(false);
+      setEditing(null);
+    };
+    const eMonth = state.months.find(x => x.id === eForm.monthId);
+    const extraNames = Array.from(new Set((eMonth?.extraActual || []).map(r => r.name))).filter(n => n.trim().toUpperCase() !== 'VOYAGES');
+    const adjReal = parseFloat(adjustInput.replace(',', '.'));
+    const curT = selectedTrip?.currency || 'EUR';
+    const rateHint = (aed: number, loc: number, c: string) => (aed > 0 && loc > 0 ? `1 ${c} = ${(aed / loc).toFixed(4)} AED` : 'Le taux du voyage est déduit de ces deux montants');
+
+    return (
+      <div className="-mx-1">
+        {trips.length === 0 ? (
+          <MEmpty icon={<Plane size={26} />} title="Prépare ton premier voyage" text="Tu changes des dirhams une fois, puis chaque dépense sur place est suivie dans la devise du pays." action={<MButton onClick={() => setNewOpen(true)}><Plus size={17} />Nouveau voyage</MButton>} />
+        ) : (
+          <>
+            <div className="flex justify-center pt-2 pb-5">
+              <MButton className="!w-auto !h-11 px-6" onClick={() => setNewOpen(true)}><Plus size={17} />Nouveau voyage</MButton>
+            </div>
+            {openTrips.length > 0 && (
+              <>
+                <MLabel>En cours et à venir</MLabel>
+                <MCard className="mb-4">{openTrips.map(tripRow)}</MCard>
+              </>
+            )}
+            {endedTrips.length > 0 && (
+              <>
+                <MLabel right={<button type="button" onClick={() => setEndedOpen(o => !o)} className="text-[13px] text-t-1 font-medium h-8 px-1">{endedOpen ? 'Masquer' : 'Afficher'}</button>}>{endedTrips.length} terminé{endedTrips.length > 1 ? 's' : ''}</MLabel>
+                {endedOpen && <MCard className="mb-2">{endedTrips.map(tripRow)}</MCard>}
+              </>
+            )}
+          </>
+        )}
+
+        {/* Détail d'un voyage */}
+        <BottomSheet
+          open={!!selectedTrip}
+          onClose={() => setSelectedTripId(null)}
+          title={selectedTrip?.name}
+          subtitle={selectedTrip ? `${selectedTrip.country} · ${shortDay(selectedTrip.startDate, today)}${selectedTrip.endDate ? ` → ${shortDay(selectedTrip.endDate, today)}` : ''}` : ''}
+          fullHeight
+          footer={<MButton onClick={openExpense}><Plus size={17} />Ajouter une dépense</MButton>}
+        >
+          {selectedTrip && tripStats && (
+            <>
+              <div className="flex flex-col items-center pt-1 pb-5">
+                <span className="text-[13px] text-t-3">Reste dans la poche</span>
+                <span className="flex items-baseline gap-1.5 mt-1">
+                  <span className={`text-[32px] leading-none mono-value ${tripStats.remaining < 0 ? 'text-danger' : 'text-t-1'}`}>{f$(tripStats.remaining)}</span>
+                  <span className="text-[15px] text-t-3 font-medium">{selectedTrip.currency}</span>
+                </span>
+                <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub">{f$(tripStats.spent)} dépensés sur {f$(tripStats.budget)} · {tripStats.pct.toFixed(0)} %</span>
+                <div className="w-[150px] mt-3"><MBar pct={tripStats.pct / 100} tone={tripStats.pct > 100 ? 'danger' : tripStats.pct > 80 ? 'warning' : 'accent'} /></div>
+                {tripStats.adjustment !== 0 && <span className="text-[13px] text-t-4 mt-2 mono-value m-sub">dont ajustement {tripStats.adjustment > 0 ? '+' : ''}{f$(tripStats.adjustment)}</span>}
+              </div>
+              <div className="flex justify-around pb-5">
+                <MAction surface="sheet" icon={<ArrowDownLeft size={20} />} label="Recharger" onClick={() => { setRForm({ aedOut: 0, localIn: 0, date: todayStr(), monthId: selectedTrip.swap.monthId || curMonth || '' }); setRechargeOpen(true); }} />
+                <MAction surface="sheet" icon={<SlidersHorizontal size={19} />} label="Ajuster" onClick={() => { setAdjustInput(tripStats.remaining.toFixed(2)); setAdjustOpen(true); }} />
+                {selectedTrip.status !== 'ended'
+                  ? <MAction surface="sheet" icon={<Check size={20} />} label="Terminer" onClick={() => updateTrip(selectedTrip.id, { status: 'ended', endDate: selectedTrip.endDate || todayStr() })} />
+                  : <MAction surface="sheet" icon={<RotateCcw size={19} />} label="Rouvrir" onClick={() => updateTrip(selectedTrip.id, { status: 'ongoing', endDate: null })} />}
+              </div>
+
+              <MLabel>{tripSwaps.length > 1 ? `${tripSwaps.length} changes` : 'Change'}</MLabel>
+              <MCard surface="sheet" className="mb-4">
+                {tripSwaps.length === 0 && <div className="px-4 py-5 text-center text-[13px] text-t-3">Aucun change enregistré</div>}
+                {tripSwaps.map((sw, k) => (
+                  <div key={k}>
+                    {k > 0 && <MDivider />}
+                    <MRow className="!min-h-[50px]" title={<span className="mono-value">{f$(sw.eur)} {selectedTrip.currency}</span>} sub={`${shortDay(sw.date, today)} · ${sw.monthId}`} right={<span className="mono-value text-[14px]">{f0(sw.aed)} AED</span>} />
+                  </div>
+                ))}
+              </MCard>
+
+              {/* Calendrier des dépenses */}
+              <MCard surface="sheet" className="mb-4 px-2 pt-2 pb-3">
+                <div className="flex items-center justify-between">
+                  <button type="button" onClick={() => shiftMonth(-1)} className="w-10 h-10 flex items-center justify-center text-t-3 active:opacity-60" aria-label="Mois précédent"><ChevronLeft size={18} /></button>
+                  <div className="text-center">
+                    <div className="text-[14px] font-medium text-t-1">{cap(MOIS_LIST[effCalYM.m])} {effCalYM.y}</div>
+                    <div className="text-[12px] text-t-3 mono-value m-sub">
+                      {calSummary.daysActive > 0 ? `${calSummary.daysActive} jour${calSummary.daysActive > 1 ? 's' : ''} avec dépenses · max ${f0(calSummary.best.total)}` : 'Aucune dépense ce mois-ci'}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => shiftMonth(1)} className="w-10 h-10 flex items-center justify-center text-t-3 active:opacity-60" aria-label="Mois suivant"><ChevronRight size={18} /></button>
+                </div>
+                <div className="grid grid-cols-7 mt-1">
+                  {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, k) => <div key={k} className="text-center text-[11px] text-t-4 py-1">{d}</div>)}
+                  {calCells.map((ds, k) => {
+                    if (!ds) return <div key={k} />;
+                    const info = expensesByDay.get(ds);
+                    const isSel = selDay === ds;
+                    const inTrip = ds >= selectedTrip.startDate && (!selectedTrip.endDate || ds <= selectedTrip.endDate);
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setSelDay(isSel ? null : ds)}
+                        className={`h-11 mx-0.5 my-0.5 rounded-[10px] flex flex-col items-center justify-center ${isSel ? 'bg-t-1 text-bg' : info ? 'bg-bg-3 text-t-1' : inTrip ? 'text-t-2' : 'text-t-4'}`}
+                        aria-label={`${fmtDay(ds)}${info ? `, ${f0(info.total)} dépensés` : ''}`}
+                      >
+                        <span className={`text-[13px] leading-none ${ds === today && !isSel ? 'text-accent font-semibold' : ''}`}>{Number(ds.slice(8))}</span>
+                        {info && <span className={`text-[10px] leading-none mt-1 mono-value ${isSel ? '' : 'text-t-3'}`}>{f0(info.total)}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </MCard>
+
+              <MLabel right={selDay ? <MPill surface="sheet" className="!h-8" onClick={() => setSelDay(null)}>Tout afficher</MPill> : undefined}>
+                {selDay ? cap(fmtDay(selDay)) : `${tripExpenses.length} dépense${tripExpenses.length > 1 ? 's' : ''}`}
+              </MLabel>
+              <MCard surface="sheet" className="mb-4">
+                {shownExpenses.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-t-3">{selDay ? 'Rien ce jour-là' : 'Aucune dépense pour l’instant'}</div>}
+                {shownExpenses.map((e, k) => (
+                  <div key={`${e.monthId}-${e.posteIdx}-${e.txIdx}-${e.extraName || ''}`}>
+                    {k > 0 && <MDivider />}
+                    <MRow
+                      title={e.t.label && e.t.label !== '—' && e.t.label !== '---' ? e.t.label : e.posteName}
+                      sub={`${e.posteName} · ${shortDay(e.t.date, today)}`}
+                      right={<span className="mono-value">−{f$(e.t.eur || 0)}</span>}
+                      rightSub={<span className="mono-value">{f0(e.t.amount || 0)} AED</span>}
+                      onClick={() => startEdit(e)}
+                    />
+                  </div>
+                ))}
+              </MCard>
+
+              <button type="button" onClick={async () => { if (await deleteTrip(selectedTrip.id)) setSelectedTripId(null); }} className="w-full flex items-center justify-center gap-2 h-12 text-[15px] font-medium text-danger active:opacity-60">
+                <Trash2 size={16} />Supprimer ce voyage
+              </button>
+            </>
+          )}
+        </BottomSheet>
+
+        {/* Nouveau voyage */}
+        <BottomSheet open={newOpen} onClose={() => setNewOpen(false)} title="Nouveau voyage" fullHeight footer={<MButton disabled={!nForm.name.trim() || nForm.aedOut <= 0 || nForm.localIn <= 0 || !nForm.monthId} onClick={handleCreate}>Créer le voyage</MButton>}>
+          <MCard surface="sheet" className="mb-3">
+            <MField label="Nom"><input className="m-input text-right" value={nForm.name} onChange={e => setNForm({ ...nForm, name: e.target.value })} placeholder="Paris été 2026" /></MField>
+            <MDivider />
+            <MField label="Pays"><input className="m-input text-right" value={nForm.country} onChange={e => setNForm({ ...nForm, country: e.target.value })} placeholder="France" /></MField>
+            <MDivider />
+            <MField label="Devise sur place"><input className="m-input text-right uppercase" maxLength={3} value={nForm.currency} onChange={e => setNForm({ ...nForm, currency: e.target.value.toUpperCase() })} placeholder="EUR" /></MField>
+            <MDivider />
+            <MField label="Début"><input type="date" className="m-input text-right" value={nForm.startDate} onChange={e => setNForm({ ...nForm, startDate: e.target.value })} /></MField>
+            <MDivider />
+            <MField label="Fin (facultatif)"><input type="date" className="m-input text-right" value={nForm.endDate} onChange={e => setNForm({ ...nForm, endDate: e.target.value })} /></MField>
+          </MCard>
+          <div className="text-[13px] text-t-3 px-4 pb-2">Premier change</div>
+          <MCard surface="sheet">
+            <MField label="AED changés"><MNum className="text-right" value={nForm.aedOut} onChange={n => setNForm({ ...nForm, aedOut: n })} placeholder="1000" /></MField>
+            <MDivider />
+            <MField label={`${nForm.currency || 'Devise'} reçus`}><MNum className="text-right" value={nForm.localIn} onChange={n => setNForm({ ...nForm, localIn: n })} placeholder="250" /></MField>
+            <MDivider />
+            <MField label="Mois du tracker">
+              <select className="m-input text-right" dir="rtl" value={nForm.monthId} onChange={e => setNForm({ ...nForm, monthId: e.target.value })}><option value="">Choisir</option>{monthOpts}</select>
+            </MField>
+          </MCard>
+          <p className="text-[12px] text-t-4 px-4 pt-2 leading-relaxed">{rateHint(nForm.aedOut, nForm.localIn, nForm.currency || 'EUR')}. Le change sort de ton compte dans le mois choisi.</p>
+        </BottomSheet>
+
+        {/* Dépense de voyage */}
+        <BottomSheet open={expenseOpen} onClose={() => { setExpenseOpen(false); setEditing(null); }} title={editing ? 'Modifier la dépense' : 'Dépense de voyage'} footer={<MButton disabled={eForm.eur <= 0 || !eForm.monthId} onClick={handleAddExpense}>{editing ? 'Enregistrer' : 'Ajouter'}</MButton>}>
+          <div className="flex flex-col items-center pt-2 pb-4">
+            <MNum className="m-amount text-center px-6" value={eForm.eur} onChange={n => setEForm({ ...eForm, eur: n })} autoFocus={!editing} ariaLabel="Montant" />
+            <span className="text-[13px] text-t-3 mt-1">{curT}</span>
+            <span className="text-[13px] text-t-3 mt-1 mono-value m-sub">{eForm.eur > 0 && selectedTrip ? `≈ ${f0(eForm.eur * selectedTrip.swap.rate)} AED au taux du voyage` : selectedTrip ? `Taux du voyage ${selectedTrip.swap.rate.toFixed(4)}` : ''}</span>
+          </div>
+          <MCard surface="sheet">
+            <MField label="Poste">
+              <select className="m-input text-right" dir="rtl" value={eForm.target} onChange={e => setEForm({ ...eForm, target: e.target.value })}>
+                {state.postes.map((p, i) => <option key={`p${i}`} value={`p:${i}`}>{p.name}</option>)}
+                {extraNames.length > 0 && <optgroup label="Postes du mois">{extraNames.map(n => <option key={`x${n}`} value={`x:${n}`}>{n}</option>)}</optgroup>}
+              </select>
+            </MField>
+            <MDivider />
+            <MField label="Libellé"><input className="m-input text-right" autoComplete="off" value={eForm.label} onChange={e => setEForm({ ...eForm, label: e.target.value })} placeholder="Restaurant, taxi…" /></MField>
+            <MDivider />
+            <MField label="Date">
+              <input type="date" className="m-input text-right" value={eForm.date} onChange={e => { const date = e.target.value; const mid = trackerMonthForDate(date); setEForm({ ...eForm, date, ...(mid ? { monthId: mid } : {}) }); }} />
+            </MField>
+            <MDivider />
+            <MField label="Mois du tracker">
+              <select className="m-input text-right" dir="rtl" value={eForm.monthId} onChange={e => setEForm({ ...eForm, monthId: e.target.value })}><option value="">Choisir</option>{monthOpts}</select>
+            </MField>
+          </MCard>
+          {eForm.date && !trackerMonthForDate(eForm.date) && (
+            <p className="text-[12px] text-warning px-4 pt-2 leading-relaxed">Aucun mois « {MOIS_LIST[Number(eForm.date.slice(5, 7)) - 1]} » dans le tracker : crée-le pour ranger la dépense au bon mois.</p>
+          )}
+          {filteredSuggestions.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto m-noscroll -mx-4 px-4 pt-3">
+              {filteredSuggestions.map(sg => <MPill key={sg.label} surface="sheet" onClick={() => setEForm({ ...eForm, label: sg.label })}>{sg.label}</MPill>)}
+            </div>
+          )}
+          {editing && (
+            <button type="button" onClick={removeExpense} className="w-full flex items-center justify-center gap-2 h-12 mt-3 text-[15px] font-medium text-danger active:opacity-60"><Trash2 size={16} />Supprimer</button>
+          )}
+        </BottomSheet>
+
+        {/* Recharger */}
+        <BottomSheet open={rechargeOpen} onClose={() => setRechargeOpen(false)} title="Recharger la poche" subtitle="Un nouveau change en cours de voyage" footer={<MButton disabled={rForm.aedOut <= 0 || rForm.localIn <= 0 || !rForm.monthId} onClick={handleRecharge}>Recharger</MButton>}>
+          <MCard surface="sheet">
+            <MField label="AED changés"><MNum className="text-right" value={rForm.aedOut} onChange={n => setRForm({ ...rForm, aedOut: n })} autoFocus /></MField>
+            <MDivider />
+            <MField label={`${curT} reçus`}><MNum className="text-right" value={rForm.localIn} onChange={n => setRForm({ ...rForm, localIn: n })} /></MField>
+            <MDivider />
+            <MField label="Date">
+              <input type="date" className="m-input text-right" value={rForm.date} onChange={e => { const date = e.target.value; const mid = trackerMonthForDate(date); setRForm({ ...rForm, date, ...(mid ? { monthId: mid } : {}) }); }} />
+            </MField>
+            <MDivider />
+            <MField label="Mois du tracker">
+              <select className="m-input text-right" dir="rtl" value={rForm.monthId} onChange={e => setRForm({ ...rForm, monthId: e.target.value })}><option value="">Choisir</option>{monthOpts}</select>
+            </MField>
+          </MCard>
+          <p className="text-[12px] text-t-4 px-4 pt-2 leading-relaxed">{rateHint(rForm.aedOut, rForm.localIn, curT)}.</p>
+        </BottomSheet>
+
+        {/* Ajuster le solde */}
+        <BottomSheet open={adjustOpen} onClose={() => setAdjustOpen(false)} title="Ajuster la poche" subtitle="Ce qu’il te reste vraiment, cash compris" footer={<MButton disabled={isNaN(adjReal)} onClick={handleAdjust}>Appliquer</MButton>}>
+          <div className="flex flex-col items-center pt-2 pb-4">
+            <input className="m-input m-amount mono-value text-center px-6" inputMode="decimal" autoFocus value={adjustInput} onChange={e => setAdjustInput(e.target.value.replace(',', '.'))} aria-label="Solde réel" />
+            <span className="text-[13px] text-t-3 mt-1">{curT}</span>
+          </div>
+          {tripStats && (
+            <MCard surface="sheet">
+              <MRow className="!min-h-[48px]" title={<span className="text-[14px] font-normal text-t-2">Solde calculé</span>} right={<span className="mono-value text-[14px]">{f$(tripStats.budget - tripStats.spent)} {curT}</span>} />
+              <MDivider />
+              <MRow className="!min-h-[48px]" title={<span className="text-[14px] font-normal text-t-2">Écart à appliquer</span>} right={<span className="mono-value text-[14px]">{isNaN(adjReal) ? '—' : `${adjReal - (tripStats.budget - tripStats.spent) >= 0 ? '+' : ''}${f$(adjReal - (tripStats.budget - tripStats.spent))} ${curT}`}</span>} />
+            </MCard>
+          )}
+          {tripStats && tripStats.adjustment !== 0 && (
+            <button type="button" onClick={clearAdjust} className="w-full h-12 mt-2 text-[15px] font-medium text-warning active:opacity-60">Retirer l’ajustement</button>
+          )}
+        </BottomSheet>
+      </div>
+    );
+  }
 
   return (
     <div>

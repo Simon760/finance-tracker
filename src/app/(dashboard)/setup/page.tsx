@@ -9,17 +9,26 @@ import { f$, f0, toEur } from '@/lib/utils';
 import { INSTALL_CAPITAL } from '@/lib/constants';
 import { EmmenagementItem } from '@/lib/types';
 import { useDialog } from '@/components/ui/Dialog';
+import { Plus, Trash2, Home } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import BottomSheet from '@/components/mobile/BottomSheet';
+import { MButton, MCard, MDivider, MEmpty, MField, MLabel, MNum, MRow } from '@/components/mobile/ui';
 
 const CATS = ['Meubles', 'Électroménager', 'Décoration', 'Cuisine', 'Autre'];
 
 export default function SetupPage() {
   const { state, setState, save, getState, liveRate, activeSpace } = useApp();
   const { confirm } = useDialog();
+  const isMobile = useIsMobile();
   const items = state.emmenagement || [];
 
   const [addOpen, setAddOpen] = useState(false);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [form, setForm] = useState<EmmenagementItem>({ poste: '', aed: 0, taux: liveRate, eur: 0, cat: CATS[0] });
+
+  // Catégories proposées : la liste de base + celles déjà utilisées (sinon une ligne
+  // rangée dans « Société » s'affichait comme « Meubles » dans le formulaire)
+  const catOptions = Array.from(new Set([...CATS, ...items.map(i => i.cat).filter(Boolean)]));
 
   const totalAed = items.reduce((s, i) => s + (i.aed || 0), 0);
   const totalEur = items.reduce((s, i) => s + (i.eur || toEur(i.aed, i.taux || liveRate)), 0);
@@ -66,6 +75,93 @@ export default function SetupPage() {
     setState({ ...getState(), emmenagement: items.filter((_, i) => i !== idx) });
     save();
   };
+
+  // ─── UI mobile : mêmes données et mêmes actions, rendu en cartes fines ───
+  if (isMobile === true) {
+    const cur = activeSpace?.localCurrency || 'AED';
+    const eurOf = (i: EmmenagementItem) => i.eur || toEur(i.aed, i.taux || liveRate);
+    const cats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+    const sheet = (
+      <BottomSheet open={addOpen} onClose={() => setAddOpen(false)} title={editIdx !== null ? 'Modifier le frais' : 'Nouveau frais'} footer={<MButton disabled={!form.poste.trim()} onClick={saveItem}>{editIdx !== null ? 'Enregistrer' : 'Ajouter'}</MButton>}>
+        <div className="flex flex-col items-center pt-2 pb-4">
+          <MNum className="m-amount text-center px-6" value={form.aed} onChange={n => setForm({ ...form, aed: n })} autoFocus={editIdx === null} ariaLabel="Montant" />
+          <span className="text-[13px] text-t-3 mt-1">{cur}</span>
+          <span className="text-[13px] text-t-3 mt-1 mono-value m-sub">{form.aed > 0 && form.taux > 0 ? `≈ ${f$(form.aed / form.taux)} €` : 'au taux indiqué ci-dessous'}</span>
+        </div>
+        <MCard surface="sheet">
+          <MField label="Quoi"><input className="m-input text-right" value={form.poste} onChange={e => setForm({ ...form, poste: e.target.value })} placeholder="Canapé" /></MField>
+          <MDivider />
+          <MField label="Catégorie">
+            <select className="m-input text-right" dir="rtl" value={form.cat} onChange={e => setForm({ ...form, cat: e.target.value })}>{catOptions.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          </MField>
+          <MDivider />
+          <MField label={`Taux EUR / ${cur}`}><MNum className="text-right" value={form.taux} onChange={n => setForm({ ...form, taux: n })} /></MField>
+        </MCard>
+        {editIdx !== null && (
+          <button type="button" onClick={() => { const i = editIdx; setAddOpen(false); deleteItem(i); }} className="w-full flex items-center justify-center gap-2 h-12 mt-3 text-[15px] font-medium text-danger active:opacity-60"><Trash2 size={16} />Supprimer</button>
+        )}
+      </BottomSheet>
+    );
+    if (items.length === 0) {
+      return (
+        <>
+          <MEmpty icon={<Home size={26} />} title="Note tes frais d’installation" text="Meubles, électroménager, dépôt : ce que t’a coûté ton arrivée, à part du budget mensuel." action={<MButton onClick={openAdd}><Plus size={17} />Ajouter un frais</MButton>} />
+          {sheet}
+        </>
+      );
+    }
+    return (
+      <div className="-mx-1">
+        <div className="flex flex-col items-center pt-3 pb-6">
+          <span className="text-[13px] text-t-3">Frais d’installation</span>
+          <span className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-[36px] leading-none hero-num mono-value text-t-1">{f0(totalAed)}</span>
+            <span className="text-[16px] text-t-3 font-medium">{cur}</span>
+          </span>
+          <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub">≈ {f$(totalEur)} € · {items.length} ligne{items.length > 1 ? 's' : ''}</span>
+          <MButton className="!w-auto !h-11 px-6 mt-4" onClick={openAdd}><Plus size={17} />Ajouter un frais</MButton>
+        </div>
+
+        {install && (
+          <MCard className="mb-4">
+            <MRow
+              title="Capital avant installation"
+              sub={<span className="mono-value">{f0(totalAed)} de frais + {f0(install.aed)} transférés</span>}
+              right={<span className="mono-value">{f0(capitalPreInstall)} {cur}</span>}
+              rightSub={<span className="mono-value">{f$(capitalPreInstall / install.rate)} €</span>}
+            />
+          </MCard>
+        )}
+
+        <MLabel>Par catégorie</MLabel>
+        <MCard className="mb-4">
+          {cats.map(([cat, val], k) => (
+            <div key={cat}>
+              {k > 0 && <MDivider />}
+              <MRow className="!min-h-[48px]" title={<span className="text-[14px] font-normal text-t-2">{cat}</span>} right={<span className="mono-value">{f$(val)} €</span>} rightSub={<span className="mono-value">{totalEur > 0 ? Math.round((val / totalEur) * 100) : 0} %</span>} />
+            </div>
+          ))}
+        </MCard>
+
+        <MLabel>Détail</MLabel>
+        <MCard className="mb-2">
+          {items.map((item, i) => (
+            <div key={i}>
+              {i > 0 && <MDivider />}
+              <MRow
+                title={item.poste || 'Sans nom'}
+                sub={<span className="mono-value">{item.cat || 'Autre'} · taux {(item.taux || liveRate).toFixed(4)}</span>}
+                right={<span className="mono-value">{f0(item.aed)} {cur}</span>}
+                rightSub={<span className="mono-value">{f$(eurOf(item))} €</span>}
+                onClick={() => openEdit(i)}
+              />
+            </div>
+          ))}
+        </MCard>
+        {sheet}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -150,7 +246,7 @@ export default function SetupPage() {
           </FormField>
           <FormField label="Catégorie">
             <select className="fi" value={form.cat} onChange={e => setForm({ ...form, cat: e.target.value })}>
-              {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+              {catOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </FormField>
           <FormField label="Montant AED">
