@@ -3,13 +3,16 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
 import { AppState, Month, Space, HistoryEntry, ResidencyEntry, Trip, Transaction, Theme } from '@/lib/types';
 import { DEFAULT_POSTES, MOIS_LIST, monthBaseName, monthYearSuffix, monthIndexOf } from '@/lib/constants';
-import { fbGet, fbSet } from '@/lib/firebase';
+import { fbGet, fbSet, fbPatch } from '@/lib/firebase';
+import { shouldAdoptRemote, sendWasDelivered } from '@/lib/sync';
 import { fetchRate, detectYears, todayISO } from '@/lib/utils';
-import { normalizeLoadedState } from '@/lib/normalize';
+import { normalizeLoadedState, looksLikeBackup } from '@/lib/normalize';
 import { useDialog } from '@/components/ui/Dialog';
 
 /** Doit rester identique à la clé lue par le script anti-flash de app/layout.tsx. */
 export const THEME_KEY = 'fhq_theme';
+/** Présent tant que des modifications locales n'ont pas été confirmées par le serveur. */
+const DIRTY_KEY = 'fdxb_dirty';
 
 /**
  * Normalise un nom de mois : majuscules, sans accents, sans espaces.
@@ -308,15 +311,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getState = useCallback(() => stateRef.current, []);
   const { confirm } = useDialog();
 
+  // `dirty` : des modifications locales n'ont pas (encore) été confirmées par le serveur.
+  // Tant que c'est vrai, la relecture au retour dans l'app n'adopte rien (cf. lib/sync).
+  const dirtyRef = useRef(false);
+  const setDirty = useCallback((v: boolean) => {
+    dirtyRef.current = v;
+    try { if (v) localStorage.setItem(DIRTY_KEY, '1'); else localStorage.removeItem(DIRTY_KEY); } catch { /* stockage indisponible */ }
+  }, []);
+
   const persistToFirebase = useCallback((s: AppState, uid: string) => {
     setSyncStatus('saving');
+    setDirty(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
+    const timer = setTimeout(() => {
       fbSet(`users/${uid}/state`, s)
-        .then(() => setSyncStatus('ok'))
+        .then(() => {
+          setSyncStatus('ok');
+          // Une sauvegarde plus récente est peut-être déjà programmée : seule la dernière lève le marqueur
+          if (saveTimer.current === timer) { saveTimer.current = null; setDirty(false); }
+        })
         .catch(() => setSyncStatus('off'));
     }, 600);
+    saveTimer.current = timer;
+  }, [setDirty]);
+
+  // Le taux change tout seul (toutes les 10 min) : on n'envoie QUE lui. Avant, chaque
+  // rafraîchissement renvoyait l'état entier — un onglet resté ouvert sur une vieille copie
+  // écrasait ainsi, sans aucune action, ce qui avait été saisi ailleurs.
+  const persistRate = useCallback((rate: number, uid: string) => {
+    fbPatch(`users/${uid}/state`, { rate }).catch(() => { /* le taux sera renvoyé au prochain rafraîchissement */ });
   }, []);
+
+  // Relecture de la version en ligne (au montage, puis à chaque retour au premier plan)
+  const pulling = useRef(false);
+  const lastPull = useRef(0);
+  const pullRemote = useCallback(async () => {
+    let uid: string | null = null;
+    try { uid = localStorage.getItem('fdxb_uid'); } catch { return; }
+    if (!uid || pulling.current || saveTimer.current) return;
+    if (Date.now() - lastPull.current < 15000) return;
+    pulling.current = true;
+    lastPull.current = Date.now();
+    try {
+      const remote = await fbGet<AppState>(`users/${uid}/state`);
+      if (!remote || !looksLikeBackup(remote)) return;
+      const local = stateRef.current;
+      if (dirtyRef.current && sendWasDelivered(local.lastUpdate, remote.lastUpdate)) { setDirty(false); return; }
+      // `dirty` relu APRÈS l'attente : une saisie faite pendant la lecture prime
+      if (saveTimer.current || !shouldAdoptRemote(local.lastUpdate, remote.lastUpdate, dirtyRef.current)) return;
+      // Filet : la copie locale remplacée reste récupérable (une seule, la dernière)
+      try { localStorage.setItem('fdxb_state_prev', JSON.stringify(local)); } catch { /* quota : on continue */ }
+      const data = normalizeLoadedState(remote);
+      if (local.rate > 0) data.rate = local.rate; // le taux du jour de CET appareil reste affiché
+      setStateRaw(data);
+      try { localStorage.setItem('fdxb_state', JSON.stringify(data)); } catch { /* idem */ }
+      const sp = stateToSpaces(data);
+      const activeId = data.activeSpaceId || sp[0].id;
+      setActiveSpaceIdRaw(activeId);
+      const active = sp.find(x => x.id === activeId) || sp[0];
+      setCurMonth(prev => (prev && active.months.some(mo => mo.id === prev) ? prev : active.months.length > 0 ? pickInitialMonth(active.months) : null));
+      console.log('[fdxb] version en ligne plus récente adoptée', remote.lastUpdate);
+    } catch { /* hors ligne : on garde la copie locale */ } finally {
+      pulling.current = false;
+    }
+  }, [setDirty]);
+
+  useEffect(() => {
+    try { dirtyRef.current = localStorage.getItem(DIRTY_KEY) === '1'; } catch { /* idem */ }
+    pullRemote();
+    const onVisible = () => { if (document.visibilityState === 'visible') pullRemote(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [pullRemote]);
 
   const save = useCallback(() => {
     setStateRaw(prev => {
@@ -478,13 +548,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStateRaw(prev => {
         const u = { ...prev, rate };
         localStorage.setItem('fdxb_state', JSON.stringify(u));
-        if (userId) persistToFirebase(u, userId);
         return u;
       });
+      if (userId) persistRate(rate, userId);
     } finally {
       setRateRefreshing(false);
     }
-  }, [userId, persistToFirebase]);
+  }, [userId, persistRate]);
 
   // Auto-refresh toutes les 10 minutes (TwelveData 800 req/jour suffit largement = ~144 req/jour avec 10min interval)
   useEffect(() => {
@@ -501,10 +571,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStateRaw(prev => {
       const u = { ...prev, rate };
       localStorage.setItem('fdxb_state', JSON.stringify(u));
-      if (userId) persistToFirebase(u, userId);
       return u;
     });
-  }, [userId, persistToFirebase]);
+    if (userId) persistRate(rate, userId);
+  }, [userId, persistRate]);
 
   const toggleHidden = useCallback(() => setHiddenMode(prev => !prev), []);
 
@@ -524,6 +594,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // La persistance se fait dans toggleTheme, sur action utilisateur.
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    // Couleur de la barre du navigateur / de l'app installée : suit le thème
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f0f2f5' : '#09090b');
   }, [theme]);
 
   const toggleTheme = useCallback(() => setTheme(prev => {
