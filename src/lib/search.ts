@@ -85,7 +85,7 @@ export function searchAll(
       if (txns.length > 0) {
         txns.forEach(t => {
           const eur = t.eur || (t.rate ? t.amount / t.rate : 0);
-          const orig = (t as { originalAmount?: number }).originalAmount || 0;
+          const orig = t.originalAmount || 0;
           const kind = t.tripKind === 'swap' ? 'swap voyage' : t.tripId ? 'voyage' : '';
           push(
             { kind: 'expense', date: t.date || '', label: t.label && t.label !== '---' ? t.label : '', context: name, monthLabel: m.id, aed: t.amount || 0, eur, trip: !!t.tripId, target },

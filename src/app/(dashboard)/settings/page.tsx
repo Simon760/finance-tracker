@@ -6,6 +6,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Poste } from '@/lib/types';
 import DataAudit from '@/components/DataAudit';
+import RecurringSettings from '@/components/RecurringSettings';
 import { isPosteFixed } from '@/lib/budgetBalance';
 import { todayISO } from '@/lib/utils';
 import { removePosteAt, swapPostes } from '@/lib/postes';
@@ -393,6 +394,9 @@ export default function SettingsPage() {
       )}
 
       {/* Outil d'audit et repair de la data */}
+      {/* Dépenses et revenus récurrents */}
+      <RecurringSettings />
+
       <DataAudit />
 
       {/* Historique des modifs */}

@@ -14,6 +14,8 @@ import { EyeOff, Pencil } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { applyRegul, clearRegul } from '@/lib/regul';
 import { newMonthId, buildNewMonth } from '@/lib/months';
+import { useRecurring } from '@/lib/useRecurring';
+import RecurringBanner from '@/components/RecurringBanner';
 import RegulHistory from '@/components/RegulHistory';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
@@ -154,8 +156,7 @@ export default function TrackerPage() {
       date: txnForm.date || todayISO(),
       currency: txnForm.currency,
     };
-    // @ts-expect-error: originalAmount for edit round-trip
-    txnEntry.originalAmount = Math.round(txnForm.amount * 100) / 100;
+    txnEntry.originalAmount = Math.round(txnForm.amount * 100) / 100; // pour ré-éditer sans dérive
 
     // Helper: recalcule aed/eur d'une row à partir de ses txns
     // Écrit TOUJOURS les deux devises, y compris pour un poste EUR. Avant, row.aed
@@ -386,6 +387,7 @@ export default function TrackerPage() {
   const years = detectYears(state.months);
   const filtered = curYear === 'all' ? state.months : state.months.filter(m => m._year === parseInt(curYear));
   const m = state.months.find(mo => mo.id === curMonth);
+  const recur = useRecurring(m);
   // Mois précédent (M-1) — sert pour les comparaisons inline dans le tableau
 
   // Revenue helpers
@@ -790,6 +792,15 @@ export default function TrackerPage() {
 
       {m && (
         <>
+          {/* Dépenses récurrentes échues (n'apparaît que s'il y en a) */}
+          <RecurringBanner
+            title={`${recur.due.length} dépense${recur.due.length > 1 ? 's' : ''} récurrente${recur.due.length > 1 ? 's' : ''} échue${recur.due.length > 1 ? 's' : ''} à ajouter`}
+            items={recur.due.map(o => ({ key: o.key, label: o.rule.label, detail: `${o.date.slice(8, 10)}/${o.date.slice(5, 7)} · ${f0(o.rule.amount)} ${o.rule.currency}` }))}
+            addLabel="Ajouter"
+            onAdd={recur.addDue}
+            onSkip={recur.skipDue}
+          />
+
           {/* Solde cards */}
           <div className="flex gap-2.5 mb-5 flex-wrap">
             <SoldeCard icon="🏦" label="Solde début (AED)" value={m.soldeStart} onChange={v => updateMonth(m.id, 'soldeStart', v)} />

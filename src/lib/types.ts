@@ -32,6 +32,8 @@ export interface Transaction {
   rate: number;
   eur?: number;
   date?: string;
+  /** Montant tel que saisi, dans `currency` (sert à ré-éditer sans dérive d'arrondi). */
+  originalAmount?: number;
   /** Si défini, cette tx fait partie d'un voyage. tripKind=swap : débite l'AED bank (normal).
    * tripKind=expense (défaut si tripId set) : NE débite PAS l'AED bank (le swap initial l'a déjà fait). */
   tripId?: string;

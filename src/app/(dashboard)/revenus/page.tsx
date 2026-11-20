@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal';
 import RankedBars from '@/components/ui/RankedBars';
 import { f$, f0, sameWeekdayDatesInMonth, todayISO } from '@/lib/utils';
 import { useRevenus } from '@/lib/useRevenus';
+import RecurringBanner from '@/components/RecurringBanner';
 import { useDialog } from '@/components/ui/Dialog';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
@@ -184,6 +185,15 @@ export default function RevenusPage() {
             );
           })}
         </div>
+
+        {/* Revenus récurrents du mois affiché (n'apparaît que s'il y en a) */}
+        <RecurringBanner
+          title={`${R.recurDue.length} revenu${R.recurDue.length > 1 ? 's' : ''} récurrent${R.recurDue.length > 1 ? 's' : ''} à prévoir en ${effectiveTab.toLowerCase()} ${year}`}
+          items={R.recurDue.map(o => ({ key: o.key, label: o.rule.label, detail: `${o.date.slice(8, 10)}/${o.date.slice(5, 7)} · ${f0(o.rule.amount)} ${o.rule.currency}` }))}
+          addLabel="Ajouter en prévision"
+          onAdd={R.addRecurring}
+          onSkip={R.skipRecurring}
+        />
 
         {/* KPIs — matches old HTML order: Objectif, Encaissé, Contracté, Delta, Atteinte */}
         <div className="grid grid-cols-5 gap-3 mb-5 max-lg:grid-cols-3 max-md:grid-cols-1">

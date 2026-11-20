@@ -6,6 +6,7 @@ import { useDialog } from '@/components/ui/Dialog';
 import { RevenuEntry } from './types';
 import { MOIS_LIST, monthIndexOf } from './constants';
 import { f$, fetchRate, sameWeekdayDatesInMonth, todayISO } from './utils';
+import { pendingRevenus, applyRevenus, skipOccurrences } from './recurring';
 import {
   USD_AED_PEG, currentRevMonth, isFutureRevMonth, resolveRevKey, revYearView, revYears,
   revenuLive, revenusMonthsLive, isRevConfirmed, revFormPerEur, revFormAed,
@@ -26,7 +27,7 @@ const BLANK: RevenuEntry = { date: '', client: '', cat: '', contracted: 0, cashe
  * l'écriture uniquement.
  */
 export function useRevenus() {
-  const { state, setState, save, getState, liveRate, logChange, revFocus, setRevFocus } = useApp();
+  const { state, setState, save, getState, liveRate, logChange, revFocus, setRevFocus, activeSpaceId } = useApp();
   const { confirm } = useDialog();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
   const categories = rev.categories || [];
@@ -188,6 +189,31 @@ export function useRevenus() {
     logChange?.('revenu.delete', `Suppr revenu ${removed.client || '—'} · ${f$(removed.cashed || 0)} € (${key})`);
   };
 
+  // ─── Revenus récurrents de la période affichée (cf. lib/recurring) ───
+  const tabIdx = monthIndexOf(tab);
+  const recurRules = useMemo(
+    () => (state.recurring || []).filter(r => !r.spaceId || r.spaceId === activeSpaceId),
+    [state.recurring, activeSpaceId],
+  );
+  const recurDue = tabIdx >= 0 ? pendingRevenus(recurRules, rev.months, year, tabIdx) : [];
+
+  const addRecurring = () => {
+    if (recurDue.length === 0 || tabIdx < 0) return;
+    const s = getState();
+    const fresh = pendingRevenus(s.recurring || [], s.revenus?.months, year, tabIdx).filter(o => recurDue.some(d => d.key === o.key));
+    if (fresh.length === 0) return;
+    setState({ ...s, revenus: { ...s.revenus, months: applyRevenus(s.revenus?.months, year, tabIdx, fresh, rates) } });
+    save();
+    logChange?.('recurring.apply', `${fresh.length} revenu(s) récurrent(s) ajouté(s) en prévision (${keyOf(tab)}) : ${Array.from(new Set(fresh.map(o => o.rule.label))).join(', ')}`);
+  };
+
+  const skipRecurring = () => {
+    if (recurDue.length === 0) return;
+    const s = getState();
+    setState({ ...s, recurring: skipOccurrences(s.recurring, recurDue) });
+    save();
+  };
+
   const confirmEntry = (month: string, idx: number) => {
     const key = keyOf(month);
     const res = confirmRevenu(rev.months, key, idx, liveRate);
@@ -208,5 +234,7 @@ export function useRevenus() {
     repeatWeekly, setRepeatWeekly, rateTouched, setRateTouched,
     // actions
     openAdd, openEdit, saveEntry, deleteEntry, confirmEntry,
+    // récurrences
+    recurDue, addRecurring, skipRecurring,
   };
 }

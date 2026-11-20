@@ -10,6 +10,8 @@ import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt, EyeOff } from
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
 import { applyRegul, clearRegul } from '@/lib/regul';
 import { newMonthId, buildNewMonth } from '@/lib/months';
+import { useRecurring } from '@/lib/useRecurring';
+import RecurringBanner from '@/components/RecurringBanner';
 import RegulHistory from '@/components/RegulHistory';
 import { useDialog } from '@/components/ui/Dialog';
 
@@ -21,6 +23,7 @@ export default function MobileTracker() {
   const months = state.months;
   const idx = months.findIndex(mo => mo.id === curMonth);
   const m: Month | undefined = idx >= 0 ? months[idx] : undefined;
+  const recur = useRecurring(m);
 
   // Add / edit transaction state
   const [txSheetOpen, setTxSheetOpen] = useState(false);
@@ -354,6 +357,15 @@ export default function MobileTracker() {
           <ChevronRight size={18} />
         </button>
       </div>
+
+      {/* Dépenses récurrentes échues (n'apparaît que s'il y en a) */}
+      <RecurringBanner
+        title={`${recur.due.length} dépense${recur.due.length > 1 ? 's' : ''} récurrente${recur.due.length > 1 ? 's' : ''} échue${recur.due.length > 1 ? 's' : ''} à ajouter`}
+        items={recur.due.map(o => ({ key: o.key, label: o.rule.label, detail: `${o.date.slice(8, 10)}/${o.date.slice(5, 7)} · ${f0(o.rule.amount)} ${o.rule.currency}` }))}
+        addLabel="Ajouter"
+        onAdd={recur.addDue}
+        onSkip={recur.skipDue}
+      />
 
       {/* KPI cards horizontal scroll */}
       <div className="grid grid-cols-3 gap-2 mb-5">
