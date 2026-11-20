@@ -4,12 +4,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import Modal from '@/components/ui/Modal';
-import { f$, f0 } from '@/lib/utils';
+import { f$, f0, todayISO } from '@/lib/utils';
 import { MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
 import { Trip, Transaction } from '@/lib/types';
 import { Plus, Plane, ArrowRight, Calendar, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, SlidersHorizontal } from 'lucide-react';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => todayISO(); // date LOCALE (cf. todayISO)
 // Formate un YYYY-MM-DD en libellé lisible FR (ex: "jeudi 2 juillet")
 const fmtDay = (ds: string) => new Date(ds + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 

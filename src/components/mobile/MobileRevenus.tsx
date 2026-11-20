@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { useApp } from '@/context/AppProvider';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth, currentRevMonth, revenuAtRate, revenuLive, revenusMonthsLive } from '@/lib/utils';
+import { useState, useMemo } from 'react';
+import { f$, f0, sameWeekdayDatesInMonth } from '@/lib/utils';
+import { useRevenus } from '@/lib/useRevenus';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -14,212 +14,39 @@ const STATUS_COLORS = {
   pending:   { row: 'border-l-warning',badge: 'text-warning bg-warning/10', label: 'EN ATTENTE' },
 } as const;
 
-const todayStr = () => new Date().toISOString().split('T')[0];
-
 export default function MobileRevenus() {
-  const { state, setState, save, liveRate, logChange } = useApp();
-  const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
-  const categories = rev.categories || [];
-
-  // Mois navigables = ceux qui ont des données + le mois CALENDAIRE courant, même vide :
-  // on atterrit dessus (comme le tracker de dépenses) et pas sur le dernier mois saisi —
-  // sinon des revenus entrés en prévision pour le mois suivant faisaient ouvrir la page
-  // sur ce mois-là.
-  const orderedMonths = useMemo(() => {
-    const existing = new Set([...Object.keys(rev.months || {}), currentRevMonth()]);
-    return (MOIS_LIST as readonly string[]).filter(m => existing.has(m));
-  }, [rev.months]);
-  const hasAnyData = useMemo(
-    () => Object.values(rev.months || {}).some(entries => (entries || []).length > 0),
-    [rev.months]
-  );
-
-  const [curTab, setCurTab] = useState<string>('');
-  const effectiveTab = curTab || currentRevMonth();
-
-  // Table telle qu'AFFICHÉE / sommée (prévisions au taux du jour, cf. revenuLive) — les
-  // handlers d'écriture lisent toujours rev.months brut, mêmes index d'entrées.
-  const viewMonths = useMemo(() => revenusMonthsLive(rev.months, liveRate), [rev.months, liveRate]);
+  // Toute la logique (période, table de l'année, formulaire, écritures) est partagée
+  // avec l'affichage desktop — cf. lib/useRevenus. Ici : uniquement du rendu.
+  const R = useRevenus();
+  const {
+    rev, categories, liveRate, year, setYear, years, yearRaw, viewMonths, orderedMonths, hasAnyData,
+    form, setForm, formMonth, setFormMonth, formYear, setFormYear,
+    rateFor, perEurOf, aedOf, repeatWeekly, setRepeatWeekly, rateTouched, setRateTouched,
+    saveEntry, deleteEntry, confirmEntry,
+  } = R;
+  const effectiveTab = R.tab;
+  const setCurTab = R.setTab;
+  const sheetOpen = R.formOpen;
+  const setSheetOpen = R.setFormOpen;
+  const USD_AED_PEG = R.usdPeg;
   const curIdx = orderedMonths.indexOf(effectiveTab);
 
-  // Suggestions clients par fréquence
-  const clientSuggestions = useMemo(() => {
-    const counts = new Map<string, { count: number; lastDate: string }>();
-    Object.values(rev.months || {}).forEach(entries => {
-      (entries || []).forEach(e => {
-        const name = (e.client || '').trim();
-        if (!name) return;
-        const cur = counts.get(name);
-        if (cur) {
-          cur.count++;
-          if ((e.date || '') > cur.lastDate) cur.lastDate = e.date || '';
-        } else {
-          counts.set(name, { count: 1, lastDate: e.date || '' });
-        }
-      });
-    });
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1].count - a[1].count || b[1].lastDate.localeCompare(a[1].lastDate))
-      .map(([name, info]) => ({ name, count: info.count }));
-  }, [rev.months]);
-
-  // Edit/Add form
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [editIdx, setEditIdx] = useState<{ month: string; idx: number } | null>(null);
-  const [form, setForm] = useState<RevenuEntry>({ date: '', client: '', cat: '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
-  const [formMonth, setFormMonth] = useState('');
   const [showClientSugg, setShowClientSugg] = useState(false);
-
-  // Taux EUR→USD (même source que EUR/AED : TwelveData prioritaire + fallbacks)
-  const [usdRate, setUsdRate] = useState(1.08);
-  useEffect(() => { fetchRate('USD').then(r => { if (r > 0) setUsdRate(r); }).catch(() => {}); }, []);
-  // 1 EUR = rateFor(devise) unités de cette devise
-  const rateFor = (c?: string) => (c === 'USD' ? usdRate : c === 'AED' ? liveRate : 1);
-
-  // Taux USD→AED officiel (peg) — défaut du champ, l'utilisateur met son taux de swap réel
-  const USD_AED_PEG = 3.6725;
-
-  // Récurrence hebdo : duplique l'entrée sur les autres mêmes jours de semaine du mois
-  const [repeatWeekly, setRepeatWeekly] = useState(false);
-  const repeatDates = useMemo(() => (repeatWeekly ? sameWeekdayDatesInMonth(form.date) : []), [repeatWeekly, form.date]);
-
-  // Le champ Taux EUR/AED suit le taux live tant qu'il n'a pas été modifié à la main
-  const [rateTouched, setRateTouched] = useState(false);
-  useEffect(() => {
-    if (sheetOpen && !rateTouched) setForm(f => ({ ...f, rate: liveRate }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveRate, sheetOpen, rateTouched]);
-
-  // Devise du form → 1 EUR = perEurOf(f) unités ; AED crédité au compte = aedOf(f)
-  const perEurOf = (f: RevenuEntry) => {
-    const c = f.currency || 'EUR';
-    if (c === 'EUR') return 1;
-    if (c === 'AED') return f.rate || liveRate;
-    return f.origRate || usdRate;
-  };
-  const aedOf = (f: RevenuEntry, amount: number) => {
-    const c = f.currency || 'EUR';
-    if (c === 'EUR') return amount * (f.rate || liveRate);
-    if (c === 'AED') return amount;
-    return amount * (f.origToAed || USD_AED_PEG);
-  };
-
-  // Month picker sheet
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
 
   const filteredClientSugg = useMemo(() => {
     const q = (form.client || '').trim().toLowerCase();
-    const arr = q ? clientSuggestions.filter(s => s.name.toLowerCase().includes(q) && s.name.toLowerCase() !== q) : clientSuggestions;
+    const arr = q ? R.clientSuggestions.filter(s => s.name.toLowerCase().includes(q) && s.name.toLowerCase() !== q) : R.clientSuggestions;
     return arr.slice(0, 6);
-  }, [clientSuggestions, form.client]);
+  }, [R.clientSuggestions, form.client]);
 
-  const openAdd = () => {
-    setForm({ date: todayStr(), client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed', currency: 'EUR' });
-    setFormMonth(effectiveTab || orderedMonths[orderedMonths.length - 1] || '');
-    setEditIdx(null);
-    setShowClientSugg(false);
-    setRateTouched(false); // le taux suit le live jusqu'à modification manuelle
-    setRepeatWeekly(false);
-    setSheetOpen(true);
-  };
-
-  const openEdit = (month: string, idx: number) => {
-    // Non confirmée : pré-remplie au taux du jour (mêmes valeurs que la liste), taux
-    // EUR/AED qui continue de suivre le live.
-    const raw = rev.months[month][idx];
-    const confirmed = !raw.status || raw.status === 'confirmed';
-    const e = revenuLive(raw, liveRate);
-    // Pré-remplit dans la devise d'origine (orig*) — saveEntry reconvertira en EUR
-    // avec le même origRate → sauvegarder sans rien changer est neutre.
-    if (e.currency && e.currency !== 'EUR' && e.origAmount != null) {
-      setForm({ ...e, cashed: e.origAmount, contracted: e.origContracted ?? e.contracted });
-    } else {
-      setForm({ ...e, currency: 'EUR' });
-    }
-    setFormMonth(month);
-    setEditIdx({ month, idx });
-    setShowClientSugg(false);
-    setRateTouched(confirmed); // confirmée : taux historique conservé (bouton Live pour re-sync)
-    setRepeatWeekly(false); // la récurrence ne s'applique qu'à la création
-    setSheetOpen(true);
-  };
-
-  const saveEntry = () => {
-    const monthKey = formMonth.trim().toUpperCase();
-    if (!monthKey) return;
-    // Les montants du form sont dans form.currency → conversion vers l'EUR stocké.
-    // rate stocké = AED crédité ÷ EUR encaissé (dérivé) — USD : montant × taux de swap.
-    const cur = form.currency || 'EUR';
-    const perEur = perEurOf(form);
-    const cashedEur = Math.round(((form.cashed || 0) / perEur) * 100) / 100;
-    const aed = aedOf(form, form.cashed || 0);
-    const effRate = cashedEur > 0 ? Math.round((aed / cashedEur) * 100000) / 100000 : (form.rate || liveRate);
-    const entry: RevenuEntry = {
-      ...form,
-      currency: cur,
-      contracted: Math.round(((form.contracted || 0) / perEur) * 100) / 100,
-      cashed: cashedEur,
-      origAmount: cur !== 'EUR' ? (form.cashed || 0) : undefined,
-      origContracted: cur !== 'EUR' ? (form.contracted || 0) : undefined,
-      origRate: cur !== 'EUR' ? perEur : undefined,
-      origToAed: cur === 'USD' ? (form.origToAed || USD_AED_PEG) : undefined,
-      rate: effRate,
-    };
-    const months = { ...(rev.months || {}) };
-    if (!months[monthKey]) months[monthKey] = [];
-    let added = 1;
-    if (editIdx) {
-      months[editIdx.month] = [...months[editIdx.month]];
-      months[editIdx.month][editIdx.idx] = entry;
-    } else {
-      // Récurrence hebdo : copies indépendantes sur les autres mêmes jours du mois
-      const clones = repeatWeekly
-        ? repeatDates
-            .filter(d => !months[monthKey].some(e => e.date === d && e.client === entry.client && e.cashed === entry.cashed))
-            .map(d => ({ ...entry, date: d }))
-        : [];
-      months[monthKey] = [...months[monthKey], entry, ...clones];
-      added += clones.length;
-    }
-    setState({ ...state, revenus: { ...rev, months } });
-    setSheetOpen(false);
-    save();
-    const action = editIdx ? 'revenu.update' : 'revenu.add';
-    const verb = editIdx ? 'Modif' : 'Ajout';
-    const suffix = added > 1 ? ` ×${added} (récurrence hebdo)` : '';
-    logChange?.(action, `${verb} revenu ${entry.client || '—'} · ${f$(entry.cashed || 0)} €${suffix} (${editIdx ? editIdx.month : monthKey})`);
-  };
-
-  const deleteEntry = (month: string, idx: number) => {
-    if (!confirm('Supprimer cette entrée ?')) return;
-    const months = { ...(rev.months || {}) };
-    const removed = months[month][idx];
-    months[month] = months[month].filter((_, i) => i !== idx);
-    if (months[month].length === 0) delete months[month];
-    setState({ ...state, revenus: { ...rev, months } });
-    save();
-    logChange?.('revenu.delete', `Suppr revenu ${removed?.client || '—'} · ${f$(removed?.cashed || 0)} € (${month})`);
-  };
-
-  const confirmEntry = (month: string, idx: number) => {
-    const months = { ...(rev.months || {}) };
-    months[month] = [...months[month]];
-    const before = months[month][idx];
-    // Fige les valeurs au taux du jour — celles que la prévision affichait déjà
-    // (cf. revenuAtRate / revenuLive dans lib/utils).
-    const frozen = { ...revenuAtRate(before, liveRate), status: 'confirmed' as const };
-    months[month][idx] = frozen;
-    setState({ ...state, revenus: { ...rev, months } });
-    save();
-    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(frozen.cashed || 0)} € (${month})`);
-  };
-
-  useEffect(() => { if (!curTab) setCurTab(currentRevMonth()); }, [curTab]);
+  const openAdd = () => { setShowClientSugg(false); R.openAdd(); };
+  const openEdit = (month: string, idx: number) => { setShowClientSugg(false); R.openEdit(month, idx); };
 
   const goPrev = () => { if (curIdx > 0) setCurTab(orderedMonths[curIdx - 1]); };
   const goNext = () => { if (curIdx >= 0 && curIdx < orderedMonths.length - 1) setCurTab(orderedMonths[curIdx + 1]); };
 
-  const curEntries = viewMonths[effectiveTab] || [];
+  const curEntries = useMemo(() => viewMonths[effectiveTab] || [], [viewMonths, effectiveTab]);
   const sortedEntries = useMemo(
     () => curEntries.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date || '').localeCompare(a.e.date || '')),
     [curEntries]
@@ -232,6 +59,23 @@ export default function MobileRevenus() {
   const pctAtteinte = obj > 0 ? Math.round((monthCashed / obj) * 100) : 0;
   const delta = monthCashed - obj;
 
+  const sheet = (
+    <AddEditSheet
+      open={sheetOpen} onClose={() => setSheetOpen(false)}
+      form={form} setForm={setForm}
+      formMonth={formMonth} setFormMonth={setFormMonth}
+      formYear={formYear} setFormYear={setFormYear} years={years}
+      categories={categories}
+      filteredClientSugg={filteredClientSugg}
+      showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
+      onSave={saveEntry} isEdit={R.isEdit}
+      rateFor={rateFor} liveRate={liveRate}
+      perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
+      rateTouched={rateTouched} setRateTouched={setRateTouched}
+      repeatWeekly={repeatWeekly} setRepeatWeekly={setRepeatWeekly}
+    />
+  );
+
   if (!hasAnyData) {
     return (
       <div className="mt-10 text-center pb-20">
@@ -239,19 +83,7 @@ export default function MobileRevenus() {
         <div className="text-t-2 font-semibold mb-1">Aucun revenu</div>
         <div className="text-[12px] text-t-3 mb-5">Ajoute ta première entrée pour commencer.</div>
         <button onClick={openAdd} className="px-5 py-2.5 bg-accent text-black font-semibold text-[13px] rounded-full">+ Nouveau revenu</button>
-        <AddEditSheet
-          open={sheetOpen} onClose={() => setSheetOpen(false)}
-          form={form} setForm={setForm}
-          formMonth={formMonth} setFormMonth={setFormMonth}
-          orderedMonths={orderedMonths} categories={categories}
-          filteredClientSugg={filteredClientSugg}
-          showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
-          onSave={saveEntry} isEdit={!!editIdx}
-          rateFor={rateFor} liveRate={liveRate}
-          perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
-          rateTouched={rateTouched} setRateTouched={setRateTouched}
-          repeatWeekly={repeatWeekly} setRepeatWeekly={setRepeatWeekly}
-        />
+        {sheet}
       </div>
     );
   }
@@ -267,7 +99,7 @@ export default function MobileRevenus() {
           onClick={() => setMonthPickerOpen(true)}
           className="flex-1 text-center bg-bg-3 border border-border-2 rounded-xl py-2.5 active:bg-bg-4"
         >
-          <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none">Mois</div>
+          <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none">{year}</div>
           <div className="text-[16px] font-bold tracking-tight mt-0.5">{effectiveTab || '—'}</div>
         </button>
         <button onClick={goNext} disabled={curIdx >= orderedMonths.length - 1} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
@@ -370,19 +202,32 @@ export default function MobileRevenus() {
 
       {/* Month picker sheet */}
       <BottomSheet open={monthPickerOpen} onClose={() => setMonthPickerOpen(false)} title="Choisir un mois">
+        {years.length > 1 && (
+          <div className="flex bg-bg-3 border border-border rounded-xl p-1 gap-1 mb-3">
+            {years.map(y => (
+              <button
+                key={y}
+                onClick={() => setYear(y)}
+                className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-colors ${year === y ? 'bg-bg-4 text-t-1' : 'text-t-3 active:bg-bg-4'}`}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2 py-1">
-          {orderedMonths.map(m => {
+          {(MOIS_LIST as readonly string[]).map(m => {
             const active = m === effectiveTab;
-            const entries = rev.months[m] || [];
+            const entries = yearRaw[m] || [];
             const total = entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
             return (
               <button
                 key={m}
                 onClick={() => { setCurTab(m); setMonthPickerOpen(false); }}
-                className={`py-3 rounded-xl border text-center transition-colors ${active ? 'bg-accent/15 border-accent text-accent' : 'bg-bg-3 border-border text-t-2 active:bg-bg-4'}`}
+                className={`py-3 rounded-xl border text-center transition-colors ${active ? 'bg-accent/15 border-accent text-accent' : `bg-bg-3 border-border active:bg-bg-4 ${entries.length > 0 ? 'text-t-2' : 'text-t-4'}`}`}
               >
                 <div className="text-[12px] font-bold">{m}</div>
-                <div className="text-[9px] mt-0.5 mono-value opacity-80">{f$(total)} €</div>
+                <div className="text-[9px] mt-0.5 mono-value opacity-80">{entries.length > 0 ? `${f$(total)} €` : '—'}</div>
               </button>
             );
           })}
@@ -390,19 +235,7 @@ export default function MobileRevenus() {
       </BottomSheet>
 
       {/* Add/Edit sheet */}
-      <AddEditSheet
-        open={sheetOpen} onClose={() => setSheetOpen(false)}
-        form={form} setForm={setForm}
-        formMonth={formMonth} setFormMonth={setFormMonth}
-        orderedMonths={orderedMonths} categories={categories}
-        filteredClientSugg={filteredClientSugg}
-        showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
-        onSave={saveEntry} isEdit={!!editIdx}
-        rateFor={rateFor} liveRate={liveRate}
-        perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
-        rateTouched={rateTouched} setRateTouched={setRateTouched}
-        repeatWeekly={repeatWeekly} setRepeatWeekly={setRepeatWeekly}
-      />
+      {sheet}
     </div>
   );
 }
@@ -418,14 +251,15 @@ function KpiCardMobile({ label, value, sub, color }: { label: string; value: str
 }
 
 function AddEditSheet({
-  open, onClose, form, setForm, formMonth, setFormMonth, orderedMonths, categories,
+  open, onClose, form, setForm, formMonth, setFormMonth, formYear, setFormYear, years, categories,
   filteredClientSugg, showClientSugg, setShowClientSugg, onSave, isEdit, rateFor, liveRate,
   perEurOf, aedOf, usdPeg, rateTouched, setRateTouched, repeatWeekly, setRepeatWeekly,
 }: {
   open: boolean; onClose: () => void;
   form: RevenuEntry; setForm: (f: RevenuEntry) => void;
   formMonth: string; setFormMonth: (v: string) => void;
-  orderedMonths: string[]; categories: string[];
+  formYear: number; setFormYear: (v: number) => void; years: number[];
+  categories: string[];
   filteredClientSugg: { name: string; count: number }[];
   showClientSugg: boolean; setShowClientSugg: (v: boolean) => void;
   onSave: () => void; isEdit: boolean;
@@ -434,26 +268,28 @@ function AddEditSheet({
   usdPeg: number; rateTouched: boolean; setRateTouched: (v: boolean) => void;
   repeatWeekly: boolean; setRepeatWeekly: (v: boolean) => void;
 }) {
-  // Allow creating a new month inline
-  const allMonths = useMemo(() => {
-    const set = new Set([...orderedMonths, ...MOIS_LIST]);
-    return Array.from(set);
-  }, [orderedMonths]);
+  const yearOptions = years.includes(formYear) ? years : [...years, formYear].sort((a, b) => a - b);
 
   return (
     <BottomSheet open={open} onClose={onClose} title={isEdit ? 'Modifier le revenu' : 'Nouveau revenu'}>
       <div className="space-y-3 pt-1">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-[1fr_92px] gap-3">
           <div>
             <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Mois</label>
             <select className="fi !h-11" value={formMonth} onChange={e => setFormMonth(e.target.value)}>
-              {allMonths.map(m => <option key={m} value={m}>{m}</option>)}
+              {(MOIS_LIST as readonly string[]).map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Date</label>
-            <input className="fi !h-11" type="date" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
+            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Année</label>
+            <select className="fi !h-11" value={formYear} onChange={e => setFormYear(parseInt(e.target.value, 10))}>
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
+        </div>
+        <div>
+          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Date</label>
+          <input className="fi !h-11" type="date" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
         </div>
 
         {!isEdit && form.date && (() => {

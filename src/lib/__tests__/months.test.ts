@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   detectYears, startedMonths, inferNextMonthYear, lastMonthWithBalance, bankRealDelta,
-  pocketCashEur, shortMonth, sameWeekdayDatesInMonth,
+  pocketCashEur, shortMonth, sameWeekdayDatesInMonth, todayISO, localISODate,
 } from '../utils';
 import { Trip } from '../types';
 import { POSTES, mkMonth, tx, entry, extra } from './helpers';
@@ -154,5 +154,14 @@ describe('affichage', () => {
     expect(sameWeekdayDatesInMonth('2026-08-21')).toEqual(['2026-08-07', '2026-08-14', '2026-08-28']);
     expect(sameWeekdayDatesInMonth('')).toEqual([]);
     expect(sameWeekdayDatesInMonth('pas une date')).toEqual([]);
+  });
+});
+
+describe('date du jour en heure LOCALE', () => {
+  it('n’utilise pas la date UTC (à Dubaï, minuit–4 h tombait la veille)', () => {
+    // 1er du mois à 01:30 heure locale : toISOString() donnerait la veille en UTC+4
+    const d = new Date(2026, 10, 1, 1, 30, 0);
+    expect(todayISO(d)).toBe('2026-11-01');
+    expect(localISODate(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
   });
 });

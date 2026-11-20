@@ -60,7 +60,22 @@ export interface Month {
   hiddenPostes?: string[];
   /** Ajustement manuel (AED signé) ajouté au prévisionnel — sert à régulariser les écarts compte réel vs calculé */
   adjustment?: number;
+  /** Journal des régularisations de ce mois (solde réel constaté à une date). Conservé
+   * DANS le mois : l'historique global est capé à 200 entrées, les régul d'avant juin
+   * 2026 y avaient déjà disparu. Ajout uniquement, cf. lib/regul. */
+  reguls?: RegulEntry[];
+  /** Année calendaire — champ CALCULÉ (detectYears), jamais saisi. */
   _year?: number;
+}
+
+/** Une régularisation : le solde réel du compte constaté à un instant donné. */
+export interface RegulEntry {
+  /** Horodatage ISO de la régul */
+  ts: string;
+  /** Solde réel saisi (devise locale) */
+  real: number;
+  /** Ajustement du mois APRÈS cette régul (= real − prévisionnel hors ajustement) */
+  adjustment: number;
 }
 
 export interface RevenuEntry {

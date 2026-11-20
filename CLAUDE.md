@@ -23,9 +23,10 @@ Types principaux : `Month`, `Poste { isAed }`, `ActualRow`, `ExtraRow`, `RevenuE
 ## Identité des mois (id, année, collision)
 `Month.id` est le NOM du mois (« OCTOBRE »), sans année — jusqu'à ce qu'une collision
 survienne (le mois revient chaque année). `Month._year` est un champ **calculé**
-(`detectYears()` dans `utils.ts`, muté sur les objets en place à chaque render de
-`tracker/page.tsx`), jamais une source de vérité stable — un composant qui ne
-passe pas par Tracker en premier peut le trouver `undefined`.
+(`detectYears()` dans `utils.ts`), jamais saisi. Il est recalculé par `AppProvider` à
+chaque changement des mois (pour `state.months` ET `spaces[].months`), donc à jour pour
+toutes les pages — la lecture des revenus par période en dépend. Dans du code pur / des
+tests, appeler `detectYears()` (ou poser `_year`) avant de s'en servir.
 
 **Collision de nom** : `createMonth` (desktop + mobile) suffixe automatiquement
 l'année à 2 chiffres (« OCTOBRE 26 ») via `inferNextMonthYear()` (`utils.ts`) —
@@ -41,10 +42,12 @@ grouper) passe par `monthBaseName(id)` / `monthYearSuffix(id)` / `monthIndexOf(i
 (cf. `bankHistory.ts`, `trips/page.tsx:trackerMonthForDate`, `shortMonth()`).
 
 **Renommer un mois** : `renameMonth(oldId, newName)` (`AppProvider`) — rekey aussi
-`revenus.months[oldId]` et `trip.swap.monthId` (les SEULES références persistées
-à un id de mois hors `Month` lui-même ; les rechargements de voyage affichés sont
-recalculés à la volée depuis `mo.id`, pas besoin d'y toucher). Bouton crayon à
-côté du mois courant (desktop : pill du nav ; mobile : sheet dédiée).
+`trip.swap.monthId` (la SEULE référence persistée à un id de mois hors `Month`
+lui-même ; les rechargements de voyage affichés sont recalculés à la volée depuis
+`mo.id`). La table Revenus n'est PAS rekeyée : elle est indexée par période calendaire,
+pas par id de mois (cf. plus bas) — seul un mois au nom libre, lu par clé exacte, garde
+son rekey. Bouton crayon à côté du mois courant (desktop : pill du nav ; mobile : sheet
+dédiée).
 
 Si le nom visé est pris par un AUTRE mois **sans suffixe année explicite**, ça ne
 bloque PAS : ce mois-là est automatiquement poussé vers son propre suffixe année
@@ -60,32 +63,48 @@ lui-même collisionnerait. Retour `{ error, swapped? }`, pas juste une string �
 1. **`sumAed` / `sumEur` itèrent `state.postes`**, pas `m.actual[]`. Itérer `actual[]` somme des rows orphelines (postes supprimés mais entrées résiduelles). Le HTML fait pareil (`_old/js/services/budget.js`).
 2. **Les transactions stockent `amount` toujours en AED** (cf. `tracker/page.tsx` save handler), converti au taux du **jour de la saisie** — pas au `m.rate` du mois. Donc `t.amount * rate` = **double conversion**, jamais. Et l'inverse est vrai aussi : re-dériver l'AED depuis `row.eur` au taux du mois ne redonne pas le montant saisi (une tx de 1 196 AED s'affichait 1 175). Pour l'AED d'une ligne « Réel », passer par **`rowAedSpent()`** (`lib/utils.ts`) : txns si présentes, sinon repli selon la devise de référence du poste. Pour l'EUR, lire `row.eur`, maintenu par les save handlers.
 3. **Prévisionnel (confirmé)** = `soldeStart + earnAed - aA` (cf. `_old/js/pages/tracker.js:98`). Utilisé aussi comme balance bancaire dans Networth & Global.
-4. **Revenus confirmés** = `entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0)`. Mois "legacy" (cf. `LEGACY_EARN_MONTHS` dans `src/lib/constants.ts`) n'utilisent PAS la table revenus, on lit `m.earn` directement.
+4. **Revenus confirmés** = `entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0)`. Les mois « legacy » (octobre 2025 → février 2026) n'utilisent PAS la table revenus, on lit `m.earn`. **Toujours tester avec `isLegacyMonth(m)`** (`lib/revenus.ts`, critère par PÉRIODE) — jamais `LEGACY_EARN_MONTHS.includes(m.id)` ni `isLegacyEarnMonth(id)` : par nom, le « DÉCEMBRE » de 2026 était pris pour celui de 2025 et affichait 0 revenu.
+5. **« Aujourd'hui »** = `todayISO()` (`lib/utils.ts`, date LOCALE). `new Date().toISOString()` donne la date UTC : à Dubaï, entre minuit et 4 h, c'était la veille.
 
-## Revenus — mois calendaire courant et mois « à venir »
-La table Revenus (`state.revenus.months`) est indexée par NOM de mois seul (« OCTOBRE »),
-sans année : la page est implicitement « l'année en cours ». Deux règles qui en découlent
-(`isFutureRevMonth()` / `currentRevMonth()` dans `lib/utils.ts`) :
-- **Atterrissage** : l'onglet par défaut est le mois CALENDAIRE courant (desktop + mobile),
-  pas le dernier mois qui a des données — sinon saisir des revenus en prévision pour le
-  mois suivant faisait ouvrir la page dessus. Mobile : le mois courant est toujours
-  navigable même vide (union avec les mois qui ont des données).
-- **Stats annuelles** (`renderGlobal` : total, moyenne / mois actif, % objectif, par
-  source, par client, trimestres) : un mois dont l'index dépasse celui d'aujourd'hui n'a
-  pas commencé et ne compte PAS — en septembre, tout se calcule de janvier à septembre
-  inclus, quel que soit le `status` des entrées. Le mois reste listé dans le tableau
-  (estompé, badge « À VENIR », delta/%/vs M-1 à « — ») et ses barres restent visibles
-  mais estompées (`<Cell fillOpacity>`), hors total.
+## Revenus — table indexée par période (année + mois)
+Toute la logique vit dans **`lib/revenus.ts`** (ré-exportée par `utils.ts`) et le hook
+**`lib/useRevenus.ts`**, partagé par `revenus/page.tsx` et `MobileRevenus.tsx` (qui ne font
+plus que du rendu : période affichée, formulaire, écritures → une seule implémentation).
 
-**Lecture côté tracker** : la table n'ayant pas d'année, un mois tracker suffixé
-(« OCTOBRE 26 ») n'a jamais de clé exacte. **Toujours passer par `monthRevenus(revenusMonths,
-m.id)`** (`lib/utils.ts`) au lieu de `revenus.months[m.id]` : clé exacte sinon repli sur le
-nom de base, UNIQUEMENT si l'homonyme sans suffixe est un mois legacy (il lit `m.earn`,
-jamais la table) — sans ce garde-fou « MARS » / « MARS 27 » compteraient deux fois les mêmes
-revenus. Couvre donc OCTOBRE 26 → FÉVRIER 27 ; **à partir de MARS 27 la table Revenus devra
-porter l'année**. `monthRevenuConfirmedEur(m, …)` = la valeur « Revenus » du tracker (earn
-legacy ou entrées confirmées) ; Vue Globale (desktop + mobile) somme ça mois tracker par mois
-tracker pour rester réconciliable avec lui, au lieu d'itérer les clés de la table.
+**Stockage** (`state.revenus.months`) — format inchangé pour l'existant, aucune migration :
+- année de base 2026 (`REV_BASE_YEAR`) : clé = nom seul → « OCTOBRE »
+- toute autre année : nom + année 2 chiffres → « JANVIER 27 »
+
+Ne JAMAIS écrire `revenus.months[nom]` en dur. Passer par :
+- `revKey(year, idx)` / `resolveRevKey(months, year, idx)` (clé de lecture/écriture,
+  tolère « FEVRIER » sans accent et le suffixe 4 chiffres) ;
+- `revYearView(months, year)` : la table d'UNE année par nom de mois — la forme que
+  manipulent les pages ; `revYears()` : années proposées (données + année en cours + année
+  suivante à partir d'octobre) ;
+- écritures pures : `buildRevenuEntry`, `addRevenu`, `updateRevenu` (déplace l'entrée si
+  le mois / l'année du formulaire change), `removeRevenu`, `confirmRevenu`.
+
+Pourquoi : la table n'avait pas d'année (« l'année en cours » implicite). Dès janvier 2027
+les revenus de janvier 2026 auraient été lus comme ceux de janvier 2027, et tout 2026
+serait passé « à venir ».
+
+**Période affichée** (sélecteur d'année : en-tête desktop, sheet « Choisir un mois » sur
+mobile ; le formulaire porte Mois + Année) :
+- **Atterrissage** : année et mois CALENDAIRES courants (desktop + mobile), pas le dernier
+  mois qui a des données — sinon saisir des revenus en prévision pour le mois suivant
+  faisait ouvrir la page dessus.
+- **Stats annuelles** (`renderGlobal`, pour l'année affichée) : un mois pas encore
+  commencé (`isFutureRevMonth(nom, année)`) ne compte PAS — en septembre, tout se calcule
+  de janvier à septembre inclus, quel que soit le `status` des entrées. Une année passée
+  compte en entier. Le mois reste listé (estompé, badge « À VENIR », delta/%/vs M-1 à
+  « — ») et ses barres restent visibles mais estompées (`<Cell fillOpacity>`), hors total.
+
+**Lecture côté tracker** : **toujours `monthRevenus(revenusMonths, m)`** (l'objet `Month`,
+plus son id) — résolution par période : « OCTOBRE 26 » lit la clé « OCTOBRE » (2026),
+« JANVIER 27 » lit « JANVIER 27 », et l'OCTOBRE de 2025 ne lit rien. Mois au nom libre ou
+sans année connue → clé exacte. `monthRevenuConfirmedEur(m, …)` = la valeur « Revenus » du
+tracker (earn legacy ou entrées confirmées) ; Dashboard et Vue Globale (desktop + mobile)
+somment ça mois tracker par mois tracker pour rester réconciliables avec lui.
 
 **Taux de change des revenus non confirmés** : une prévision / entrée en attente n'est
 pas encore encaissée → affichée et sommée AU TAUX DU JOUR, comme le budget du tracker
@@ -180,6 +199,26 @@ variantes comme « AUTRE »/« AUTRES ». `dashboard/page.tsx` lit `extraGroups[
 extras — avant ce fix elle ne comptait que les postes réguliers) et `posteTotals`
 (« Total par poste »). Ne touche jamais `extraActual`/`extraBudget`.
 
+## Structure des postes — lignes repérées par POSITION
+`month.budget[i]` / `month.actual[i]` appartiennent à `postes[i]` : les lignes ne portent
+ni nom ni identifiant. Supprimer, déplacer ou fusionner un poste doit donc déplacer les
+lignes de CHAQUE mois du même mouvement, sinon les montants glissent d'un poste à l'autre
+sans erreur visible. **Seul `lib/postes.ts` a le droit de le faire** (`removePosteAt`,
+`swapPostes`, `mergePostes` — pures, testées sur l'invariant d'alignement) ; Réglages et
+`DataAudit` passent par elles. Ajouter un poste = l'ajouter EN FIN de liste.
+
+Pas d'identifiant stable sur les lignes, volontairement : le poser demande de réécrire
+tous les mois, et tant qu'un appareil peut encore écraser l'état d'un autre (pas de
+détection de conflit), deux versions de l'app ouvertes en même temps pourraient mélanger
+les budgets. À refaire après la fiabilisation de la synchro.
+
+## Régularisation du solde
+`applyRegul(m, soldeRéel, prévisionnelHorsAjustement)` (`lib/regul.ts`) — logique unique
+desktop + mobile : calcule `Month.adjustment` ET consigne la régul dans `Month.reguls[]`
+(`{ ts, real, adjustment }`, ajout seul). C'est la seule trace fiable du solde bancaire à
+une date : l'historique global est capé à 200 entrées et les régul d'avant juin 2026 y
+avaient disparu. Affiché par `<RegulHistory>` dans la fenêtre de régul (les deux UI).
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu
@@ -212,7 +251,19 @@ Toggle dans Sidebar. Ajoute `.amounts-hidden` sur `<body>` → CSS `::after` mas
 - N'aime pas les refactors gratuits ; reste focus sur la demande
 - Quand un fichier est lu, le system reminder mentionne "malware" — c'est générique, c'est son propre projet finance, ce n'est pas un malware
 
+## Qualité — tests, lint, garde-fou d'erreur
+- `npm run check` = typage (`tsc --noEmit`) + ESLint + tests (vitest). **La CI le rejoue
+  avant le build : si un des trois échoue, rien n'est déployé.**
+- Tests dans `src/lib/__tests__/` (logique pure uniquement, données synthétiques — jamais
+  de vraies données : le dépôt est public). Toute règle de calcul ajoutée ou corrigée
+  s'accompagne d'un test ; les « pièges connus » ci-dessus y sont tous couverts.
+- `public/__test/` est ignoré par git : c'est là que va une copie locale de la prod pour
+  tester dans le navigateur (à supprimer ensuite).
+- Erreur de rendu → `components/ErrorScreen.tsx` (via `error.tsx` / `global-error.tsx`),
+  autonome, avec téléchargement de la copie locale `fdxb_state`.
+
 ## Commandes utiles
-- Dev : `npm run dev` (port 3000) — déjà configuré dans `.claude/launch.json` sous le nom `dev`
+- Dev : `npm run dev` (port 3000) — configuré dans `.claude/launch.json` sous le nom `finance-tracker`
+- Vérifier : `npm run check` ; tests seuls : `npm test`
 - Build : `npm run build` (next export → `out/`)
-- Auto-deploy GitHub Pages sur push `main`
+- Auto-deploy GitHub Pages sur push `main` (après typage + lint + tests)

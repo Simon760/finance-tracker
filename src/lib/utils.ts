@@ -1,138 +1,23 @@
 import { Month, BudgetRow, ActualRow, ExtraRow, Trip, Poste, RevenuEntry, Transaction } from './types';
-import { isLegacyEarnMonth, monthBaseName, monthYearSuffix, monthIndexOf, MOIS_LIST } from './constants';
+import { monthBaseName, monthYearSuffix, monthIndexOf } from './constants';
+import { monthRevenuConfirmedAed } from './revenus';
 
-/**
- * Table Revenus (`state.revenus.months`) : les mois sont indexés par NOM seul
- * (« OCTOBRE »), sans année — la page Revenus est implicitement « l'année en cours ».
- * Un mois dont l'index calendaire dépasse celui d'aujourd'hui n'a donc PAS commencé :
- * ses entrées (saisies en prévision) restent consultables dans l'onglet du mois, mais
- * ne comptent dans AUCUNE stat annuelle (totaux, moyennes, % objectif, par source,
- * par client). Si on est en septembre, les stats vont de janvier à septembre inclus.
- */
-export function isFutureRevMonth(name: string, now: Date = new Date()): boolean {
-  const idx = monthIndexOf(name);
-  return idx >= 0 && idx > now.getMonth();
-}
+// Toute la logique de la table Revenus (période, année, mois legacy, prévisions au taux
+// du jour) vit dans ./revenus — ré-exportée ici pour les imports existants.
+export * from './revenus';
 
-/** Nom (clé Revenus) du mois calendaire courant — onglet d'atterrissage de la page Revenus. */
-export function currentRevMonth(now: Date = new Date()): string {
-  return MOIS_LIST[now.getMonth()];
+/** Date au format YYYY-MM-DD dans le fuseau LOCAL de l'appareil. */
+export function localISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /**
- * Entrées Revenus d'un mois TRACKER — à utiliser partout à la place de
- * `revenus.months[m.id]`. La table Revenus est indexée par NOM seul (« OCTOBRE »),
- * alors qu'un mois tracker peut porter un suffixe année (« OCTOBRE 26 », cf. Identité
- * des mois) : la clé exacte n'existe alors jamais et le tracker affichait 0 revenu.
- *
- * Résolution : clé exacte si présente ; sinon, pour un mois suffixé, repli sur le nom
- * de base — UNIQUEMENT si l'homonyme sans suffixe est un mois legacy (il lit `m.earn`
- * et ne consomme jamais la table). Sans ce garde-fou, « MARS » et « MARS 27 » liraient
- * la même clé et les mêmes revenus compteraient deux fois. Couvre donc OCTOBRE 26 →
- * FÉVRIER 27 ; à partir de MARS 27 la table Revenus devra porter l'année.
+ * « Aujourd'hui » en YYYY-MM-DD, heure LOCALE. `new Date().toISOString()` renvoie la date
+ * UTC : à Dubaï (UTC+4), entre minuit et 4 h, l'app croyait être la veille — une dépense
+ * saisie à 1 h du matin le 1er partait dans le mois précédent.
  */
-export function monthRevenus(
-  revenusMonths: Record<string, RevenuEntry[]> | undefined,
-  monthId: string,
-): RevenuEntry[] {
-  if (!revenusMonths) return [];
-  const exact = revenusMonths[monthId];
-  if (exact) return exact;
-  if (monthYearSuffix(monthId) === null) return [];
-  const base = monthBaseName(monthId);
-  if (!isLegacyEarnMonth(base)) return [];
-  const idx = monthIndexOf(base);
-  // Clés de la table avec ou sans accent (« FÉVRIER » vs « FEVRIER ») → comparaison par index
-  const key = Object.keys(revenusMonths).find(k => monthYearSuffix(k) === null && monthIndexOf(k) === idx);
-  return key ? revenusMonths[key] || [] : [];
-}
-
-/** Taux officiel USD→AED (peg) — défaut du taux de swap d'une entrée Revenus en USD. */
-export const USD_AED_PEG = 3.6725;
-
-const isRevConfirmed = (e: RevenuEntry) => !e.status || e.status === 'confirmed';
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-/**
- * Une entrée Revenus au taux EUR/AED donné — même convention que `saveEntry` (page
- * Revenus) : `cashed`/`contracted` en EUR, `rate` = AED crédité ÷ EUR, pour que
- * `cashed × rate` redonne l'AED exact.
- * - EUR : l'EUR est fixe, l'AED en découle (rate = taux donné).
- * - USD : l'AED est fixe (montant × taux de swap, le dirham est peggé au dollar) ; l'EUR
- *   vaut montant ÷ EUR/USD, EUR/USD étant dérivé du taux EUR/AED via le peg — pas besoin
- *   d'un second taux live, et le tracker (qui n'a que l'EUR/AED) donne le même résultat.
- * - AED : l'AED est fixe, l'EUR en découle.
- * Entrée non-EUR sans montant d'origine (ancien format) : rien de recalculable, inchangée.
- */
-export function revenuAtRate(e: RevenuEntry, eurAed: number): RevenuEntry {
-  if (!(eurAed > 0)) return e;
-  const cur = e.currency || 'EUR';
-  if (cur === 'EUR') return { ...e, rate: eurAed };
-  if (e.origAmount == null) return e;
-  const perEur = cur === 'USD' ? eurAed / USD_AED_PEG : eurAed;
-  const aed = cur === 'USD' ? e.origAmount * (e.origToAed || USD_AED_PEG) : e.origAmount;
-  const cashed = round2(e.origAmount / perEur);
-  return {
-    ...e,
-    cashed,
-    contracted: e.origContracted != null ? round2(e.origContracted / perEur) : e.contracted,
-    origRate: Math.round(perEur * 100000) / 100000,
-    rate: cashed > 0 ? Math.round((aed / cashed) * 100000) / 100000 : eurAed,
-  };
-}
-
-/**
- * Entrée Revenus telle qu'affichée et sommée. Confirmée → figée (valeurs stockées, taux
- * du jour de la confirmation). Prévision / en attente → recalculée au taux du jour, comme
- * le budget du tracker : sinon une prévision saisie des semaines à l'avance (récurrence
- * hebdo) gardait le taux du jour de saisie. La confirmation fige ces mêmes valeurs
- * (`revenuAtRate` au taux live, cf. `confirmEntry`) → aucun saut au moment de confirmer.
- */
-export function revenuLive(e: RevenuEntry, eurAed: number): RevenuEntry {
-  return isRevConfirmed(e) ? e : revenuAtRate(e, eurAed);
-}
-
-/** `revenuLive` sur toute la table — pour la LECTURE uniquement (jamais réécrite en base). */
-export function revenusMonthsLive(
-  months: Record<string, RevenuEntry[]> | undefined,
-  eurAed: number,
-): Record<string, RevenuEntry[]> {
-  const out: Record<string, RevenuEntry[]> = {};
-  Object.entries(months || {}).forEach(([k, es]) => { out[k] = (es || []).map(e => revenuLive(e, eurAed)); });
-  return out;
-}
-
-/**
- * Revenus confirmés d'un mois tracker en AED (devise locale) : AED réellement crédité
- * de chaque entrée (`cashed × rate`), ou `m.earn × m.rate` pour un mois legacy. Même
- * calcul que `monthBankBalance` — desktop ET mobile passent par là (le mobile faisait
- * `EUR × m.rate`, soit le taux de création du mois : −233 AED sur septembre 2026).
- */
-export function monthRevenuConfirmedAed(
-  m: Month,
-  revenusMonths: Record<string, RevenuEntry[]> | undefined,
-  fallbackRate: number,
-): number {
-  if (isLegacyEarnMonth(m.id)) return (m.earn || 0) * m.rate;
-  return monthRevenus(revenusMonths, m.id)
-    .filter(isRevConfirmed)
-    .reduce((s, e) => s + (e.cashed || 0) * (e.rate || fallbackRate), 0);
-}
-
-/**
- * Revenus confirmés d'un mois tracker en EUR : `m.earn` pour un mois legacy, sinon la
- * somme des entrées confirmées de la table (résolues par `monthRevenus`). C'est LA
- * valeur « Revenus » du tracker ; les totaux (Vue Globale) la somment mois par mois
- * pour rester réconciliables avec lui.
- */
-export function monthRevenuConfirmedEur(
-  m: Month,
-  revenusMonths: Record<string, RevenuEntry[]> | undefined,
-): number {
-  if (isLegacyEarnMonth(m.id)) return m.earn || 0;
-  return monthRevenus(revenusMonths, m.id)
-    .filter(e => !e.status || e.status === 'confirmed')
-    .reduce((s, e) => s + (e.cashed || 0), 0);
+export function todayISO(now: Date = new Date()): string {
+  return localISODate(now);
 }
 
 // Format

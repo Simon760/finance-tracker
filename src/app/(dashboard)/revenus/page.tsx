@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import MobileRevenus from '@/components/mobile/MobileRevenus';
 import { useIsMobile } from '@/lib/useIsMobile';
 import Modal from '@/components/ui/Modal';
 import RankedBars from '@/components/ui/RankedBars';
-import { f$, f0, fetchRate, sameWeekdayDatesInMonth, isFutureRevMonth, currentRevMonth, revenuAtRate, revenuLive, revenusMonthsLive } from '@/lib/utils';
+import { f$, f0, sameWeekdayDatesInMonth, todayISO } from '@/lib/utils';
+import { useRevenus } from '@/lib/useRevenus';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
 import {
@@ -84,190 +85,28 @@ const STATUS_ROW_BORDER: Record<string, string> = {
 
 export default function RevenusPage() {
   const isMobile = useIsMobile();
-  const { state, setState, save, liveRate, activeSpace, logChange, theme } = useApp();
+  const { state, setState, save, activeSpace, theme } = useApp();
   const ct = chartTheme(theme);
   const tooltipStyle = chartTooltipStyle(theme);
-  const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
+
+  // Toute la logique (période affichée, table de l'année, formulaire, écritures) est
+  // partagée avec l'affichage mobile — cf. lib/useRevenus.
+  const R = useRevenus();
+  const {
+    rev, categories, liveRate, year, setYear, years, isFuture, yearRaw, viewMonths,
+    form, setForm, formMonth, setFormMonth, formYear, setFormYear,
+    rateFor, perEurOf, aedOf, repeatWeekly, setRepeatWeekly, rateTouched, setRateTouched,
+    openAdd, openEdit, saveEntry, deleteEntry, confirmEntry,
+  } = R;
+  const effectiveTab = R.tab;
+  const setCurTab = R.setTab;
+  const addOpen = R.formOpen;
+  const setAddOpen = R.setFormOpen;
+  const editIdx = R.isEdit;
+  const USD_AED_PEG = R.usdPeg;
+  const clientSuggestions = useMemo(() => R.clientSuggestions.map(c => c.name), [R.clientSuggestions]);
 
   const [page, setPage] = useState<'tracker' | 'global'>('tracker');
-  const [addOpen, setAddOpen] = useState(false);
-  const [editIdx, setEditIdx] = useState<{ month: string; idx: number } | null>(null);
-  const [curTab, setCurTab] = useState<string>('');
-  const [form, setForm] = useState<RevenuEntry>({ date: '', client: '', cat: '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed' });
-  const [formMonth, setFormMonth] = useState('');
-
-  // Taux EUR→USD (même source que EUR/AED : TwelveData prioritaire + fallbacks)
-  const [usdRate, setUsdRate] = useState(1.08);
-  useEffect(() => { fetchRate('USD').then(r => { if (r > 0) setUsdRate(r); }).catch(() => {}); }, []);
-  // 1 EUR = rateFor(devise) unités de cette devise
-  const rateFor = (c?: string) => (c === 'USD' ? usdRate : c === 'AED' ? liveRate : 1);
-
-  // Taux USD→AED officiel (peg) — défaut du champ, l'utilisateur met son taux de swap réel
-  const USD_AED_PEG = 3.6725;
-
-  // Récurrence hebdo : duplique l'entrée sur les autres mêmes jours de semaine du mois
-  const [repeatWeekly, setRepeatWeekly] = useState(false);
-  const repeatDates = useMemo(() => (repeatWeekly ? sameWeekdayDatesInMonth(form.date) : []), [repeatWeekly, form.date]);
-
-  // Le champ Taux EUR/AED suit le taux live tant qu'il n'a pas été modifié à la main
-  const [rateTouched, setRateTouched] = useState(false);
-  useEffect(() => {
-    if (addOpen && !rateTouched) setForm(f => ({ ...f, rate: liveRate }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveRate, addOpen, rateTouched]);
-
-  // Devise du form → 1 EUR = perEurOf(f) unités ; AED crédité au compte = aedOf(f)
-  const perEurOf = (f: RevenuEntry) => {
-    const c = f.currency || 'EUR';
-    if (c === 'EUR') return 1;
-    if (c === 'AED') return f.rate || liveRate;          // le champ EUR/AED fait foi
-    return f.origRate || usdRate;                        // USD : EUR/USD (officiel)
-  };
-  const aedOf = (f: RevenuEntry, amount: number) => {
-    const c = f.currency || 'EUR';
-    if (c === 'EUR') return amount * (f.rate || liveRate);
-    if (c === 'AED') return amount;                      // déjà en AED
-    return amount * (f.origToAed || USD_AED_PEG);        // USD : ton taux de swap USD→AED
-  };
-
-  const orderedMonths = useMemo(() => {
-    const existing = Object.keys(rev.months || {});
-    return MOIS_LIST.filter(m => existing.includes(m));
-  }, [rev.months]);
-
-  // Atterrissage sur le mois CALENDAIRE courant (comme le tracker de dépenses), pas sur le
-  // dernier mois qui a des données — sinon saisir des revenus en prévision pour le mois
-  // suivant faisait ouvrir la page sur ce mois-là.
-  const effectiveTab = curTab || currentRevMonth();
-
-  // Table telle qu'AFFICHÉE / sommée : prévisions et entrées en attente recalculées au
-  // taux du jour (cf. revenuLive). Les handlers d'écriture (save / delete / confirm)
-  // lisent toujours rev.months brut — les index d'entrées sont identiques entre les deux.
-  const viewMonths = useMemo(() => revenusMonthsLive(rev.months, liveRate), [rev.months, liveRate]);
-
-  const categories = rev.categories || [];
-
-  // Liste des clients déjà vus, triée par fréquence (desc). Sert à la datalist d'auto-complétion.
-  const clientSuggestions = useMemo(() => {
-    const counts = new Map<string, number>();
-    Object.values(rev.months || {}).forEach(entries => {
-      (entries || []).forEach(e => {
-        const name = (e.client || '').trim();
-        if (!name) return;
-        counts.set(name, (counts.get(name) || 0) + 1);
-      });
-    });
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name);
-  }, [rev.months]);
-
-  // Actions
-  const openAdd = (month?: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    setForm({ date: today, client: '', cat: categories[0] || '', contracted: 0, cashed: 0, comment: '', rate: liveRate, status: 'confirmed', currency: 'EUR' });
-    setFormMonth(month || effectiveTab || orderedMonths[orderedMonths.length - 1] || '');
-    setEditIdx(null);
-    setRateTouched(false); // le taux suit le live jusqu'à modification manuelle
-    setRepeatWeekly(false);
-    setAddOpen(true);
-  };
-
-  const openEdit = (month: string, idx: number) => {
-    // Non confirmée : pré-remplie au taux du jour (mêmes valeurs que le tableau), et le
-    // taux EUR/AED continue de suivre le live — elle n'est pas encore encaissée.
-    const raw = rev.months[month][idx];
-    const confirmed = !raw.status || raw.status === 'confirmed';
-    const e = revenuLive(raw, liveRate);
-    // Pré-remplit dans la devise d'origine (orig*) pour éviter toute double conversion :
-    // le form contient les montants dans form.currency, saveEntry reconvertira en EUR
-    // avec le même origRate → sauvegarder sans rien changer est neutre.
-    if (e.currency && e.currency !== 'EUR' && e.origAmount != null) {
-      setForm({ ...e, cashed: e.origAmount, contracted: e.origContracted ?? e.contracted });
-    } else {
-      setForm({ ...e, currency: 'EUR' });
-    }
-    setFormMonth(month);
-    setEditIdx({ month, idx });
-    // Confirmée : on garde le taux historique (bouton Live pour re-sync)
-    setRateTouched(confirmed);
-    setRepeatWeekly(false); // la récurrence ne s'applique qu'à la création
-    setAddOpen(true);
-  };
-
-  const saveEntry = () => {
-    const monthKey = formMonth.trim().toUpperCase();
-    if (!monthKey) return;
-    // Les montants du form sont dans form.currency → conversion vers l'EUR stocké.
-    // cashed/contracted restent TOUJOURS en EUR en base (rien ne change pour l'existant).
-    // rate stocké = AED crédité ÷ EUR encaissé (dérivé), pour que cashed×rate donne
-    // exactement l'AED voulu (USD : montant × taux de swap USD/AED saisi).
-    const cur = form.currency || 'EUR';
-    const perEur = perEurOf(form);
-    const cashedEur = Math.round(((form.cashed || 0) / perEur) * 100) / 100;
-    const aed = aedOf(form, form.cashed || 0);
-    const effRate = cashedEur > 0 ? Math.round((aed / cashedEur) * 100000) / 100000 : (form.rate || liveRate);
-    const entry: RevenuEntry = {
-      ...form,
-      currency: cur,
-      contracted: Math.round(((form.contracted || 0) / perEur) * 100) / 100,
-      cashed: cashedEur,
-      origAmount: cur !== 'EUR' ? (form.cashed || 0) : undefined,
-      origContracted: cur !== 'EUR' ? (form.contracted || 0) : undefined,
-      origRate: cur !== 'EUR' ? perEur : undefined,
-      origToAed: cur === 'USD' ? (form.origToAed || USD_AED_PEG) : undefined,
-      rate: effRate,
-    };
-    const months = { ...(rev.months || {}) };
-    if (!months[monthKey]) months[monthKey] = [];
-    let added = 1;
-    if (editIdx) {
-      months[editIdx.month] = [...months[editIdx.month]];
-      months[editIdx.month][editIdx.idx] = entry;
-    } else {
-      // Récurrence hebdo : une copie indépendante sur chaque autre même jour de semaine
-      // du mois (chacune reste éditable / supprimable séparément).
-      const clones = repeatWeekly
-        ? repeatDates
-            .filter(d => !months[monthKey].some(e => e.date === d && e.client === entry.client && e.cashed === entry.cashed))
-            .map(d => ({ ...entry, date: d }))
-        : [];
-      months[monthKey] = [...months[monthKey], entry, ...clones];
-      added += clones.length;
-    }
-    setState({ ...state, revenus: { ...rev, months } });
-    setAddOpen(false);
-    save();
-    const action = editIdx ? 'revenu.update' : 'revenu.add';
-    const verb = editIdx ? 'Modif' : 'Ajout';
-    const suffix = added > 1 ? ` ×${added} (récurrence hebdo)` : '';
-    logChange?.(action, `${verb} revenu ${entry.client || '—'} · ${f$(entry.cashed || 0)} €${suffix} (${editIdx ? editIdx.month : monthKey})`);
-  };
-
-  const deleteEntry = (month: string, idx: number) => {
-    if (!confirm('Supprimer cette entrée ?')) return;
-    const months = { ...(rev.months || {}) };
-    const removed = months[month][idx];
-    months[month] = months[month].filter((_, i) => i !== idx);
-    if (months[month].length === 0) delete months[month];
-    setState({ ...state, revenus: { ...rev, months } });
-    save();
-    logChange?.('revenu.delete', `Suppr revenu ${removed?.client || '—'} · ${f$(removed?.cashed || 0)} € (${month})`);
-  };
-
-  const confirmEntry = (month: string, idx: number) => {
-    const months = { ...(rev.months || {}) };
-    months[month] = [...months[month]];
-    const before = months[month][idx];
-    // Fige les valeurs au taux du jour — celles que la prévision affichait déjà (cf.
-    // revenuLive). EUR : l'AED suit le live ; USD/AED : l'AED crédité reste celui du
-    // montant d'origine × taux de swap, seul l'EUR est figé au taux du jour.
-    const frozen = { ...revenuAtRate(before, liveRate), status: 'confirmed' as const };
-    months[month][idx] = frozen;
-    setState({ ...state, revenus: { ...rev, months } });
-    save();
-    logChange?.('revenu.confirm', `Confirm revenu ${before?.client || '—'} · ${f$(frozen.cashed || 0)} € (${month})`);
-  };
 
   const updateObjectif = (val: number) => {
     setState({ ...state, revenus: { ...rev, objectif: val } });
@@ -316,7 +155,7 @@ export default function RevenusPage() {
       const entries = viewMonths[month] || [];
       const confirmed = entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       const pending = entries.filter(e => e.status === 'pending').reduce((s, e) => s + (e.cashed || 0), 0);
-      return { name: month.slice(0, 3), Confirmé: confirmed, 'En attente': pending, future: isFutureRevMonth(month) };
+      return { name: month.slice(0, 3), Confirmé: confirmed, 'En attente': pending, future: isFuture(month) };
     });
 
     // Cat totals for current month (inline — cheap)
@@ -333,7 +172,7 @@ export default function RevenusPage() {
         {/* Month tabs */}
         <div className="flex gap-1 flex-wrap mb-5">
           {(MOIS_LIST as readonly string[]).map(m => {
-            const hasData = rev.months[m] && rev.months[m].length > 0;
+            const hasData = (yearRaw[m] || []).length > 0;
             return (
               <button key={m} onClick={() => setCurTab(m)} className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${effectiveTab === m ? 'bg-bg-4 text-t-1 border border-border-2' : `${hasData ? 'text-t-2' : 'text-t-4'} border border-transparent hover:text-t-2`}`}>
                 {m.slice(0, 3)}
@@ -484,11 +323,10 @@ export default function RevenusPage() {
     // Stats arrêtées à la DATE DU JOUR : dans les mois commencés, une entrée datée après
     // aujourd'hui ne compte pas encore. Les mois à venir gardent leurs entrées (listés
     // estompés, déjà exclus des totaux via `future` ci-dessous).
-    const now = new Date();
-    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayKey = todayISO();
     const rm: Record<string, RevenuEntry[]> = {};
     Object.entries(viewMonths).forEach(([k, es]) => {
-      rm[k] = isFutureRevMonth(k) ? es : es.filter(e => !e.date || e.date <= todayKey);
+      rm[k] = isFuture(k) ? es : es.filter(e => !e.date || e.date <= todayKey);
     });
     const yearObj = obj * 12;
     let yearContracted = 0, yearCashed = 0;
@@ -499,7 +337,7 @@ export default function RevenusPage() {
     // janvier à septembre inclus. Il reste listé dans le tableau, estompé, hors total.
     const monthData = (MOIS_LIST as readonly string[]).map(m => {
       const me = rm[m] || [];
-      const future = isFutureRevMonth(m);
+      const future = isFuture(m);
       const mc = me.reduce((s, e) => s + (e.contracted || 0), 0);
       const mk = me.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
       if (!future) {
@@ -523,7 +361,7 @@ export default function RevenusPage() {
     // Source summary (mois à venir exclus)
     const srcTotals: Record<string, number> = {};
     Object.entries(rm).forEach(([monthName, entries]) => {
-      if (isFutureRevMonth(monthName)) return;
+      if (isFuture(monthName)) return;
       (entries || []).forEach(e => {
         if (!e.status || e.status === 'confirmed') {
           srcTotals[e.cat || 'Autre'] = (srcTotals[e.cat || 'Autre'] || 0) + (e.cashed || 0);
@@ -539,14 +377,14 @@ export default function RevenusPage() {
         name: m.slice(0, 3),
         Encaissé: entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0),
         Contracté: entries.reduce((s, e) => s + (e.contracted || 0), 0),
-        future: isFutureRevMonth(m),
+        future: isFuture(m),
       };
     });
 
     // Quarterly (mois à venir exclus : un trimestre entamé ne compte que ses mois commencés)
     const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
     const qData = quarters.map((q, qi) => {
-      const ms = (MOIS_LIST as readonly string[]).slice(qi * 3, qi * 3 + 3).filter(m => !isFutureRevMonth(m));
+      const ms = (MOIS_LIST as readonly string[]).slice(qi * 3, qi * 3 + 3).filter(m => !isFuture(m));
       const total = ms.reduce((s, m) => s + (rm[m] || []).filter(e => !e.status || e.status === 'confirmed').reduce((s2, e) => s2 + (e.cashed || 0), 0), 0);
       return { name: q, Encaissé: total };
     });
@@ -571,7 +409,7 @@ export default function RevenusPage() {
       catCounts: Record<string, number>;
     }>();
     Object.entries(rm).forEach(([monthName, entries]) => {
-      if (isFutureRevMonth(monthName)) return;
+      if (isFuture(monthName)) return;
       (entries || []).forEach(e => {
         const isConfirmed = !e.status || e.status === 'confirmed';
         if (!isConfirmed) return;
@@ -656,8 +494,10 @@ export default function RevenusPage() {
           {/* Annual Summary card */}
           <div className="bg-bg-3 border border-border rounded-lg p-5 shadow-inset-border">
             <div className="text-[13px] font-semibold tracking-tight mb-4">
-              📊 Résumé annuel {new Date().getFullYear()}
-              <span className="text-[10px] text-t-4 font-medium ml-2">jusqu&apos;au {todayKey.slice(8)}/{todayKey.slice(5, 7)}</span>
+              📊 Résumé annuel {year}
+              {year === new Date().getFullYear() && (
+                <span className="text-[10px] text-t-4 font-medium ml-2">jusqu&apos;au {todayKey.slice(8)}/{todayKey.slice(5, 7)}</span>
+              )}
             </div>
             {futureWithData.length > 0 && (
               <div className="text-[10px] text-t-4 -mt-2.5 mb-4">
@@ -914,6 +754,13 @@ export default function RevenusPage() {
     <div>
       <PageHeader breadcrumb={[{ label: activeSpace.name }, { label: 'Revenus', current: true }]} title="Revenus" subtitle="Suivi des revenus par source">
         <div className="flex items-center gap-2">
+          {years.length > 1 && (
+            <div className="flex bg-bg-3 border border-border rounded-md overflow-hidden p-0.5 gap-0.5" title="Année affichée">
+              {years.map(y => (
+                <button key={y} onClick={() => setYear(y)} className={`px-3 py-1.5 text-xs font-semibold rounded transition-all cursor-pointer ${year === y ? 'bg-bg-4 text-t-1 shadow-sm' : 'text-t-3 hover:text-t-2'}`}>{y}</button>
+              ))}
+            </div>
+          )}
           <div className="flex bg-bg-3 border border-border rounded-md overflow-hidden p-0.5 gap-0.5">
             <button onClick={() => setPage('tracker')} className={`px-3.5 py-1.5 text-xs font-semibold rounded transition-all cursor-pointer ${page === 'tracker' ? 'bg-bg-4 text-t-1 shadow-sm' : 'text-t-3 hover:text-t-2'}`}>Tracker</button>
             <button onClick={() => setPage('global')} className={`px-3.5 py-1.5 text-xs font-semibold rounded transition-all cursor-pointer ${page === 'global' ? 'bg-bg-4 text-t-1 shadow-sm' : 'text-t-3 hover:text-t-2'}`}>Global</button>
@@ -930,10 +777,15 @@ export default function RevenusPage() {
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title={editIdx ? 'Modifier un revenu' : 'Ajouter un revenu'}>
         <div className="space-y-3.5">
           <FormField label="Mois">
-            <select className="fi" value={formMonth} onChange={e => setFormMonth(e.target.value)}>
-              <option value="">---</option>
-              {(MOIS_LIST as readonly string[]).map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <div className="flex gap-2">
+              <select className="fi flex-1" value={formMonth} onChange={e => setFormMonth(e.target.value)}>
+                <option value="">---</option>
+                {(MOIS_LIST as readonly string[]).map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select className="fi !w-[92px] shrink-0" value={formYear} onChange={e => setFormYear(parseInt(e.target.value, 10))} aria-label="Année">
+                {(years.includes(formYear) ? years : [...years, formYear].sort((a, b) => a - b)).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
           </FormField>
           <FormField label="Date">
             <input className="fi" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />

@@ -7,6 +7,8 @@ import Modal from '@/components/ui/Modal';
 import { Poste } from '@/lib/types';
 import DataAudit from '@/components/DataAudit';
 import { isPosteFixed } from '@/lib/budgetBalance';
+import { todayISO } from '@/lib/utils';
+import { removePosteAt, swapPostes } from '@/lib/postes';
 
 const CAT_OPTIONS = ['vital', 'lifestyle', 'finance', 'logement'] as const;
 const CAT_STYLES: Record<string, string> = {
@@ -88,30 +90,14 @@ export default function SettingsPage() {
     logChange?.(editIdx !== null ? 'poste.update' : 'poste.create', `${editIdx !== null ? 'Modif' : 'Création'} poste « ${p.name} » (${p.cat})`);
   };
 
-  // Padding helper : étend un array m.budget ou m.actual jusqu'à la longueur min
-  // avec des entries par défaut, pour gérer cleanly les données héritées où m.budget.length < postes.length
-  const padTo = <T,>(arr: T[], len: number, def: T): T[] => {
-    const out = [...arr];
-    while (out.length < len) out.push({ ...def } as T);
-    return out;
-  };
-
   const deletePoste = (idx: number) => {
     const removed = postes[idx];
     if (!confirm(`Supprimer ${removed.name} ?\n\nLes valeurs de budget et de dépenses associées dans TOUS les mois seront aussi retirées (splice propre pour préserver l'alignement des autres postes).`)) return;
 
-    const newPostes = postes.filter((_, i) => i !== idx);
-
-    // Splice les m.budget[idx] et m.actual[idx] de chaque mois pour garder l'alignement
-    const newMonths = state.months.map(mo => {
-      const budget = [...(mo.budget || [])];
-      const actual = [...(mo.actual || [])];
-      if (idx < budget.length) budget.splice(idx, 1);
-      if (idx < actual.length) actual.splice(idx, 1);
-      return { ...mo, budget, actual };
-    });
-
-    setState({ ...state, postes: newPostes, months: newMonths });
+    // Retire le poste ET sa ligne dans chaque mois (cf. lib/postes : seul endroit autorisé
+    // à déplacer des lignes, l'alignement des autres postes y est testé).
+    const next = removePosteAt(postes, state.months, idx);
+    setState({ ...state, postes: next.postes, months: next.months });
     save();
     logChange?.('poste.delete', `Suppression poste « ${removed.name} » (+ valeurs associées de ${state.months.length} mois)`);
   };
@@ -120,23 +106,11 @@ export default function SettingsPage() {
     const nIdx = idx + dir;
     if (nIdx < 0 || nIdx >= postes.length) return;
 
-    // Swap state.postes
-    const newPostes = [...postes];
-    [newPostes[idx], newPostes[nIdx]] = [newPostes[nIdx], newPostes[idx]];
-
-    // Swap m.budget[idx] ↔ m.budget[nIdx] ET m.actual[idx] ↔ m.actual[nIdx] dans chaque mois
-    const minLen = Math.max(idx, nIdx) + 1;
-    const newMonths = state.months.map(mo => {
-      const budget = padTo(mo.budget || [], minLen, { aed: 0, eur: null });
-      const actual = padTo(mo.actual || [], minLen, { aed: 0, eur: null, txns: [] });
-      [budget[idx], budget[nIdx]] = [budget[nIdx], budget[idx]];
-      [actual[idx], actual[nIdx]] = [actual[nIdx], actual[idx]];
-      return { ...mo, budget, actual };
-    });
-
-    setState({ ...state, postes: newPostes, months: newMonths });
+    // Échange les deux postes ET leurs lignes (budget + réel) dans chaque mois — cf. lib/postes
+    const next = swapPostes(postes, state.months, idx, nIdx);
+    setState({ ...state, postes: next.postes, months: next.months });
     save();
-    logChange?.('poste.update', `Réordre poste « ${newPostes[nIdx].name} » ↔ « ${newPostes[idx].name} »`);
+    logChange?.('poste.update', `Réordre poste « ${next.postes[nIdx].name} » ↔ « ${next.postes[idx].name} »`);
   };
 
   /**
@@ -247,7 +221,7 @@ export default function SettingsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `finance-hq-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `finance-hq-backup-${todayISO()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

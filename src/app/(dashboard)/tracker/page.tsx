@@ -8,11 +8,12 @@ import { useIsMobile } from '@/lib/useIsMobile';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive, startedMonths } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS } from '@/lib/constants';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive, startedMonths, isLegacyMonth, monthRevenuConfirmedEur, monthRevenuConfirmedAed, todayISO } from '@/lib/utils';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff, Pencil } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
+import { applyRegul, clearRegul } from '@/lib/regul';
+import RegulHistory from '@/components/RegulHistory';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
@@ -50,7 +51,7 @@ export default function TrackerPage() {
   // Transaction modal
   const [txnOpen, setTxnOpen] = useState(false);
   const [txnTarget, setTxnTarget] = useState<{ posteIdx: number; editIdx?: number; isExtra?: boolean; extraIdx?: number } | null>(null);
-  const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: new Date().toISOString().split('T')[0] });
+  const [txnForm, setTxnForm] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: todayISO() });
   const [showLabelSugg, setShowLabelSugg] = useState(false);
   // Pour bouger la tx vers un autre poste (ou en créer un nouveau)
   const [selectedPosteIdx, setSelectedPosteIdx] = useState<number>(0);
@@ -103,14 +104,14 @@ export default function TrackerPage() {
 
   const openTxnAdd = (posteIdx: number) => {
     setTxnTarget({ posteIdx });
-    setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
+    setTxnForm({ label: '', amount: 0, currency: 'AED', date: todayISO() });
     resetPosteSelector(posteIdx);
     setTxnOpen(true);
   };
 
   const openTxnAddExtra = (extraIdx: number) => {
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx });
-    setTxnForm({ label: '', amount: 0, currency: 'AED', date: new Date().toISOString().split('T')[0] });
+    setTxnForm({ label: '', amount: 0, currency: 'AED', date: todayISO() });
     resetPosteSelector(-1); // -1 = "Garder dans l'extra"
     setTxnOpen(true);
   };
@@ -122,7 +123,7 @@ export default function TrackerPage() {
     if (!t) return;
     setTxnTarget({ posteIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
+    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || todayISO() });
     resetPosteSelector(posteIdx);
     setTxnOpen(true);
   };
@@ -134,7 +135,7 @@ export default function TrackerPage() {
     if (!t) return;
     setTxnTarget({ posteIdx: -1, isExtra: true, extraIdx, editIdx });
     setTxnForm({ label: t.label || '', amount: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || new Date().toISOString().split('T')[0] });
+    (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || todayISO() });
     resetPosteSelector(-1); // -1 = "Garder dans l'extra"
     setTxnOpen(true);
   };
@@ -149,7 +150,7 @@ export default function TrackerPage() {
       amount: Math.round(amountAed * 100) / 100,
       rate,
       eur: Math.round(eurVal * 100) / 100,
-      date: txnForm.date || new Date().toISOString().split('T')[0],
+      date: txnForm.date || todayISO(),
       currency: txnForm.currency,
     };
     // @ts-expect-error: originalAmount for edit round-trip
@@ -387,16 +388,6 @@ export default function TrackerPage() {
   // Mois précédent (M-1) — sert pour les comparaisons inline dans le tableau
 
   // Revenue helpers
-  const isRevSynced = (id: string) => !LEGACY_EARN_MONTHS.includes(id);
-  const getMonthRevEur = (id: string) => {
-    const entries = monthRevenus(state.revenus?.months, id);
-    return entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
-  };
-  const getMonthRevAed = (id: string) => {
-    const entries = monthRevenus(state.revenus?.months, id);
-    return entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + ((e.cashed || 0) * (e.rate || state.rate)), 0);
-  };
-
   const createMonth = () => {
     const name = nmName.trim().toUpperCase();
     if (!name) return;
@@ -549,21 +540,19 @@ export default function TrackerPage() {
   const applyReconciliation = (realBalance: number) => {
     if (!m) return;
     if (!isFinite(realBalance)) return;
-    const prevWithoutAdj = (m.soldeStart || 0) + earnAed - aABank;
-    const newAdjustment = Math.round((realBalance - prevWithoutAdj) * 100) / 100;
-    const months = state.months.map(mo =>
-      mo.id === m.id ? { ...mo, adjustment: newAdjustment === 0 ? undefined : newAdjustment } : mo
-    );
-    setState({ ...state, months });
+    // Calcul + consignation de la régul dans le mois : logique partagée avec le mobile
+    const next = applyRegul(m, realBalance, (m.soldeStart || 0) + earnAed - aABank);
+    const newAdjustment = next.adjustment || 0;
+    setState({ ...state, months: state.months.map(mo => (mo.id === m.id ? next : mo)) });
     save();
     logChange?.('month.update', `Régul ${m.id}: balance réelle ${f0(realBalance)} AED, ajustement ${newAdjustment >= 0 ? '+' : ''}${f0(newAdjustment)} AED`);
   };
 
   const clearAdjustment = () => {
     if (!m || !m.adjustment) return;
-    const months = state.months.map(mo => mo.id === m.id ? { ...mo, adjustment: undefined } : mo);
-    setState({ ...state, months });
+    setState({ ...state, months: state.months.map(mo => (mo.id === m.id ? clearRegul(mo) : mo)) });
     save();
+    logChange?.('month.update', `Régul ${m.id}: ajustement retiré`);
   };
 
   // Masque un poste régulier pour ce mois (pas globalement)
@@ -672,9 +661,10 @@ export default function TrackerPage() {
   // sumAedBank exclut les txns tagged comme tripKind=expense (déjà débitées via le swap)
   const aABank = m ? sumAedBank(m, state.postes, m.extraActual) : 0;
 
-  const synced = m ? isRevSynced(m.id) : false;
-  const earnEur = m ? (synced ? getMonthRevEur(m.id) : (m.earn || 0)) : 0;
-  const earnAed = m ? (synced ? getMonthRevAed(m.id) : toAed(m.earn || 0, m.rate)) : 0;
+  // Revenus : mois legacy → m.earn ; sinon entrées confirmées de la table Revenus (par période)
+  const synced = m ? !isLegacyMonth(m) : false;
+  const earnEur = m ? monthRevenuConfirmedEur(m, state.revenus?.months) : 0;
+  const earnAed = m ? monthRevenuConfirmedAed(m, state.revenus?.months, state.rate) : 0;
   const diff = earnEur - aE;
   // Prévisionnel compte = solde + revenus - dépenses (en excluant expenses voyage)
   const adjustment = m?.adjustment || 0;
@@ -684,7 +674,7 @@ export default function TrackerPage() {
   // revenuLive) : solde à l'instant T. AED = celui de CHAQUE entrée (USD : montant × taux
   // de swap, fixe) plutôt que l'EUR total reconverti, qui mélangeait deux taux.
   const previewEntries = m && synced
-    ? monthRevenus(state.revenus?.months, m.id).filter(e => e.status === 'preview').map(e => revenuLive(e, liveRate))
+    ? monthRevenus(state.revenus?.months, m).filter(e => e.status === 'preview').map(e => revenuLive(e, liveRate))
     : [];
   const previewEur = previewEntries.reduce((s, e) => s + (e.cashed || 0), 0);
   const previewAed = previewEntries.reduce((s, e) => s + (e.cashed || 0) * (e.rate || liveRate), 0);
@@ -1640,6 +1630,7 @@ export default function TrackerPage() {
               </div>
             );
           })()}
+          <RegulHistory month={m} />
           <div className="flex gap-2.5 mt-5">
             <button
               onClick={() => {

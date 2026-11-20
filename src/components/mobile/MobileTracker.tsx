@@ -2,18 +2,19 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS } from '@/lib/constants';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed, monthRevenuConfirmedEur, isLegacyMonth, todayISO } from '@/lib/utils';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
 // import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt, EyeOff } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
+import { applyRegul, clearRegul } from '@/lib/regul';
+import RegulHistory from '@/components/RegulHistory';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => todayISO(); // date LOCALE (cf. todayISO)
 
 export default function MobileTracker() {
-  const { state, save, curMonth, setCurMonth, setState, liveRate, trips, renameMonth } = useApp();
+  const { state, save, curMonth, setCurMonth, setState, liveRate, trips, renameMonth, logChange } = useApp();
   const months = state.months;
   const idx = months.findIndex(mo => mo.id === curMonth);
   const m: Month | undefined = idx >= 0 ? months[idx] : undefined;
@@ -50,11 +51,9 @@ export default function MobileTracker() {
   const goNext = () => { if (idx >= 0 && idx < months.length - 1) setCurMonth(months[idx + 1].id); };
 
   // Revenue helpers (sync with revenus table)
-  const isSynced = m ? !LEGACY_EARN_MONTHS.includes(m.id) : false;
-  const revEntries = m ? monthRevenus(state.revenus?.months, m.id) : [];
-  const earnEur = m
-    ? (isSynced ? revEntries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0) : (m.earn || 0))
-    : 0;
+  const isSynced = m ? !isLegacyMonth(m) : false;
+  const revEntries = m ? monthRevenus(state.revenus?.months, m) : [];
+  const earnEur = m ? monthRevenuConfirmedEur(m, state.revenus?.months) : 0;
   // Prévisions au taux du jour (cf. revenuLive) — mêmes valeurs que desktop
   const previewEntries = m && isSynced
     ? revEntries.filter(e => e.status === 'preview').map(e => revenuLive(e, liveRate))
@@ -349,20 +348,19 @@ export default function MobileTracker() {
   const applyReconciliationMobile = (realBalance: number) => {
     if (!m) return;
     if (!isFinite(realBalance)) return;
-    const prevWithoutAdj = (m.soldeStart || 0) + earnAed - aABank;
-    const newAdjustment = Math.round((realBalance - prevWithoutAdj) * 100) / 100;
-    const months = state.months.map(mo =>
-      mo.id === m.id ? { ...mo, adjustment: newAdjustment === 0 ? undefined : newAdjustment } : mo
-    );
-    setState({ ...state, months });
+    // Même logique que le desktop (lib/regul) — et désormais consignée dans l'historique
+    const next = applyRegul(m, realBalance, (m.soldeStart || 0) + earnAed - aABank);
+    const newAdjustment = next.adjustment || 0;
+    setState({ ...state, months: state.months.map(mo => (mo.id === m.id ? next : mo)) });
     save();
+    logChange?.('month.update', `Régul ${m.id}: balance réelle ${f0(realBalance)} AED, ajustement ${newAdjustment >= 0 ? '+' : ''}${f0(newAdjustment)} AED`);
   };
 
   const clearAdjustmentMobile = () => {
     if (!m || !m.adjustment) return;
-    const months = state.months.map(mo => mo.id === m.id ? { ...mo, adjustment: undefined } : mo);
-    setState({ ...state, months });
+    setState({ ...state, months: state.months.map(mo => (mo.id === m.id ? clearRegul(mo) : mo)) });
     save();
+    logChange?.('month.update', `Régul ${m.id}: ajustement retiré`);
   };
 
   return (
@@ -774,6 +772,7 @@ export default function MobileTracker() {
               </div>
             );
           })()}
+          <RegulHistory month={m} />
           <div className="flex gap-2 pt-1">
             <button
               onClick={() => { const real = parseFloat(reconcileInput); if (isFinite(real)) { applyReconciliationMobile(real); setReconcileOpen(false); } }}

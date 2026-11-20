@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { Month, Transaction, ActualRow, BudgetRow } from '@/lib/types';
+import { Month, Transaction } from '@/lib/types';
 import { f0, f$ } from '@/lib/utils';
+import { mergePostes } from '@/lib/postes';
 
 interface RowDiagnostic {
   monthId: string;
@@ -142,44 +143,9 @@ export default function DataAudit() {
     if (idxs.length < 2) return;
     if (!confirm(`Fusionner ${idxs.length} entrées "${name}" en une seule ?\n\n• Les valeurs budget et réel de chaque mois seront SOMMÉES dans la 1ère entrée\n• Les transactions seront concaténées\n• Les autres entrées seront supprimées (splice clean des indices dans tous les mois)\n\nÀ faire après backup ! (Settings → Exporter)`)) return;
 
-    const keepIdx = idxs[0];
-    const removeIdxs = idxs.slice(1).sort((a, b) => b - a); // desc pour splice safe
-
-    const updated = {
-      ...state,
-      postes: postes.filter((_, i) => !removeIdxs.includes(i)),
-      months: months.map(mo => {
-        const budget = [...(mo.budget || [])];
-        const actual = [...(mo.actual || [])];
-
-        // Snapshot des valeurs pour SUMMING
-        const budgetEntries = idxs.map(idx => budget[idx] || { aed: 0, eur: null });
-        const actualEntries = idxs.map(idx => actual[idx] || { aed: 0, eur: null });
-        const txnsMerged: Transaction[] = [];
-        actualEntries.forEach(a => { if (a.txns) txnsMerged.push(...a.txns); });
-
-        // Set la fusion dans le keepIdx
-        const sumAed = budgetEntries.reduce((s, b) => s + (b.aed || 0), 0);
-        const sumEurB = budgetEntries.reduce((s: number, b: BudgetRow) => s + (b.eur ?? 0), 0);
-        budget[keepIdx] = { aed: sumAed, eur: sumEurB > 0 ? sumEurB : null };
-
-        const sumActAed = actualEntries.reduce((s, a) => s + (a.aed || 0), 0);
-        const sumActEur = actualEntries.reduce((s: number, a: ActualRow) => s + (a.eur ?? 0), 0);
-        actual[keepIdx] = {
-          aed: sumActAed,
-          eur: sumActEur > 0 ? sumActEur : null,
-          txns: txnsMerged,
-        };
-
-        // Splice les indices supplémentaires (desc pour pas casser)
-        removeIdxs.forEach(i => {
-          budget.splice(i, 1);
-          actual.splice(i, 1);
-        });
-
-        return { ...mo, budget, actual };
-      }),
-    };
+    // Somme + concaténation + retrait des lignes dans chaque mois : cf. lib/postes
+    const merged = mergePostes(postes, months, idxs);
+    const updated = { ...state, postes: merged.postes, months: merged.months };
     setState(updated);
     save();
     alert(`Fusion OK : ${idxs.length} entrées "${name}" → 1 entrée.`);

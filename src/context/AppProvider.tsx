@@ -2,9 +2,9 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
 import { AppState, Month, Space, HistoryEntry, ResidencyEntry, Trip, Transaction, Theme } from '@/lib/types';
-import { DEFAULT_POSTES, MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
+import { DEFAULT_POSTES, MOIS_LIST, monthBaseName, monthYearSuffix, monthIndexOf } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
-import { fetchRate, detectYears } from '@/lib/utils';
+import { fetchRate, detectYears, todayISO } from '@/lib/utils';
 
 /** Doit rester identique à la clé lue par le script anti-flash de app/layout.tsx. */
 export const THEME_KEY = 'fhq_theme';
@@ -261,6 +261,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const spaces = useMemo(() => stateToSpaces(state), [state]);
   const activeSpace = useMemo(() => spaces.find(s => s.id === activeSpaceId) || spaces[0], [spaces, activeSpaceId]);
 
+  // `Month._year` est un champ CALCULÉ (cf. detectYears), pas une donnée saisie. Il est
+  // recalculé ICI, à chaque changement des mois et avant le rendu de n'importe quelle
+  // page : la lecture des revenus par période (monthRevenus, isLegacyMonth) en dépend, et
+  // il n'était auparavant fiable qu'après un passage par la page Tracker.
+  useMemo(() => {
+    detectYears(state.months || []);
+    (state.spaces || []).forEach(sp => detectYears(sp.months || []));
+  }, [state.months, state.spaces]);
+
   // Auto-restore from localStorage on mount
   useEffect(() => {
     const uid = localStorage.getItem('fdxb_uid');
@@ -285,7 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const picked = pickInitialMonth(active.months);
           const now = new Date();
           console.log('[fdxb] pickInitialMonth →', picked, {
-            today: now.toISOString().split('T')[0],
+            today: todayISO(now),
             calendar: MOIS_LIST[now.getMonth()] + ' ' + now.getFullYear(),
             available: active.months.map(m => `${m.id}${m._year ? '/' + m._year : ''}`).join(', '),
           });
@@ -1034,10 +1043,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * il n'y a pas de sens à donner au swap, c'est un vrai conflit qu'on remonte.
    *
    * Rekey ce qui référence un mois par son id — POUR LES DEUX ids en cas de swap :
-   * revenus.months (sinon les entrées de revenus se retrouvent orphelines sous
-   * l'ancien nom) et trip.swap.monthId (le SEUL champ qui stocke un monthId de façon
-   * persistante côté Trip — les rechargements affichés dans Voyages sont recalculés
-   * à la volée depuis mo.id, déjà à jour après le rename sans y toucher).
+   * trip.swap.monthId (le SEUL champ qui stocke un monthId de façon persistante côté
+   * Trip — les rechargements affichés dans Voyages sont recalculés à la volée depuis
+   * mo.id, déjà à jour après le rename sans y toucher). La table Revenus, elle, est
+   * indexée par période calendaire et ne suit PAS le renommage (cf. rekeyRev plus bas).
    */
   const renameMonth = useCallback((
     oldId: string, newName: string,
@@ -1072,6 +1081,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let months = prev.months;
       const revMonths = { ...(prev.revenus?.months || {}) };
       let trips = prev.trips || [];
+      // La table Revenus est indexée par PÉRIODE CALENDAIRE (cf. lib/revenus), pas par id
+      // de mois : renommer un mois reconnu (« OCTOBRE 26 » → « OCTOBRE ») ne doit donc
+      // PAS déplacer ses clés — les déplacer changerait leur année (« OCTOBRE » 2026
+      // poussé vers « OCTOBRE 25 » = revenus d'octobre 2026 rangés en 2025). Seul un mois
+      // au nom libre, lu par clé exacte, garde son rekey.
+      const rekeyRev = (from: string, to: string) => {
+        if (monthIndexOf(from) >= 0 || !(from in revMonths)) return;
+        revMonths[to] = revMonths[from];
+        delete revMonths[from];
+      };
 
       // Le swap DOIT s'appliquer AVANT le renommage principal : oldId et swapId
       // désignent deux mois distincts tant que ce dernier n'a pas encore pris le
@@ -1080,20 +1099,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // renommerait tous les deux vers swapNewId.
       if (swapId && swapNewId) {
         months = months.map(m => m.id === swapId ? { ...m, id: swapNewId! } : m);
-        if (swapId in revMonths) {
-          revMonths[swapNewId] = revMonths[swapId];
-          delete revMonths[swapId];
-        }
+        rekeyRev(swapId, swapNewId);
         trips = trips.map(t =>
           t.swap.monthId === swapId ? { ...t, swap: { ...t.swap, monthId: swapNewId! } } : t
         );
       }
 
       months = months.map(m => m.id === oldId ? { ...m, id: trimmed } : m);
-      if (oldId in revMonths) {
-        revMonths[trimmed] = revMonths[oldId];
-        delete revMonths[oldId];
-      }
+      rekeyRev(oldId, trimmed);
       // trips n'est PAS space-scopé (AppState.trips top-level, pas de champ sur Space)
       trips = trips.map(t =>
         t.swap.monthId === oldId ? { ...t, swap: { ...t.swap, monthId: trimmed } } : t

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import Modal from '@/components/ui/Modal';
+import { todayISO } from '@/lib/utils';
 import {
   LayoutGrid, BarChart3, DollarSign, Home, Settings, Eye, EyeOff,
   RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane, Sun, Moon,
@@ -65,7 +66,7 @@ export default function Sidebar() {
     createSpace({
       id, name: nsName.trim(), emoji: nsEmoji,
       localCurrency: nsCurrency, baseCurrency: 'EUR',
-      status: nsStatus, dateFrom: new Date().toISOString().slice(0, 7), dateTo: null,
+      status: nsStatus, dateFrom: todayISO().slice(0, 7), dateTo: null,
     });
     setActiveSpaceId(id);
     setNewSpaceOpen(false);
