@@ -2,13 +2,16 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { TrendingUp } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, sumEur, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths } from '@/lib/utils';
-import { INSTALL_CAPITAL } from '@/lib/constants';
-import { ChevronRight, TrendingUp } from 'lucide-react';
+import { f$, f0, sumEur, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths, shortMonth } from '@/lib/utils';
+import { INSTALL_CAPITAL, PIE_COLORS } from '@/lib/constants';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
+import { MBadge, MCard, MDivider, MIcon, MLabel, MRow } from './ui';
 
 export default function MobileGlobal() {
-  const { spaces, liveRate, setActiveSpaceId } = useApp();
+  const { spaces, liveRate, setActiveSpaceId, theme } = useApp();
   const router = useRouter();
 
   const spaceStats = useMemo(() => {
@@ -96,115 +99,143 @@ export default function MobileGlobal() {
   const totalAssetsEur = (manualAssets as { eurValue: number }[]).reduce((s, a) => s + (a.eurValue || 0), 0);
   const netWorth = totalBankEur + totalAssetsEur;
 
+  // Dépenses par mois, tous espaces (mêmes données que le graphe desktop)
+  const monthIds = Array.from(new Set(spaces.flatMap(s => startedMonths(s.months).map(m => m.id))));
+  const evoData = monthIds.map(id => {
+    const row: Record<string, string | number> = { name: shortMonth(id) };
+    spaces.forEach(s => {
+      const m = s.months.find(mo => mo.id === id);
+      row[s.name] = m ? Math.round(sumEur(m, s.postes, m.extraActual)) : 0;
+    });
+    return row;
+  });
+  const ct = chartTheme(theme);
+  const signed = (v: number) => `${v >= 0 ? '+' : ''}${f$(v)} €`;
+
   const goToSpace = (id: string) => {
     setActiveSpaceId(id);
     router.push('/tracker');
   };
 
   return (
-    <div className="pb-20">
-      {/* Top KPI hero card */}
-      <div className="bg-gradient-to-br from-bg-3 to-bg-2 border border-border-2 rounded-2xl p-5 mb-4">
-        <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1">Balance nette globale</div>
-        <div className={`text-[28px] font-bold mono-value tracking-tight leading-none ${bankReality.delta >= 0 ? 'text-accent' : 'text-danger'}`}>
-          {bankReality.delta >= 0 ? '+' : ''}{f$(bankReality.delta)} €
-        </div>
-        <div className="text-[10px] text-t-4 mt-1">
-          {bankReality.from
-            ? `Compte réel depuis ${bankReality.from}${bankReality.startLabel ? ` · ${bankReality.startLabel}` : ''} · entrées − sorties : ${bankReality.flows >= 0 ? '+' : ''}${f$(bankReality.flows)} €`
-            : `Entrées − sorties : ${grandBalance >= 0 ? '+' : ''}${f$(grandBalance)} €`}
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
-          <div>
-            <div className="text-t-4 mb-0.5">Revenus</div>
-            <div className="text-accent font-bold mono-value text-[14px]">{f$(grandTotalRev)} €</div>
-          </div>
-          <div>
-            <div className="text-t-4 mb-0.5">Dépenses</div>
-            <div className="text-danger font-bold mono-value text-[14px]">{f$(grandTotalSpent)} €</div>
-          </div>
-        </div>
+    <div className="-mx-1">
+      {/* Variation réelle du compte, tous espaces */}
+      <div className="flex flex-col items-center text-center pt-3 pb-6 px-4">
+        <span className="text-[13px] text-t-3">{bankReality.from ? 'Variation réelle du compte' : 'Revenus − dépenses'}</span>
+        <span className="flex items-baseline gap-1.5 mt-1">
+          <span className={`text-[36px] leading-none hero-num mono-value ${(bankReality.from ? bankReality.delta : grandBalance) < 0 ? 'text-danger' : 'text-t-1'}`}>
+            {(bankReality.from ? bankReality.delta : grandBalance) >= 0 ? '+' : ''}{f$(bankReality.from ? bankReality.delta : grandBalance)}
+          </span>
+          <span className="text-[16px] text-t-3 font-medium">€</span>
+        </span>
+        {bankReality.from && (
+          <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub leading-snug">
+            depuis {bankReality.from}{bankReality.startLabel ? ` · ${bankReality.startLabel}` : ''}
+          </span>
+        )}
       </div>
 
-      {/* Patrimoine card */}
-      <div className="bg-bg-3 border border-border rounded-xl p-4 mb-5 active:bg-bg-4 cursor-pointer" onClick={() => router.push('/networth')}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <TrendingUp size={16} className="text-accent" />
-            <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Patrimoine net</span>
+      <MCard className="mb-4">
+        <div className="grid grid-cols-2 gap-4 px-4 pt-3.5 pb-3">
+          <div className="min-w-0">
+            <div className="text-[13px] text-t-3">Revenus</div>
+            <div className="text-[17px] text-t-1 mono-value mt-0.5 truncate">+{f$(grandTotalRev)} €</div>
           </div>
-          <ChevronRight size={16} className="text-t-4" />
+          <div className="min-w-0 text-right">
+            <div className="text-[13px] text-t-3">Dépenses</div>
+            <div className="text-[17px] text-t-1 mono-value mt-0.5 truncate">{f$(grandTotalSpent)} €</div>
+          </div>
         </div>
-        <div className="text-[22px] font-bold mono-value tracking-tight">{f$(netWorth)} €</div>
-        <div className="text-[11px] text-t-3 mt-1">
-          Banques {f$(totalBankEur)} € · Actifs {f$(totalAssetsEur)} €
-        </div>
-      </div>
+        <MDivider />
+        <MRow
+          className="!min-h-[50px]"
+          title={<span className="text-[14px] font-normal text-t-2">Entrées − sorties saisies</span>}
+          sub={bankReality.from ? 'Écart = mouvements non saisis' : undefined}
+          right={<span className={`mono-value ${(bankReality.from ? bankReality.flows : grandBalance) >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(bankReality.from ? bankReality.flows : grandBalance)}</span>}
+        />
+      </MCard>
 
-      {/* Space list */}
-      <div className="text-[11px] uppercase tracking-wider text-t-3 font-semibold mb-2.5 px-1">Mes spaces ({spaceStats.length})</div>
-      <div className="space-y-2 mb-5">
-        {spaceStats.map(sp => (
-          <button
-            key={sp.id}
-            onClick={() => goToSpace(sp.id)}
-            className="w-full bg-bg-3 border border-border rounded-xl p-3.5 text-left active:bg-bg-4 transition-colors"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-bg-4 flex items-center justify-center text-[18px] shrink-0">
-                {sp.emoji}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold tracking-tight text-t-1 truncate">{sp.name}</div>
-                <div className="text-[10px] text-t-3 font-mono mt-0.5">{sp.currency} · {sp.monthCount} mois</div>
-              </div>
-              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${sp.status === 'active' ? 'text-accent bg-accent/10 border-accent/25' : sp.status === 'archived' ? 'text-t-3 bg-bg-4 border-border' : 'text-info bg-info/10 border-info/25'}`}>
-                {sp.status === 'active' ? 'Actif' : sp.status === 'archived' ? 'Arch.' : 'Draft'}
-              </span>
-              <ChevronRight size={16} className="text-t-4 shrink-0" />
+      <MCard className="mb-4">
+        <MRow
+          icon={<MIcon><TrendingUp size={17} /></MIcon>}
+          title="Patrimoine net"
+          sub={<span className="mono-value">{totalAssetsEur > 0 ? `Dont actifs ${f0(totalAssetsEur)} €` : 'Soldes bancaires'}</span>}
+          right={<span className="mono-value">{f$(netWorth)} €</span>}
+          chevron
+          onClick={() => router.push('/networth')}
+        />
+      </MCard>
+
+      <MLabel>{spaceStats.length > 1 ? `${spaceStats.length} espaces` : 'Espace'}</MLabel>
+      <MCard className="mb-4">
+        {spaceStats.map((sp, k) => (
+          <div key={sp.id}>
+            {k > 0 && <MDivider />}
+            <MRow
+              icon={<MIcon>{sp.emoji || sp.name[0]}</MIcon>}
+              title={sp.name}
+              badge={sp.status === 'active' ? undefined : <MBadge>{sp.status === 'archived' ? 'Archivé' : 'Brouillon'}</MBadge>}
+              sub={<span className="mono-value">{sp.currency} · {sp.monthCount} mois{grandTotalSpent > 0 && spaceStats.length > 1 ? ` · ${Math.round((sp.totalSpent / grandTotalSpent) * 100)} % des dépenses` : ''}</span>}
+              right={<span className={`mono-value ${sp.realBalance >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(sp.realBalance)}</span>}
+              chevron
+              onClick={() => goToSpace(sp.id)}
+            />
+            <div className="flex justify-between gap-3 pl-[64px] pr-4 pb-3 -mt-1 text-[13px] text-t-3 mono-value m-sub">
+              <span>Revenus {f0(sp.totalRevenue)} €</span>
+              <span>Dépenses {f0(sp.totalSpent)} €</span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-bg-2 rounded-lg px-2.5 py-2">
-                <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Rev.</div>
-                <div className="text-[12px] font-bold mono-value text-accent mt-1 truncate">{f$(sp.totalRevenue)} €</div>
-              </div>
-              <div className="bg-bg-2 rounded-lg px-2.5 py-2">
-                <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Dép.</div>
-                <div className="text-[12px] font-bold mono-value text-danger mt-1 truncate">{f$(sp.totalSpent)} €</div>
-              </div>
-              <div className="bg-bg-2 rounded-lg px-2.5 py-2">
-                <div className="text-[9px] text-t-4 uppercase tracking-wider font-semibold leading-none">Bal.</div>
-                <div className={`text-[12px] font-bold mono-value mt-1 truncate ${sp.realBalance >= 0 ? 'text-accent' : 'text-danger'}`}>
-                  {sp.realBalance >= 0 ? '+' : ''}{f$(sp.realBalance)} €
-                </div>
-              </div>
-            </div>
-          </button>
+          </div>
         ))}
-      </div>
+      </MCard>
 
-      {/* Bank balances */}
+      {evoData.length > 0 && (
+        <>
+          <MLabel>Dépenses par mois (€)</MLabel>
+          <MCard className="mb-4 px-2 pt-3 pb-1">
+            <ResponsiveContainer width="100%" height={170}>
+              <BarChart data={evoData} margin={{ left: 4, right: 4, top: 4, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <Tooltip contentStyle={chartTooltipStyle(theme)} cursor={{ fill: 'transparent' }} formatter={v => `${f0(Number(v))} €`} />
+                {spaces.map((s, i) => (
+                  <Bar key={s.id} dataKey={s.name} stackId="a" fill={spaces.length > 1 ? PIE_COLORS[i % PIE_COLORS.length] : 'rgb(var(--t-2))'} radius={i === spaces.length - 1 ? [4, 4, 0, 0] : undefined} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+            {spaces.length > 1 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 px-2 pb-2 pt-1">
+                {spaces.map((s, i) => (
+                  <span key={s.id} className="flex items-center gap-1.5 text-[12px] text-t-3">
+                    <span className="w-2 h-2 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />{s.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </MCard>
+        </>
+      )}
+
       {bankBalances.length > 0 && (
         <>
-          <div className="text-[11px] uppercase tracking-wider text-t-3 font-semibold mb-2.5 px-1">Soldes bancaires</div>
-          <div className="bg-bg-3 border border-border rounded-xl overflow-hidden">
+          <MLabel>Soldes bancaires</MLabel>
+          <MCard className="mb-2">
             {bankBalances.map((b, i) => (
-              <div key={i} className={`flex items-center justify-between gap-3 px-4 py-3 ${i < bankBalances.length - 1 ? 'border-b border-border' : ''}`}>
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-[16px]">{b.emoji}</span>
-                  <span className="text-[13px] font-medium truncate">{b.space}</span>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-[13px] font-bold mono-value text-accent">{f$(b.eurBalance)} €</div>
-                  <div className="text-[10px] text-t-4 mono-value">{f0(b.balance)} {b.currency}</div>
-                </div>
+              <div key={i}>
+                {i > 0 && <MDivider />}
+                <MRow
+                  icon={<MIcon>{b.emoji || b.space[0]}</MIcon>}
+                  title={b.space}
+                  right={<span className="mono-value">{f$(b.eurBalance)} €</span>}
+                  rightSub={<span className="mono-value">{f0(b.balance)} {b.currency}</span>}
+                />
               </div>
             ))}
-            <div className="flex items-center justify-between gap-3 px-4 py-3 bg-bg-2 border-t border-border">
-              <span className="text-[12px] font-bold uppercase tracking-wider">Total</span>
-              <span className="text-[14px] font-bold mono-value text-accent">{f$(totalBankEur)} €</span>
-            </div>
-          </div>
+            {bankBalances.length > 1 && (
+              <>
+                <MDivider />
+                <MRow className="!min-h-[50px]" title={<span className="font-semibold">Total</span>} right={<span className="mono-value font-semibold">{f$(totalBankEur)} €</span>} />
+              </>
+            )}
+          </MCard>
         </>
       )}
     </div>

@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { parseAmount } from '@/lib/amount';
 import BottomSheet from '../BottomSheet';
 import { MButton, MSeg } from '../ui';
 
-/** Texte saisi (virgule ou point) → nombre. NaN si illisible. */
-export const parseAmount = (s: string): number => parseFloat((s || '').replace(/\s/g, '').replace(',', '.'));
+export { parseAmount };
 
 /**
  * Saisie d'un seul montant (budget d'un poste, solde de départ, montant réel…), avec la

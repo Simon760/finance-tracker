@@ -28,7 +28,7 @@ const BLANK: RevenuEntry = { date: '', client: '', cat: '', contracted: 0, cashe
  */
 export function useRevenus() {
   const { state, setState, save, getState, liveRate, logChange, revFocus, setRevFocus, activeSpaceId } = useApp();
-  const { confirm } = useDialog();
+  const { confirm, prompt } = useDialog();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
   const categories = rev.categories || [];
 
@@ -178,15 +178,16 @@ export function useRevenus() {
   const deleteEntry = async (month: string, idx: number) => {
     const key = keyOf(month);
     const removed = rev.months?.[key]?.[idx];
-    if (!removed) return;
-    if (!(await confirm(`Supprimer ce revenu ?\n\n${removed.client || '—'} · ${f$(removed.cashed || 0)} €`, { danger: true }))) return;
+    if (!removed) return false;
+    if (!(await confirm(`Supprimer ce revenu ?\n\n${removed.client || '—'} · ${f$(removed.cashed || 0)} €`, { danger: true }))) return false;
     // Après l'attente : on repart du dernier état, et on vérifie que l'entrée visée est
     // toujours la même (elle a pu bouger pendant que la fenêtre était ouverte).
     const s = getState();
-    if (s.revenus?.months?.[key]?.[idx] !== removed) return;
+    if (s.revenus?.months?.[key]?.[idx] !== removed) return false;
     setState({ ...s, revenus: { ...s.revenus, months: removeRevenu(s.revenus.months, key, idx) } });
     save();
     logChange?.('revenu.delete', `Suppr revenu ${removed.client || '—'} · ${f$(removed.cashed || 0)} € (${key})`);
+    return true; // false = annulé ou entrée déplacée entre-temps
   };
 
   // ─── Revenus récurrents de la période affichée (cf. lib/recurring) ───
@@ -222,7 +223,29 @@ export function useRevenus() {
     logChange?.('revenu.confirm', `Confirm revenu ${res.frozen.client || '—'} · ${f$(res.frozen.cashed || 0)} € (${key})`);
   };
 
+  // ─── Réglages : objectif mensuel et catégories ───
+  const updateObjectif = (val: number) => {
+    setState({ ...state, revenus: { ...rev, objectif: val } });
+    save();
+  };
+
+  const addCategory = async () => {
+    const cat = (await prompt('Nom de la catégorie :', { title: 'Nouvelle catégorie', confirmLabel: 'Ajouter', placeholder: 'Ex : CONSULTING' }))?.trim();
+    if (!cat || categories.includes(cat)) return;
+    const s = getState();
+    setState({ ...s, revenus: { ...s.revenus, categories: [...categories, cat] } });
+    save();
+  };
+
+  const removeCategory = async (cat: string) => {
+    if (!(await confirm(`Supprimer la catégorie "${cat}" ?`, { danger: true }))) return;
+    const s = getState();
+    setState({ ...s, revenus: { ...s.revenus, categories: categories.filter(c => c !== cat) } });
+    save();
+  };
+
   return {
+    updateObjectif, addCategory, removeCategory,
     rev, categories, liveRate,
     // période
     year, setYear, years, tab, setTab: setCurTab, isFuture,

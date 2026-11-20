@@ -1,7 +1,8 @@
 'use client';
 
 import { ChevronRight } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { parseAmount, amountText } from '@/lib/amount';
 
 /**
  * Kit de l'UI mobile — les briques communes à tous les écrans téléphone, pour qu'ils
@@ -198,5 +199,44 @@ export function MBar({ pct, tone }: { pct: number; tone?: 'accent' | 'warning' |
     <div className="h-[3px] bg-t-1/10 rounded-full overflow-hidden">
       <div className={`h-full rounded-full ${c}`} style={{ width: `${Math.max(0, Math.min(100, pct * 100))}%` }} />
     </div>
+  );
+}
+
+/**
+ * Champ numérique d'une cellule : clavier décimal, virgule acceptée, jamais `type="number"`
+ * (iOS y refuse la virgule selon la langue). Le parent garde un NOMBRE ; le texte tapé
+ * n'est remis en forme qu'à la sortie du champ.
+ */
+export function MNum({ value, onChange, className = '', placeholder = '0', autoFocus, ariaLabel }: {
+  value: number | undefined | null; onChange: (n: number) => void; className?: string; placeholder?: string; autoFocus?: boolean; ariaLabel?: string;
+}) {
+  const [text, setText] = useState(amountText(value));
+  const focused = useRef(false);
+  useEffect(() => { if (!focused.current) setText(amountText(value)); }, [value]);
+  return (
+    <input
+      className={`m-input mono-value ${className}`}
+      inputMode="decimal"
+      autoFocus={autoFocus}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      value={text}
+      onFocus={() => { focused.current = true; }}
+      onBlur={() => { focused.current = false; setText(amountText(value)); }}
+      onChange={e => {
+        setText(e.target.value);
+        const n = parseAmount(e.target.value);
+        onChange(isFinite(n) ? n : 0);
+      }}
+    />
+  );
+}
+
+/** Interrupteur (dans une ligne : `right={<MToggle on={…} />}`). */
+export function MToggle({ on }: { on: boolean }) {
+  return (
+    <span className={`inline-flex w-[46px] h-[28px] rounded-full p-[3px] transition-colors align-middle ${on ? 'bg-accent' : 'bg-t-1/15'}`}>
+      <span className={`w-[22px] h-[22px] rounded-full bg-white transition-transform ${on ? 'translate-x-[18px]' : ''}`} />
+    </span>
   );
 }

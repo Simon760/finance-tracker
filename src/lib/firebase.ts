@@ -1,4 +1,7 @@
-const FB_URL = 'https://tracker-dxb-default-rtdb.europe-west1.firebasedatabase.app';
+// NEXT_PUBLIC_FB_URL (fichier .env.local, jamais commité) redirige l'app vers une autre
+// base — sert aux tests navigateur sur une copie locale des données, pour ne JAMAIS
+// toucher la base de production. Absent en CI et en production.
+const FB_URL = process.env.NEXT_PUBLIC_FB_URL || 'https://tracker-dxb-default-rtdb.europe-west1.firebasedatabase.app';
 
 export async function fbGet<T>(path: string): Promise<T | null> {
   const res = await fetch(`${FB_URL}/${path}.json`);

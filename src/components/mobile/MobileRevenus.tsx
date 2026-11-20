@@ -1,47 +1,45 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { f$, f0, sameWeekdayDatesInMonth } from '@/lib/utils';
+import { useEffect, useMemo, useState } from 'react';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, BarChart3, CalendarDays, Target, Tags, Check, Trash2, Coins } from 'lucide-react';
+import { useApp } from '@/context/AppProvider';
+import { f$, f0, sameWeekdayDatesInMonth, todayISO } from '@/lib/utils';
 import { useRevenus } from '@/lib/useRevenus';
-import RecurringBanner from '@/components/RecurringBanner';
+import { revAnnualStats } from '@/lib/revenusStats';
 import { MOIS_LIST, REV_COLORS } from '@/lib/constants';
 import { RevenuEntry } from '@/lib/types';
+import { shortDay } from '@/lib/labels';
+import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
+import RecurringBanner from '@/components/RecurringBanner';
 import BottomSheet from './BottomSheet';
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Check, Receipt } from 'lucide-react';
+import { MAction, MBadge, MBar, MButton, MCard, MDivider, MEmpty, MField, MIcon, MLabel, MNum, MPill, MRow, MSeg, MToggle } from './ui';
+import AmountSheet from './tracker/AmountSheet';
 
-const STATUS_COLORS = {
-  confirmed: { row: 'border-l-accent', badge: 'text-accent bg-accent/10', label: 'CONFIRMÉ' },
-  preview:   { row: 'border-l-info',   badge: 'text-info bg-info/10',     label: 'PRÉVISION' },
-  pending:   { row: 'border-l-warning',badge: 'text-warning bg-warning/10', label: 'EN ATTENTE' },
-} as const;
+type R = ReturnType<typeof useRevenus>;
+const cap = (s: string) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : s);
+const isConfirmed = (e: RevenuEntry) => !e.status || e.status === 'confirmed';
+const TONE = { confirmed: 'text-accent', preview: 'text-info', pending: 'text-warning' } as const;
 
+/**
+ * Revenus sur mobile : vue « Mois » (encaissé, objectif, liste) et vue « Année » (stats
+ * annuelles, par mois, trimestre, catégorie, client). Toute la logique vient de
+ * lib/useRevenus et lib/revenusStats, partagés avec le desktop — ici, uniquement du rendu.
+ */
 export default function MobileRevenus() {
-  // Toute la logique (période, table de l'année, formulaire, écritures) est partagée
-  // avec l'affichage desktop — cf. lib/useRevenus. Ici : uniquement du rendu.
   const R = useRevenus();
-  const {
-    rev, categories, liveRate, year, setYear, years, yearRaw, viewMonths, orderedMonths, hasAnyData,
-    form, setForm, formMonth, setFormMonth, formYear, setFormYear,
-    rateFor, perEurOf, aedOf, repeatWeekly, setRepeatWeekly, rateTouched, setRateTouched,
-    saveEntry, deleteEntry, confirmEntry,
-  } = R;
-  const effectiveTab = R.tab;
-  const setCurTab = R.setTab;
-  const sheetOpen = R.formOpen;
-  const setSheetOpen = R.setFormOpen;
-  const USD_AED_PEG = R.usdPeg;
-  const curIdx = orderedMonths.indexOf(effectiveTab);
+  const { theme } = useApp();
+  const { rev, categories, year, setYear, years, yearRaw, viewMonths, orderedMonths, hasAnyData } = R;
+  const tab = R.tab;
+  const [view, setView] = useState<'month' | 'year'>('month');
+  const [sheet, setSheet] = useState<'picker' | 'objectif' | 'cats' | 'clients' | null>(null);
+  const [editing, setEditing] = useState<{ month: string; idx: number } | null>(null);
+  const today = todayISO();
+  const obj = rev.objectif || 5000;
 
-  const [showClientSugg, setShowClientSugg] = useState(false);
-  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const openAdd = () => { setEditing(null); R.openAdd(); };
+  const openEdit = (month: string, idx: number) => { setEditing({ month, idx }); R.openEdit(month, idx); };
 
-  const filteredClientSugg = useMemo(() => {
-    const q = (form.client || '').trim().toLowerCase();
-    const arr = q ? R.clientSuggestions.filter(s => s.name.toLowerCase().includes(q) && s.name.toLowerCase() !== q) : R.clientSuggestions;
-    return arr.slice(0, 6);
-  }, [R.clientSuggestions, form.client]);
-
-  const openAdd = () => { setShowClientSugg(false); R.openAdd(); };
   // Arrivée depuis le bouton « Revenu » de l'accueil : on ouvre directement la saisie
   useEffect(() => {
     try {
@@ -51,438 +49,438 @@ export default function MobileRevenus() {
     } catch { /* stockage indisponible */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const openEdit = (month: string, idx: number) => { setShowClientSugg(false); R.openEdit(month, idx); };
 
-  const goPrev = () => { if (curIdx > 0) setCurTab(orderedMonths[curIdx - 1]); };
-  const goNext = () => { if (curIdx >= 0 && curIdx < orderedMonths.length - 1) setCurTab(orderedMonths[curIdx + 1]); };
+  const curIdx = orderedMonths.indexOf(tab);
+  const goPrev = () => { if (curIdx > 0) R.setTab(orderedMonths[curIdx - 1]); };
+  const goNext = () => { if (curIdx >= 0 && curIdx < orderedMonths.length - 1) R.setTab(orderedMonths[curIdx + 1]); };
 
-  const curEntries = useMemo(() => viewMonths[effectiveTab] || [], [viewMonths, effectiveTab]);
-  const sortedEntries = useMemo(
-    () => curEntries.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date || '').localeCompare(a.e.date || '')),
-    [curEntries]
+  const entries = useMemo(() => viewMonths[tab] || [], [viewMonths, tab]);
+  const sorted = useMemo(() => entries.map((e, i) => ({ e, i })).sort((a, b) => (b.e.date || '').localeCompare(a.e.date || '')), [entries]);
+  const cashed = entries.filter(isConfirmed).reduce((s, e) => s + (e.cashed || 0), 0);
+  const contracted = entries.reduce((s, e) => s + (e.contracted || 0), 0);
+  const preview = entries.filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0);
+  const pending = entries.filter(e => e.status === 'pending').reduce((s, e) => s + (e.cashed || 0), 0);
+  const delta = cashed - obj;
+
+  const A = useMemo(() => revAnnualStats(viewMonths, R.isFuture, obj, today), [viewMonths, R.isFuture, obj, today]);
+  const ct = chartTheme(theme);
+  const catColor = (cat?: string) => REV_COLORS[Math.max(0, categories.indexOf(cat || '')) % REV_COLORS.length];
+
+  const actions = (
+    <div className="flex justify-around px-2 pb-6">
+      <MAction icon={<Plus size={21} />} label="Ajouter" onClick={openAdd} />
+      {view === 'month'
+        ? <MAction icon={<BarChart3 size={20} />} label="Année" onClick={() => setView('year')} />
+        : <MAction icon={<CalendarDays size={20} />} label="Mois" onClick={() => setView('month')} />}
+      <MAction icon={<Target size={20} />} label="Objectif" onClick={() => setSheet('objectif')} />
+      <MAction icon={<Tags size={20} />} label="Catégories" onClick={() => setSheet('cats')} />
+    </div>
   );
 
-  const monthCashed = curEntries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
-  const monthContracted = curEntries.reduce((s, e) => s + (e.contracted || 0), 0);
-  const monthPreview = curEntries.filter(e => e.status === 'preview').reduce((s, e) => s + (e.cashed || 0), 0);
-  const obj = rev.objectif || 5000;
-  const pctAtteinte = obj > 0 ? Math.round((monthCashed / obj) * 100) : 0;
-  const delta = monthCashed - obj;
+  const hero = (label: string, value: number, target: number) => {
+    const pct = target > 0 ? value / target : 0;
+    return (
+      <>
+        <span className="text-[13px] text-t-3">{label}</span>
+        <span className="flex items-baseline gap-1.5 mt-1">
+          <span className="text-[36px] leading-none hero-num mono-value text-t-1">{f$(value)}</span>
+          <span className="text-[16px] text-t-3 font-medium">€</span>
+        </span>
+        <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub">{Math.round(pct * 100)} % de l’objectif de {f0(target)} €</span>
+        <div className="w-[150px] mt-3"><MBar pct={pct} tone={pct >= 1 ? 'accent' : pct >= 0.75 ? 'warning' : undefined} /></div>
+      </>
+    );
+  };
 
-  const sheet = (
-    <AddEditSheet
-      open={sheetOpen} onClose={() => setSheetOpen(false)}
-      form={form} setForm={setForm}
-      formMonth={formMonth} setFormMonth={setFormMonth}
-      formYear={formYear} setFormYear={setFormYear} years={years}
-      categories={categories}
-      filteredClientSugg={filteredClientSugg}
-      showClientSugg={showClientSugg} setShowClientSugg={setShowClientSugg}
-      onSave={saveEntry} isEdit={R.isEdit}
-      rateFor={rateFor} liveRate={liveRate}
-      perEurOf={perEurOf} aedOf={aedOf} usdPeg={USD_AED_PEG}
-      rateTouched={rateTouched} setRateTouched={setRateTouched}
-      repeatWeekly={repeatWeekly} setRepeatWeekly={setRepeatWeekly}
-    />
+  const sheets = (
+    <>
+      <RevenuSheet R={R} editing={editing} />
+      <AmountSheet
+        open={sheet === 'objectif'} onClose={() => setSheet(null)} title="Objectif mensuel" subtitle="Encaissé visé chaque mois"
+        initial={rev.objectif || 0} currencies={['EUR']} hint={v => `Soit ${f0(v * 12)} € sur l’année`} onSave={v => R.updateObjectif(v)}
+      />
+      <BottomSheet open={sheet === 'cats'} onClose={() => setSheet(null)} title="Catégories" footer={<MButton variant="ghost" onClick={() => R.addCategory()}><Plus size={17} />Ajouter une catégorie</MButton>}>
+        <MCard surface="sheet">
+          {categories.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-t-3">Aucune catégorie pour l’instant</div>}
+          {categories.map((c, k) => (
+            <div key={c}>
+              {k > 0 && <MDivider />}
+              <div className="flex items-center gap-3 pl-4 pr-2 min-h-[52px]">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: catColor(c) }} />
+                <span className="flex-1 min-w-0 text-[15px] font-medium text-t-1 truncate">{c}</span>
+                <button type="button" onClick={() => R.removeCategory(c)} className="w-11 h-11 flex items-center justify-center text-t-3 active:text-danger" aria-label={`Supprimer la catégorie ${c}`}><Trash2 size={16} /></button>
+              </div>
+            </div>
+          ))}
+        </MCard>
+      </BottomSheet>
+      <BottomSheet open={sheet === 'picker'} onClose={() => setSheet(null)} title="Choisir un mois">
+        {years.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto m-noscroll -mx-4 px-4 pb-3">
+            {years.map(y => <MPill key={y} surface="sheet" active={year === y} onClick={() => setYear(y)}>{y}</MPill>)}
+          </div>
+        )}
+        <MCard surface="sheet">
+          {(MOIS_LIST as readonly string[]).map((m, k) => {
+            const es = yearRaw[m] || [];
+            const total = es.filter(isConfirmed).reduce((s, e) => s + (e.cashed || 0), 0);
+            return (
+              <div key={m}>
+                {k > 0 && <MDivider />}
+                <MRow
+                  className="!min-h-[48px]"
+                  title={cap(m)}
+                  badge={R.isFuture(m) && es.length > 0 ? <MBadge tone="info">À venir</MBadge> : undefined}
+                  right={m === tab ? <Check size={18} className="text-accent inline" /> : <span className={`mono-value text-[14px] ${es.length > 0 ? '' : 'text-t-4'}`}>{es.length > 0 ? `${f$(total)} €` : '—'}</span>}
+                  onClick={() => { R.setTab(m); setView('month'); setSheet(null); }}
+                />
+              </div>
+            );
+          })}
+        </MCard>
+      </BottomSheet>
+      <BottomSheet open={sheet === 'clients'} onClose={() => setSheet(null)} title="Clients" subtitle={`${year} · revenus confirmés`} fullHeight>
+        <MCard surface="sheet">{A.clientStats.map((c, k) => <ClientRow key={c.client} c={c} k={k} today={today} />)}</MCard>
+      </BottomSheet>
+    </>
   );
 
   if (!hasAnyData) {
     return (
-      <div className="mt-10 text-center pb-20">
-        <Receipt className="mx-auto text-t-4 mb-3" size={42} />
-        <div className="text-t-2 font-semibold mb-1">Aucun revenu</div>
-        <div className="text-[12px] text-t-3 mb-5">Ajoute ta première entrée pour commencer.</div>
-        <button onClick={openAdd} className="px-5 py-2.5 bg-accent text-black font-semibold text-[13px] rounded-full">+ Nouveau revenu</button>
-        {sheet}
-      </div>
+      <>
+        <MEmpty icon={<Coins size={26} />} title="Ajoute ton premier revenu" text="Encaissé, prévu ou en attente : chaque entrée compte dans le mois choisi." action={<MButton onClick={openAdd}><Plus size={17} />Nouveau revenu</MButton>} />
+        {sheets}
+      </>
     );
   }
 
   return (
-    <div className="pb-20">
-      {/* Month navigator */}
-      <div className="flex items-center gap-2 mb-4">
-        <button onClick={goPrev} disabled={curIdx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
-          <ChevronLeft size={18} />
-        </button>
-        <button
-          onClick={() => setMonthPickerOpen(true)}
-          className="flex-1 text-center bg-bg-3 border border-border-2 rounded-xl py-2.5 active:bg-bg-4"
-        >
-          <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none">{year}</div>
-          <div className="text-[16px] font-bold tracking-tight mt-0.5">{effectiveTab || '—'}</div>
-        </button>
-        <button onClick={goNext} disabled={curIdx >= orderedMonths.length - 1} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
-          <ChevronRight size={18} />
-        </button>
-      </div>
+    <div className="-mx-1">
+      {view === 'month' ? (
+        <>
+          <div className="flex flex-col items-center pt-3 pb-5">
+            {hero(`Encaissé en ${tab.toLowerCase()}`, cashed, obj)}
+            {(preview > 0 || pending > 0) && (
+              <span className="text-[13px] text-info mt-2 mono-value m-sub">
+                {preview > 0 && `+ ${f$(preview)} € prévus`}{preview > 0 && pending > 0 && ' · '}{pending > 0 && <span className="text-warning">{f$(pending)} € en attente</span>}
+              </span>
+            )}
+            <div className="flex items-center gap-1 mt-3.5">
+              <button type="button" onClick={goPrev} disabled={curIdx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Mois précédent"><ChevronLeft size={19} /></button>
+              <button type="button" onClick={() => setSheet('picker')} className="h-9 px-4 rounded-full bg-bg-3 flex items-center gap-1.5 text-[14px] font-medium text-t-1 active:opacity-70">
+                {cap(tab)} {year}
+                {R.isFuture(tab) && <MBadge tone="info">À venir</MBadge>}
+                <ChevronDown size={15} className="text-t-3" />
+              </button>
+              <button type="button" onClick={goNext} disabled={curIdx >= orderedMonths.length - 1} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Mois suivant"><ChevronRight size={19} /></button>
+            </div>
+          </div>
+          {actions}
 
-      {/* Revenus récurrents du mois affiché (n'apparaît que s'il y en a) */}
-      <RecurringBanner
-        title={`${R.recurDue.length} revenu${R.recurDue.length > 1 ? 's' : ''} récurrent${R.recurDue.length > 1 ? 's' : ''} à prévoir en ${effectiveTab.toLowerCase()} ${year}`}
-        items={R.recurDue.map(o => ({ key: o.key, label: o.rule.label, detail: `${o.date.slice(8, 10)}/${o.date.slice(5, 7)} · ${f0(o.rule.amount)} ${o.rule.currency}` }))}
-        addLabel="Ajouter en prévision"
-        onAdd={R.addRecurring}
-        onSkip={R.skipRecurring}
-      />
-
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <KpiCardMobile label="Objectif" value={`${f$(obj)} €`} color="text-t-1" />
-        <KpiCardMobile label="Encaissé" value={`${f$(monthCashed)} €`} sub={monthPreview > 0 ? `+${f$(monthPreview)} prév.` : undefined} color="text-accent" />
-        <KpiCardMobile label="Contracté" value={`${f$(monthContracted)} €`} color="text-info" />
-        <KpiCardMobile label={delta >= 0 ? 'Atteinte' : 'Delta'} value={delta >= 0 ? `${pctAtteinte}%` : `${f$(delta)} €`} color={delta >= 0 ? 'text-accent' : 'text-danger'} />
-      </div>
-
-      {/* Progress bar */}
-      <div className="bg-bg-3 border border-border rounded-xl p-3 mb-5">
-        <div className="flex items-center justify-between text-[11px] mb-2">
-          <span className="text-t-3 uppercase tracking-wider font-semibold">Progression {effectiveTab}</span>
-          <span className="text-t-1 font-mono mono-value">{pctAtteinte}%</span>
-        </div>
-        <div className="h-2 bg-bg-2 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${pctAtteinte >= 100 ? 'bg-accent' : pctAtteinte >= 75 ? 'bg-warning' : 'bg-info'}`}
-            style={{ width: `${Math.min(100, pctAtteinte)}%` }}
+          <RecurringBanner
+            title={`${R.recurDue.length} revenu${R.recurDue.length > 1 ? 's' : ''} récurrent${R.recurDue.length > 1 ? 's' : ''} à prévoir en ${tab.toLowerCase()} ${year}`}
+            items={R.recurDue.map(o => ({ key: o.key, label: o.rule.label, detail: `${o.date.slice(8, 10)}/${o.date.slice(5, 7)} · ${f0(o.rule.amount)} ${o.rule.currency}` }))}
+            addLabel="Ajouter en prévision"
+            onAdd={R.addRecurring}
+            onSkip={R.skipRecurring}
           />
-        </div>
-      </div>
 
-      {/* Transactions list */}
-      <div className="flex items-center justify-between mb-2.5 px-1">
-        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Transactions ({curEntries.length})</span>
-      </div>
-      {curEntries.length === 0 ? (
-        <div className="text-center py-8 text-t-4 text-[12px]">Aucune transaction ce mois</div>
-      ) : (
-        <div className="space-y-2">
-          {sortedEntries.map(({ e, i }) => {
-            const status = e.status || 'confirmed';
-            const style = STATUS_COLORS[status];
-            const cat = e.cat || '';
-            const catIdx = categories.indexOf(cat);
-            const catColor = REV_COLORS[(catIdx >= 0 ? catIdx : 0) % REV_COLORS.length];
-            const isConfirmed = status === 'confirmed';
-            return (
-              <div key={i} className={`bg-bg-3 border border-border border-l-[3px] ${style.row} rounded-xl p-3.5 ${status !== 'confirmed' ? 'opacity-90' : ''}`}>
-                <div className="flex items-start gap-2 mb-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                      <span className="text-[14px] font-semibold tracking-tight truncate">{e.client || '—'}</span>
-                      <span className={`text-[9px] font-semibold tracking-[0.05em] px-1.5 py-[2px] rounded ${style.badge}`}>{style.label}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] text-t-3 flex-wrap">
-                      <span>{e.date || '—'}</span>
-                      {cat && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: `${catColor}22`, color: catColor }}>
-                          {cat}
-                        </span>
-                      )}
-                    </div>
+          <MCard className="mb-4">
+            <MRow className="!min-h-[48px]" title={<span className="text-[14px] font-normal text-t-2">Contracté</span>} right={<span className="mono-value">{f$(contracted)} €</span>} />
+            <MDivider />
+            <MRow
+              className="!min-h-[48px]"
+              title={<span className="text-[14px] font-normal text-t-2">Écart à l’objectif</span>}
+              right={<span className={`mono-value ${delta >= 0 ? 'text-accent' : 'text-danger'}`}>{delta >= 0 ? '+' : ''}{f$(delta)} €</span>}
+            />
+          </MCard>
+
+          <MLabel>{entries.length > 0 ? `${entries.length} revenu${entries.length > 1 ? 's' : ''}` : 'Revenus'}</MLabel>
+          <MCard className="mb-2">
+            {entries.length === 0 && <div className="px-4 py-7 text-center text-[13px] text-t-3">Rien en {tab.toLowerCase()} pour l’instant</div>}
+            {sorted.map(({ e, i }, k) => {
+              const status = e.status || 'confirmed';
+              return (
+                <div key={i} className="flex items-stretch">
+                  <div className="flex-1 min-w-0">
+                    {k > 0 && <MDivider />}
+                    <MRow
+                      icon={<MIcon color={catColor(e.cat)}>{(e.client || '?').trim().charAt(0).toUpperCase() || '?'}</MIcon>}
+                      title={e.client || 'Sans nom'}
+                      badge={status === 'preview' ? <MBadge tone="info">Prévision</MBadge> : status === 'pending' ? <MBadge tone="warning">En attente</MBadge> : undefined}
+                      sub={[shortDay(e.date, today), e.cat, e.comment].filter(Boolean).join(' · ')}
+                      right={<span className={`mono-value ${TONE[status]}`}>+{f$(e.cashed || 0)} €</span>}
+                      rightSub={
+                        e.currency && e.currency !== 'EUR' && e.origAmount != null ? <span className="mono-value">{f$(e.origAmount)} {e.currency}</span>
+                          : (e.contracted || 0) !== (e.cashed || 0) ? <span className="mono-value">contrat {f$(e.contracted || 0)}</span> : undefined
+                      }
+                      onClick={() => openEdit(tab, i)}
+                    />
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className={`text-[15px] font-bold mono-value ${status === 'preview' ? 'text-info' : status === 'pending' ? 'text-warning' : 'text-accent'}`}>{f$(e.cashed || 0)} €</div>
-                    {e.currency && e.currency !== 'EUR' && e.origAmount != null && (
-                      <div className="text-[10px] text-t-4 mono-value">{f$(e.origAmount)} {e.currency}</div>
-                    )}
-                    {(e.contracted || 0) !== (e.cashed || 0) && (
-                      <div className="text-[10px] text-t-4 mono-value">contrat. {f$(e.contracted || 0)} €</div>
-                    )}
-                  </div>
-                </div>
-                {e.comment && <div className="text-[11px] text-t-3 mb-2 break-words">{e.comment}</div>}
-                <div className="flex justify-end gap-1.5">
-                  {!isConfirmed && (
-                    <button onClick={() => confirmEntry(effectiveTab, i)} className="w-9 h-9 flex items-center justify-center rounded-full bg-accent/10 text-accent border border-accent/25 active:bg-accent/20">
-                      <Check size={15} />
+                  {status !== 'confirmed' && (
+                    <button type="button" onClick={() => R.confirmEntry(tab, i)} className="w-12 shrink-0 flex items-center justify-center active:opacity-60" aria-label={`Confirmer l’encaissement de ${e.client || 'ce revenu'}`}>
+                      <span className="w-9 h-9 rounded-full bg-accent/10 text-accent flex items-center justify-center"><Check size={17} /></span>
                     </button>
                   )}
-                  <button onClick={() => openEdit(effectiveTab, i)} className="w-9 h-9 flex items-center justify-center rounded-full bg-info/10 text-info border border-info/25 active:bg-info/20">
-                    <Pencil size={14} />
-                  </button>
-                  <button onClick={() => deleteEntry(effectiveTab, i)} className="w-9 h-9 flex items-center justify-center rounded-full bg-danger/10 text-danger border border-danger/25 active:bg-danger/20">
-                    <Trash2 size={14} />
-                  </button>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* FAB */}
-      <button
-        onClick={openAdd}
-        className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+76px)] w-14 h-14 rounded-full bg-accent text-black shadow-lg flex items-center justify-center active:scale-95 transition-transform z-30"
-        aria-label="Nouveau revenu"
-      >
-        <Plus size={26} strokeWidth={2.4} />
-      </button>
-
-      {/* Month picker sheet */}
-      <BottomSheet open={monthPickerOpen} onClose={() => setMonthPickerOpen(false)} title="Choisir un mois">
-        {years.length > 1 && (
-          <div className="flex bg-bg-3 border border-border rounded-xl p-1 gap-1 mb-3">
-            {years.map(y => (
-              <button
-                key={y}
-                onClick={() => setYear(y)}
-                className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-colors ${year === y ? 'bg-bg-4 text-t-1' : 'text-t-3 active:bg-bg-4'}`}
-              >
-                {y}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="grid grid-cols-3 gap-2 py-1">
-          {(MOIS_LIST as readonly string[]).map(m => {
-            const active = m === effectiveTab;
-            const entries = yearRaw[m] || [];
-            const total = entries.filter(e => !e.status || e.status === 'confirmed').reduce((s, e) => s + (e.cashed || 0), 0);
-            return (
-              <button
-                key={m}
-                onClick={() => { setCurTab(m); setMonthPickerOpen(false); }}
-                className={`py-3 rounded-xl border text-center transition-colors ${active ? 'bg-accent/15 border-accent text-accent' : `bg-bg-3 border-border active:bg-bg-4 ${entries.length > 0 ? 'text-t-2' : 'text-t-4'}`}`}
-              >
-                <div className="text-[12px] font-bold">{m}</div>
-                <div className="text-[9px] mt-0.5 mono-value opacity-80">{entries.length > 0 ? `${f$(total)} €` : '—'}</div>
-              </button>
-            );
-          })}
-        </div>
-      </BottomSheet>
-
-      {/* Add/Edit sheet */}
-      {sheet}
-    </div>
-  );
-}
-
-function KpiCardMobile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div className="bg-bg-3 border border-border rounded-xl px-3 py-2.5">
-      <div className="text-[9px] uppercase tracking-wider text-t-3 font-semibold leading-none">{label}</div>
-      <div className={`text-[15px] font-bold mt-1 mono-value tracking-tight truncate ${color || 'text-t-1'}`}>{value}</div>
-      {sub && <div className="text-[10px] text-t-4 mono-value mt-0.5 truncate">{sub}</div>}
-    </div>
-  );
-}
-
-function AddEditSheet({
-  open, onClose, form, setForm, formMonth, setFormMonth, formYear, setFormYear, years, categories,
-  filteredClientSugg, showClientSugg, setShowClientSugg, onSave, isEdit, rateFor, liveRate,
-  perEurOf, aedOf, usdPeg, rateTouched, setRateTouched, repeatWeekly, setRepeatWeekly,
-}: {
-  open: boolean; onClose: () => void;
-  form: RevenuEntry; setForm: (f: RevenuEntry) => void;
-  formMonth: string; setFormMonth: (v: string) => void;
-  formYear: number; setFormYear: (v: number) => void; years: number[];
-  categories: string[];
-  filteredClientSugg: { name: string; count: number }[];
-  showClientSugg: boolean; setShowClientSugg: (v: boolean) => void;
-  onSave: () => void; isEdit: boolean;
-  rateFor: (c?: string) => number; liveRate: number;
-  perEurOf: (f: RevenuEntry) => number; aedOf: (f: RevenuEntry, amount: number) => number;
-  usdPeg: number; rateTouched: boolean; setRateTouched: (v: boolean) => void;
-  repeatWeekly: boolean; setRepeatWeekly: (v: boolean) => void;
-}) {
-  const yearOptions = years.includes(formYear) ? years : [...years, formYear].sort((a, b) => a - b);
-
-  return (
-    <BottomSheet open={open} onClose={onClose} title={isEdit ? 'Modifier le revenu' : 'Nouveau revenu'}>
-      <div className="space-y-3 pt-1">
-        <div className="grid grid-cols-[1fr_92px] gap-3">
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Mois</label>
-            <select className="fi !h-11" value={formMonth} onChange={e => setFormMonth(e.target.value)}>
-              {(MOIS_LIST as readonly string[]).map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Année</label>
-            <select className="fi !h-11" value={formYear} onChange={e => setFormYear(parseInt(e.target.value, 10))}>
-              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Date</label>
-          <input className="fi !h-11" type="date" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
-        </div>
-
-        {!isEdit && form.date && (() => {
-          const wd = new Date(`${form.date}T00:00:00`);
-          const wdName = isNaN(wd.getTime()) ? '' : wd.toLocaleDateString('fr-FR', { weekday: 'long' });
-          const all = sameWeekdayDatesInMonth(form.date);
-          return (
-            <button
-              type="button"
-              onClick={() => setRepeatWeekly(!repeatWeekly)}
-              className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${repeatWeekly ? 'bg-accent/10 border-accent/40' : 'bg-bg-4 border-border'}`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`w-4 h-4 rounded-[4px] border flex items-center justify-center text-[10px] font-bold shrink-0 ${repeatWeekly ? 'bg-accent border-accent text-black' : 'border-border-2 text-transparent'}`}>✓</span>
-                <span className={`text-[12px] font-medium ${repeatWeekly ? 'text-accent' : 'text-t-2'}`}>Répéter chaque {wdName} du mois</span>
-              </div>
-              <div className="text-[10px] text-t-4 mt-1 pl-6">
-                {all.length === 0
-                  ? `Aucun autre ${wdName} ce mois-ci`
-                  : repeatWeekly
-                    ? `+${all.length} entrée${all.length > 1 ? 's' : ''} : ${all.map(d => d.slice(8)).join(', ')}`
-                    : `${all.length} autre${all.length > 1 ? 's' : ''} ce mois-ci`}
-              </div>
-            </button>
-          );
-        })()}
-
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Client</label>
-          <div className="relative">
-            <input
-              className="fi !h-11"
-              value={form.client || ''}
-              onChange={e => { setForm({ ...form, client: e.target.value }); setShowClientSugg(true); }}
-              onFocus={() => setShowClientSugg(true)}
-              onBlur={() => setTimeout(() => setShowClientSugg(false), 150)}
-              placeholder="Nom du client"
-              autoComplete="off"
-            />
-            {showClientSugg && filteredClientSugg.length > 0 && (
-              <div className="absolute z-20 left-0 right-0 mt-1 bg-bg-3 border border-border-2 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {filteredClientSugg.map(s => (
-                  <button
-                    key={s.name}
-                    type="button"
-                    onMouseDown={e => { e.preventDefault(); setForm({ ...form, client: s.name }); setShowClientSugg(false); }}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] text-t-1 active:bg-bg-4"
-                  >
-                    <span className="truncate">{s.name}</span>
-                    <span className="text-[10px] text-t-3 shrink-0">×{s.count}</span>
-                  </button>
-                ))}
+              );
+            })}
+          </MCard>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col items-center pt-3 pb-5">
+            {hero(`Encaissé en ${year}`, A.yearCashed, A.yearObj)}
+            {years.length > 1 && (
+              <div className="flex gap-2 mt-3.5">
+                {years.map(y => <MPill key={y} active={year === y} onClick={() => setYear(y)}>{y}</MPill>)}
               </div>
             )}
           </div>
-        </div>
+          {actions}
 
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Catégorie</label>
-          <select className="fi !h-11" value={form.cat || ''} onChange={e => setForm({ ...form, cat: e.target.value })}>
-            <option value="">—</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Statut</label>
-          <div className="flex bg-bg-4 rounded-lg p-1">
-            {(['confirmed', 'preview', 'pending'] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => setForm({ ...form, status: s })}
-                className={`flex-1 py-2 text-[11px] font-semibold rounded-md transition-all ${form.status === s ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
-              >
-                {s === 'confirmed' ? '✓ Confirmé' : s === 'preview' ? '⏳ Prév.' : '⌛ Attente'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Devise reçue</label>
-          <div className="flex bg-bg-4 rounded-lg p-1">
-            {(['EUR', 'AED', 'USD'] as const).map(c => (
-              <button
-                key={c}
-                onClick={() => setForm({
-                  ...form,
-                  currency: c,
-                  origRate: c === 'EUR' ? undefined : rateFor(c),
-                  origToAed: c === 'USD' ? (form.origToAed ?? usdPeg) : undefined,
-                })}
-                className={`flex-1 py-2 text-[11px] font-semibold rounded-md transition-all ${(form.currency || 'EUR') === c ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Contracté ({form.currency || 'EUR'})</label>
-            <input className="fi !h-11 mono-value" type="number" inputMode="decimal" value={form.contracted || ''} onChange={e => setForm({ ...form, contracted: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="0" />
-          </div>
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Encaissé ({form.currency || 'EUR'})</label>
-            <input className="fi !h-11 mono-value" type="number" inputMode="decimal" value={form.cashed || ''} onChange={e => setForm({ ...form, cashed: parseFloat(e.target.value) || 0 })} step="0.01" placeholder="0" />
-          </div>
-        </div>
-
-        {(form.cashed || 0) > 0 && (() => {
-          const cur = form.currency || 'EUR';
-          const perEur = perEurOf(form);
-          const eur = (form.cashed || 0) / perEur;
-          const aed = aedOf(form, form.cashed || 0);
-          return (
-            <div className="text-[11px] text-t-3 bg-bg-2 rounded-lg p-2.5 flex items-center justify-between gap-3">
-              <span>Équivalent{cur !== 'EUR' ? ` · EUR/${cur} ${perEur.toFixed(4)}` : ''}</span>
-              <span className="text-t-1 mono-value font-semibold">
-                {cur !== 'EUR' && <>{f$(eur)} € · </>}{f0(aed)} AED
-              </span>
-            </div>
-          );
-        })()}
-
-        {(form.currency || 'EUR') === 'USD' ? (
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Taux USD/AED (ton taux de swap)</label>
-            <input
-              className="fi !h-11 mono-value"
-              type="number"
-              inputMode="decimal"
-              value={form.origToAed ?? usdPeg}
-              onChange={e => setForm({ ...form, origToAed: parseFloat(e.target.value) || 0 })}
-              step="0.0001"
-              placeholder="3.6725"
+          <MCard className="mb-4">
+            <MRow className="!min-h-[48px]" title={<span className="text-[14px] font-normal text-t-2">Contracté</span>} right={<span className="mono-value">{f$(A.yearContracted)} €</span>} />
+            <MDivider />
+            <MRow className="!min-h-[48px]" title={<span className="text-[14px] font-normal text-t-2">Moyenne par mois</span>} sub={`Sur ${A.activeMonths} mois avec revenus`} right={<span className="mono-value">{f$(A.avg)} €</span>} />
+            <MDivider />
+            <MRow
+              className="!min-h-[48px]"
+              title={<span className="text-[14px] font-normal text-t-2">Écart à l’objectif annuel</span>}
+              right={<span className={`mono-value ${A.yearPL >= 0 ? 'text-accent' : 'text-danger'}`}>{A.yearPL >= 0 ? '+' : ''}{f$(A.yearPL)} €</span>}
             />
-          </div>
-        ) : (
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Taux EUR/AED</label>
-            <div className="flex gap-2">
-              <input
-                className="fi !h-11 mono-value flex-1"
-                type="number"
-                inputMode="decimal"
-                value={form.rate}
-                onChange={e => { setForm({ ...form, rate: parseFloat(e.target.value) || 0 }); setRateTouched(true); }}
-                step="0.0001"
-              />
-              <button
-                type="button"
-                onClick={() => { setForm({ ...form, rate: liveRate }); setRateTouched(false); }}
-                className={`text-[10px] px-3 rounded-lg border shrink-0 ${!rateTouched ? 'text-accent bg-accent/10 border-accent/30' : 'text-t-3 bg-bg-2 border-border active:text-t-1'}`}
-              >
-                {rateTouched ? '↻ Live' : '● Live'}
-              </button>
-            </div>
-          </div>
-        )}
+          </MCard>
+          {A.futureWithData.length > 0 && (
+            <p className="text-[12px] text-t-4 px-4 -mt-2 mb-4 leading-relaxed">Hors totaux, pas encore commencé : {A.futureWithData.map(m => m.toLowerCase()).join(', ')}.</p>
+          )}
 
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Commentaire (optionnel)</label>
-          <input className="fi !h-11" value={form.comment || ''} onChange={e => setForm({ ...form, comment: e.target.value })} placeholder="Détails..." />
-        </div>
+          <MLabel>Encaissé par mois</MLabel>
+          <MCard className="mb-4 px-2 pt-3 pb-1">
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart data={A.evoData} margin={{ left: 4, right: 4, top: 4, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} axisLine={false} tickLine={false} interval={0} tickFormatter={(v: string) => v.charAt(0)} />
+                <Tooltip formatter={v => `${f$(Number(v))} €`} contentStyle={chartTooltipStyle(theme)} cursor={{ fill: 'transparent' }} />
+                <ReferenceLine y={obj} stroke={ct.tick} strokeDasharray="3 3" strokeOpacity={0.6} />
+                <Bar dataKey="Encaissé" radius={[5, 5, 0, 0]}>
+                  {A.evoData.map((d, i) => <Cell key={i} fill="rgb(var(--accent))" fillOpacity={d.future ? 0.25 : 0.9} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </MCard>
 
-        <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 py-3 bg-bg-4 text-t-2 text-[14px] font-semibold rounded-full active:bg-bg-3">Annuler</button>
-          <button onClick={onSave} disabled={!form.client?.trim()} className="flex-[1.4] py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30">
-            {isEdit ? 'Enregistrer' : 'Ajouter'}
-          </button>
+          <MLabel>Par mois</MLabel>
+          <MCard className="mb-4">
+            {A.monthData.map((m, k) => (
+              <div key={m.name} className={m.future ? 'opacity-60' : ''}>
+                {k > 0 && <MDivider />}
+                <MRow
+                  className="!min-h-[50px]"
+                  title={cap(m.name)}
+                  badge={m.future && m.hasData ? <MBadge tone="info">À venir</MBadge> : undefined}
+                  sub={!m.hasData ? 'Aucun revenu' : m.future ? 'Hors total' : (
+                    <span className="mono-value">{Math.round(m.pct)} % de l’objectif{m.vsM1 != null && <> · <span className={m.vsM1 >= 0 ? 'text-accent' : 'text-danger'}>{m.vsM1 >= 0 ? '+' : ''}{f0(m.vsM1)}</span> vs mois d’avant</>}</span>
+                  )}
+                  right={<span className={`mono-value ${m.hasData ? '' : 'text-t-4'}`}>{m.hasData ? `${f$(m.cashed)} €` : '—'}</span>}
+                  rightSub={m.hasData && !m.future ? <span className={`mono-value ${m.delta >= 0 ? 'text-accent' : 'text-danger'}`}>{m.delta >= 0 ? '+' : ''}{f0(m.delta)}</span> : undefined}
+                  onClick={() => { R.setTab(m.name); setView('month'); window.scrollTo(0, 0); }}
+                />
+              </div>
+            ))}
+          </MCard>
+
+          <MLabel>Par trimestre</MLabel>
+          <MCard className="mb-4">
+            {A.qData.map((q, k) => (
+              <div key={q.name}>
+                {k > 0 && <MDivider />}
+                <MRow
+                  className="!min-h-[50px]"
+                  title={`${k + 1}${k === 0 ? 'er' : 'e'} trimestre`}
+                  sub={<span className="mono-value">{A.qObj > 0 ? Math.round((q.Encaissé / A.qObj) * 100) : 0} % de {f0(A.qObj)} €</span>}
+                  right={<span className="mono-value">{f$(q.Encaissé)} €</span>}
+                />
+              </div>
+            ))}
+          </MCard>
+
+          {A.srcEntries.length > 0 && (
+            <>
+              <MLabel>Par catégorie</MLabel>
+              <MCard className="mb-4">
+                {A.srcEntries.map(([cat, total], k) => (
+                  <div key={cat}>
+                    {k > 0 && <MDivider />}
+                    <MRow
+                      className="!min-h-[50px]"
+                      icon={<span className="w-2.5 h-2.5 rounded-full shrink-0 mx-1" style={{ background: catColor(cat) }} />}
+                      title={cat}
+                      right={<span className="mono-value">{f$(total)} €</span>}
+                      rightSub={<span className="mono-value">{A.yearCashed > 0 ? Math.round((total / A.yearCashed) * 100) : 0} %</span>}
+                    />
+                  </div>
+                ))}
+              </MCard>
+            </>
+          )}
+
+          {A.clientStats.length > 0 && (
+            <>
+              <MLabel right={A.clientStats.length > 5 ? <button type="button" onClick={() => setSheet('clients')} className="text-[13px] text-t-1 font-medium h-8 px-1">Tout voir</button> : undefined}>Clients</MLabel>
+              <MCard className="mb-2">{A.clientStats.slice(0, 5).map((c, k) => <ClientRow key={c.client} c={c} k={k} today={today} />)}</MCard>
+            </>
+          )}
+        </>
+      )}
+      {sheets}
+    </div>
+  );
+}
+
+function ClientRow({ c, k, today }: { c: ReturnType<typeof revAnnualStats>['clientStats'][number]; k: number; today: string }) {
+  return (
+    <div>
+      {k > 0 && <MDivider />}
+      <MRow
+        icon={<MIcon>{c.client.charAt(0).toUpperCase()}</MIcon>}
+        title={c.client}
+        sub={`${c.count} paiement${c.count > 1 ? 's' : ''} · ${c.monthsActive} mois${c.lastDate ? ` · dernier ${shortDay(c.lastDate, today)}` : ''}`}
+        right={<span className="mono-value">{f$(c.total)} €</span>}
+        rightSub={<span className="mono-value">{Math.round(c.pctOfYear)} %</span>}
+      />
+    </div>
+  );
+}
+
+/** Saisie / modification d'un revenu. Déclaré au niveau module (champs de saisie). */
+function RevenuSheet({ R, editing }: { R: R; editing: { month: string; idx: number } | null }) {
+  const { form, setForm, formMonth, setFormMonth, formYear, setFormYear, years, categories, liveRate, rateTouched, setRateTouched, repeatWeekly, setRepeatWeekly } = R;
+  const isEdit = R.isEdit;
+  const cur = form.currency || 'EUR';
+  const close = () => R.setFormOpen(false);
+  const yearOptions = years.includes(formYear) ? years : [...years, formYear].sort((a, b) => a - b);
+  const q = (form.client || '').trim().toLowerCase();
+  const sugg = (q ? R.clientSuggestions.filter(s => s.name.toLowerCase().includes(q) && s.name.toLowerCase() !== q) : R.clientSuggestions).slice(0, 6);
+  const wd = form.date ? new Date(`${form.date}T00:00:00`) : null;
+  const wdName = wd && !isNaN(wd.getTime()) ? wd.toLocaleDateString('fr-FR', { weekday: 'long' }) : '';
+  const others = form.date ? sameWeekdayDatesInMonth(form.date) : [];
+  const perEur = R.perEurOf(form);
+  const notConfirmed = isEdit && form.status !== 'confirmed';
+
+  return (
+    <BottomSheet
+      open={R.formOpen}
+      onClose={close}
+      title={isEdit ? 'Modifier le revenu' : 'Nouveau revenu'}
+      fullHeight
+      footer={<MButton disabled={!formMonth.trim()} onClick={R.saveEntry}>{isEdit ? 'Enregistrer' : 'Ajouter'}</MButton>}
+    >
+      {/* Montant encaissé */}
+      <div className="flex flex-col items-center pt-2 pb-4">
+        <span className="text-[13px] text-t-3 mb-1">Encaissé</span>
+        <MNum className="m-amount text-center px-6" value={form.cashed} onChange={n => setForm({ ...form, cashed: n })} autoFocus={!isEdit} ariaLabel="Montant encaissé" />
+        <MSeg
+          className="mt-2.5"
+          value={cur}
+          options={[['EUR', 'EUR'], ['AED', 'AED'], ['USD', 'USD']] as const}
+          onChange={c => setForm({ ...form, currency: c, origRate: c === 'EUR' ? undefined : R.rateFor(c), origToAed: c === 'USD' ? (form.origToAed ?? R.usdPeg) : undefined })}
+        />
+        <div className="text-[13px] text-t-3 mt-2 mono-value m-sub">
+          {(form.cashed || 0) > 0
+            ? <>{cur !== 'EUR' && <>≈ {f$((form.cashed || 0) / perEur)} € · </>}{f0(R.aedOf(form, form.cashed || 0))} AED</>
+            : 'au taux du jour'}
         </div>
       </div>
+
+      <MCard surface="sheet" className="mb-3">
+        <MField label="Client">
+          <input className="m-input text-right" placeholder="Nom du client" autoComplete="off" value={form.client || ''} onChange={e => setForm({ ...form, client: e.target.value })} />
+        </MField>
+        <MDivider />
+        <MField label="Catégorie">
+          <select className="m-input text-right" dir="rtl" value={form.cat || ''} onChange={e => setForm({ ...form, cat: e.target.value })}>
+            <option value="">Aucune</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </MField>
+        <MDivider />
+        <MField label={`Contracté (${cur})`}>
+          <MNum className="text-right" value={form.contracted} onChange={n => setForm({ ...form, contracted: n })} />
+        </MField>
+      </MCard>
+      {sugg.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto m-noscroll -mx-4 px-4 pb-3">
+          {sugg.map(s => <MPill key={s.name} surface="sheet" onClick={() => setForm({ ...form, client: s.name })}>{s.name}</MPill>)}
+        </div>
+      )}
+
+      <MSeg
+        className="w-full mb-3"
+        value={form.status || 'confirmed'}
+        options={[['confirmed', 'Encaissé'], ['preview', 'Prévision'], ['pending', 'En attente']] as const}
+        onChange={s => setForm({ ...form, status: s })}
+      />
+
+      <MCard surface="sheet" className="mb-3">
+        <MField label="Date">
+          <input className="m-input text-right" type="date" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} />
+        </MField>
+        <MDivider />
+        <MField label="Compté en">
+          <span className="flex items-center justify-end gap-3">
+            <select className="m-input text-right !w-auto" dir="rtl" value={formMonth} onChange={e => setFormMonth(e.target.value)} aria-label="Mois">
+              {(MOIS_LIST as readonly string[]).map(m => <option key={m} value={m}>{cap(m)}</option>)}
+            </select>
+            <select className="m-input text-right !w-auto" dir="rtl" value={formYear} onChange={e => setFormYear(parseInt(e.target.value, 10))} aria-label="Année">
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </span>
+        </MField>
+        {!isEdit && wdName && (
+          <>
+            <MDivider />
+            <MRow
+              title={<span className="text-[14px]">Répéter chaque {wdName}</span>}
+              sub={others.length === 0 ? `Aucun autre ${wdName} ce mois-ci` : repeatWeekly ? `+ ${others.length} entrée${others.length > 1 ? 's' : ''} : le ${others.map(d => d.slice(8)).join(', ')}` : `${others.length} autre${others.length > 1 ? 's' : ''} ce mois-ci`}
+              right={<MToggle on={repeatWeekly} />}
+              onClick={() => setRepeatWeekly(!repeatWeekly)}
+            />
+          </>
+        )}
+      </MCard>
+
+      <MCard surface="sheet" className="mb-3">
+        {cur === 'USD' ? (
+          <MField label="Taux USD / AED du swap">
+            <MNum className="text-right" value={form.origToAed ?? R.usdPeg} onChange={n => setForm({ ...form, origToAed: n })} placeholder="3,6725" />
+          </MField>
+        ) : (
+          <MField label="Taux EUR / AED">
+            <span className="flex items-center justify-end gap-2">
+              <MNum className="text-right" value={form.rate} onChange={n => { setForm({ ...form, rate: n }); setRateTouched(true); }} />
+              <button type="button" onClick={() => { setForm({ ...form, rate: liveRate }); setRateTouched(false); }} className={`h-8 px-3 rounded-full text-[12px] font-medium shrink-0 ${rateTouched ? 'bg-bg-4 text-t-2' : 'bg-accent/10 text-accent'}`}>
+                {rateTouched ? 'Taux du jour' : 'Du jour'}
+              </button>
+            </span>
+          </MField>
+        )}
+        <MDivider />
+        <MField label="Note">
+          <input className="m-input text-right" placeholder="Facultatif" value={form.comment || ''} onChange={e => setForm({ ...form, comment: e.target.value })} />
+        </MField>
+      </MCard>
+
+      {isEdit && editing && (
+        <div className="pt-1">
+          {notConfirmed && (
+            <MButton variant="ghost" className="mb-1" onClick={() => { R.confirmEntry(editing.month, editing.idx); close(); }}>
+              <Check size={17} />Confirmer l’encaissement
+            </MButton>
+          )}
+          <button type="button" onClick={async () => { if (await R.deleteEntry(editing.month, editing.idx)) close(); }} className="w-full flex items-center justify-center gap-2 h-12 text-[15px] font-medium text-danger active:opacity-60">
+            <Trash2 size={16} />Supprimer
+          </button>
+        </div>
+      )}
     </BottomSheet>
   );
 }
