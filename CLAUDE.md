@@ -229,6 +229,70 @@ desktop + mobile : calcule `Month.adjustment` ET consigne la régul dans `Month.
 une date : l'historique global est capé à 200 entrées et les régul d'avant juin 2026 y
 avaient disparu. Affiché par `<RegulHistory>` dans la fenêtre de régul (les deux UI).
 
+## Transactions — une seule façon de les construire
+`makeTxn()` / `withTxns()` / `addTxnsToPoste()` / `addTxnsToExtra()` (`lib/txns.ts`) appliquent
+les règles de la saisie du tracker : `amount` en devise locale au taux DU JOUR (`state.rate`),
+`eur` et `originalAmount` écrits à côté, les DEUX devises de la ligne recalculées. Tout ce
+qui crée une transaction hors du formulaire du tracker (récurrences, import de relevé)
+passe par là.
+
+## Recherche globale
+`searchAll()` (`lib/search.ts`) + `<GlobalSearch>` (un composant : fenêtre ⌘K sur desktop,
+plein écran sur mobile ; monté par `Sidebar` et `MobileShell`). Cherche dépenses (transactions,
+postes ponctuels, montants saisis sans transaction) et revenus, tous mois confondus ; chaque
+mot doit correspondre (texte sans accents/casse, ou montant). Les totaux portent sur TOUS
+les résultats, la liste est tronquée à 150. Un résultat ouvre son mois : `setCurMonth` pour
+le tracker, `setRevFocus({ year, month })` (contexte) pour Revenus — `useRevenus` le consomme.
+
+## Dashboard — solde jour par jour et santé financière
+- **`dailyBalance()`** (`lib/balanceHistory.ts`, carte `<BalanceCard>`) : chaque mois repart
+  de son `soldeStart` (à défaut, la fin calculée du mois précédent) puis chaque mouvement est
+  appliqué à SA date — revenus confirmés, dépenses débitant le compte (pas les dépenses de
+  voyage), montants sans transaction au 1er, régul à leur date (journal) ou dès le 1er (sans
+  journal). **Invariant testé : le dernier jour d'un mois = `monthBankBalance()` du tracker.**
+  Seule exception : un revenu sans `rate` (2 entrées de mars 2026) est valorisé au taux DU
+  MOIS, pas au taux du jour comme dans le tracker (aligné, lui, sur `_old`) — sinon le passé
+  de la courbe bougerait avec l'EUR/AED. Mois legacy exclus (revenus non datés) → la courbe
+  commence en mars 2026.
+- **`lib/insights.ts`** (carte `<HealthCard>`) : taux d'épargne, mois d'autonomie (solde ÷
+  dépense moyenne des 3 derniers mois, sans revenu), année N vs N−1 par mois calendaire.
+  Toujours sur les mois TERMINÉS : le mois en cours est partiel (`lastCompleted`).
+
+## Récurrences (dépenses et revenus à date fixe)
+`AppState.recurring[]` (global, chaque règle porte son `spaceId`), logique dans
+`lib/recurring.ts`, gestion dans Réglages (`<RecurringSettings>`).
+- Une règle ne crée RIEN toute seule : elle fait apparaître `<RecurringBanner>` — dans le
+  tracker pour les dépenses ÉCHUES (date ≤ aujourd'hui ; en avance, elles gonfleraient le
+  Réel), dans Revenus pour toutes les dates du mois affiché (ajoutées en PRÉVISION).
+- **Pas d'ajout silencieux à l'ouverture, volontairement** : tant qu'un appareil peut écraser
+  l'état d'un autre, une écriture déclenchée par un onglet périmé effacerait les saisies
+  faites ailleurs. À reconsidérer après la fiabilisation de la synchro.
+- Idempotence : tout élément généré porte `recur = idRègle@YYYY-MM-DD` ; une occurrence
+  présente ou « ignorée » (`rule.skipped`) n'est plus proposée. `rule.from` borne le passé.
+- Le bandeau n'existe que s'il y a quelque chose à faire (rappel : l'utilisateur a fait
+  retirer un bandeau permanent du tracker).
+
+## Simulateur
+`AppState.simulations[]` (global, `spaceId`), page `/simulation`, logique `lib/simulation.ts`.
+Scénarios sur 1–12 mois stockés À PART des mois : aucun effet sur les stats — c'est le
+remplaçant des « faux mois » créés à l'avance. Enregistrement automatique (600 ms après la
+dernière frappe, et en quittant la page). Le budget se remplit depuis le budget du mois en
+cours OU la moyenne RÉELLE des 3 derniers mois (`averageLines`) : chez l'utilisateur le
+budget (~5 900 AED) est très loin du réel (~23 000 AED), d'où le rappel affiché.
+`monthFromSimulation()` crée le vrai mois (refusé s'il existe ou s'il n'est pas le suivant)
+et renvoie `reactivated` : les postes désactivés qui ont une ligne redeviennent visibles ce
+mois-là — annoncé dans la confirmation.
+
+## Relevé bancaire (import CSV + rapprochement)
+Page `/import`, logique `lib/bankCsv.ts`. Le fichier est lu dans le navigateur (UTF-8, repli
+Windows-1252) : rien n'est envoyé ni stocké, seules les transactions ajoutées à la main le
+sont. Lecture tolérante (séparateur, lignes parasites avant l'en-tête, dates, montants,
+débit/crédit ou colonne unique) avec correspondance des colonnes ajustable.
+`reconcile()` apparie un pour un en 3 passes : même montant et dates à 5 j ; même montant
+quelle que soit la date ; montant proche (≤ 1 ou 0,5 %) et dates à 5 j, marqué « ≈ ». Sorties
+↔ dépenses seulement, entrées ↔ revenus confirmés. Le relevé doit être dans la devise
+locale ; une entrée d'argent manquante se saisit dans Revenus (pas d'ajout automatique).
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu
@@ -247,6 +311,11 @@ Toggle dans Sidebar. Ajoute `.amounts-hidden` sur `<body>` → CSS `::after` mas
 
 **Pages mobile dédiées actuellement** : Tracker, Revenus, Vue Globale.
 **Pages utilisant encore la UI desktop** (responsive via `max-md:` + tables wrappées `overflow-x-auto`) : Dashboard, Net Worth, Résidence, Setup, Settings.
+**Pages conçues responsive dès le départ** (une seule UI, cartes empilées sur mobile) : Simulateur, Relevé bancaire — accessibles par le menu « Plus ». La recherche globale est dans la barre du haut.
+
+Piège React rencontré : ne jamais DÉFINIR un composant à l'intérieur d'un autre s'il
+contient des champs de saisie (`const Field = () => …` dans le rendu) — il est recréé à
+chaque frappe et le champ perd le focus. Le déclarer au niveau module.
 
 ### Logique partagée desktop / mobile
 Les deux UI ne doivent différer que par le RENDU. Toute règle métier vit dans `lib/` :

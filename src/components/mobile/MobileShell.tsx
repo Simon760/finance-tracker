@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
 import { setForceDesktop } from '@/lib/useIsMobile';
-import { Monitor, Search, FlaskConical } from 'lucide-react';
+import { Monitor, Search, FlaskConical, FileSpreadsheet } from 'lucide-react';
 import GlobalSearch from '@/components/GlobalSearch';
 
 const TABS = [
@@ -21,6 +21,7 @@ const TABS = [
 const MORE_ITEMS = [
   { href: '/dashboard', label: 'Dashboard du space', icon: BarChart3 },
   { href: '/simulation', label: 'Simulateur', icon: FlaskConical },
+  { href: '/import', label: 'Relevé bancaire', icon: FileSpreadsheet },
   { href: '/networth', label: 'Net Worth', icon: TrendingUp },
   { href: '/trips', label: 'Voyages', icon: Plane },
   { href: '/setup', label: 'Setup', icon: Home },
