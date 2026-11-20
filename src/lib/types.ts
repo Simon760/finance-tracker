@@ -36,6 +36,8 @@ export interface Transaction {
    * tripKind=expense (défaut si tripId set) : NE débite PAS l'AED bank (le swap initial l'a déjà fait). */
   tripId?: string;
   tripKind?: 'swap' | 'expense';
+  /** Générée par une récurrence : clé d'occurrence `idRègle@YYYY-MM-DD` (cf. lib/recurring). */
+  recur?: string;
 }
 
 export interface ExtraRow {
@@ -102,6 +104,8 @@ export interface RevenuEntry {
   /** USD uniquement : taux USD→AED effectif du swap (défaut 3.6725, modifiable).
    * C'est LUI qui détermine l'AED crédité au compte (rate est dérivé de lui). */
   origToAed?: number;
+  /** Générée par une récurrence : clé d'occurrence `idRègle@YYYY-MM-DD` (cf. lib/recurring). */
+  recur?: string;
 }
 
 export interface RevenuState {
@@ -193,6 +197,66 @@ export interface Trip {
   createdAt: string;
 }
 
+/**
+ * Récurrence : une dépense (loyer, abonnement) ou un revenu (client régulier) qui revient
+ * à date fixe. La règle ne crée rien toute seule : elle PROPOSE ses occurrences, ajoutées
+ * en un clic (cf. lib/recurring et <RecurringBanner>).
+ */
+export interface RecurringRule {
+  id: string;
+  /** Espace concerné (les règles sont stockées globalement, comme les voyages). */
+  spaceId?: string;
+  kind: 'expense' | 'revenue';
+  /** Libellé de la transaction (dépense) ou nom du client (revenu). */
+  label: string;
+  /** Montant dans `currency`. */
+  amount: number;
+  currency: 'AED' | 'EUR' | 'USD';
+  /** Dépense : nom du poste régulier qui reçoit la transaction. */
+  poste?: string;
+  /** Revenu : catégorie. */
+  cat?: string;
+  freq: 'monthly' | 'weekly';
+  /** Mensuelle : jour du mois (1–31 ; ramené au dernier jour d'un mois plus court). */
+  day?: number;
+  /** Hebdomadaire : jour de la semaine (0 = dimanche … 6 = samedi). */
+  weekday?: number;
+  active: boolean;
+  /** Première date d'effet (YYYY-MM-DD) : aucune occurrence proposée avant. */
+  from?: string;
+  /** Occurrences écartées à la main (clés `idRègle@YYYY-MM-DD`). */
+  skipped?: string[];
+}
+
+/** Une ligne de budget mensuel d'une simulation (montant en devise locale). */
+export interface SimLine { name: string; amount: number }
+
+/** Une dépense (ou rentrée, montant négatif) ponctuelle d'une simulation. */
+export interface SimExtra { label: string; amount: number; /** 0 = premier mois simulé */ month: number }
+
+/**
+ * Simulation de trésorerie : un scénario sur N mois, stocké À PART des mois du tracker
+ * (donc sans aucun effet sur les stats) — remplace les faux mois créés à l'avance.
+ */
+export interface Simulation {
+  id: string;
+  spaceId?: string;
+  name: string;
+  createdAt: string;
+  /** Premier mois simulé (YYYY-MM). */
+  start: string;
+  /** Horizon en mois (1–12). */
+  months: number;
+  /** Solde de départ (devise locale). */
+  startBalance: number;
+  /** Revenu mensuel attendu (devise base, EUR). */
+  revenueEur: number;
+  /** Taux base→locale utilisé pour convertir le revenu. */
+  rate: number;
+  lines: SimLine[];
+  extras: SimExtra[];
+}
+
 export interface AppState {
   rate: number;
   postes: Poste[];
@@ -211,4 +275,7 @@ export interface AppState {
   residency?: ResidencyState;
   // Voyages (global, hors spaces) — modules optionnel
   trips?: Trip[];
+  // Récurrences et simulations (global, hors spaces — chaque élément porte son spaceId)
+  recurring?: RecurringRule[];
+  simulations?: Simulation[];
 }

@@ -26,7 +26,7 @@ const BLANK: RevenuEntry = { date: '', client: '', cat: '', contracted: 0, cashe
  * l'écriture uniquement.
  */
 export function useRevenus() {
-  const { state, setState, save, getState, liveRate, logChange } = useApp();
+  const { state, setState, save, getState, liveRate, logChange, revFocus, setRevFocus } = useApp();
   const { confirm } = useDialog();
   const rev = state.revenus || { objectif: 5000, categories: [], months: {} };
   const categories = rev.categories || [];
@@ -38,6 +38,14 @@ export function useRevenus() {
   // le dernier mois qui a des données — sinon saisir des revenus en prévision pour le
   // mois suivant faisait ouvrir la page sur ce mois-là.
   const tab = curTab || currentRevMonth();
+
+  // Ouverture ciblée depuis la recherche globale : on se place sur la période demandée
+  useEffect(() => {
+    if (!revFocus) return;
+    setYear(revFocus.year);
+    setCurTab(revFocus.month);
+    setRevFocus(null);
+  }, [revFocus, setRevFocus]);
 
   const years = useMemo(() => {
     const ys = revYears(rev.months);

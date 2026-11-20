@@ -5,7 +5,8 @@ import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import RankedBars from '@/components/ui/RankedBars';
 import { f$, f0, toAed, rowEur, sumEur, shortMonth, startedMonths, monthRevenuConfirmedEur, monthRevenuConfirmedAed } from '@/lib/utils';
-// import BankStatsCard from '@/components/BankStatsCard'; // retiré temporairement
+import BalanceCard from '@/components/BalanceCard';
+import HealthCard from '@/components/HealthCard';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -122,8 +123,11 @@ export default function DashboardPage() {
         <KpiCard label="Total dépensé" value={dcFmt(totalSpent, avgRate)} sub={`Moy: ${dcFmt(avg, avgRate)}/mois`} accentColor="#3b82f6" hero />
       </div>
 
-      {/* Bank stats: ATH / ATL / Solde moyen — à retravailler */}
-      {/* <BankStatsCard state={state} currency={activeSpace?.localCurrency || 'AED'} /> */}
+      {/* Taux d'épargne, mois d'autonomie, année N vs N−1 */}
+      <HealthCard dashCur={dashCur} />
+
+      {/* Solde du compte jour par jour : courbe, plus haut / plus bas, solde à une date */}
+      <BalanceCard />
 
       {/* Evo Chart */}
       <div className="bg-bg-3 border border-border rounded-md p-4 mb-3.5" style={{ height: 320 }}>

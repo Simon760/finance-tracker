@@ -98,6 +98,9 @@ interface AppContextType {
   toggleTheme: () => void;
   curMonth: string | null;
   setCurMonth: (id: string) => void;
+  /** Période à ouvrir dans la page Revenus (posée par la recherche globale, consommée par useRevenus). */
+  revFocus: { year: number; month: string } | null;
+  setRevFocus: (f: { year: number; month: string } | null) => void;
   curYear: string;
   setCurYear: (y: string) => void;
   dashCur: 'EUR' | 'AED';
@@ -232,6 +235,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // depuis localStorage juste après le montage (cf. useEffect plus bas).
   const [theme, setTheme] = useState<Theme>('dark');
   const [curMonth, setCurMonth] = useState<string | null>(null);
+  const [revFocus, setRevFocus] = useState<{ year: number; month: string } | null>(null);
   const [curYear, setCurYear] = useState<string>('all');
   const [dashCur, setDashCur] = useState<'EUR' | 'AED'>('EUR');
   const [liveRate, setLiveRate] = useState(4.3284);
@@ -371,7 +375,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ts: new Date().toISOString(), spaceId: s.id, spaceName: s.name,
         action: 'space.create', detail: `Création du space « ${s.name} »`,
       };
-      const updated = { ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
+      // `...prev` d'abord : spacesToState ne connaît que les champs d'espace. Sans lui, les
+      // données GLOBALES (voyages, résidence, récurrences, simulations) étaient effacées.
+      const updated = { ...prev, ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
@@ -389,7 +395,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         action: 'space.update',
         detail: fields.length ? `Modif space (${fields.join(', ')})` : 'Modif space',
       };
-      const updated = { ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
+      // `...prev` d'abord : spacesToState ne connaît que les champs d'espace. Sans lui, les
+      // données GLOBALES (voyages, résidence, récurrences, simulations) étaient effacées.
+      const updated = { ...prev, ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
@@ -408,7 +416,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ts: new Date().toISOString(), spaceId: id, spaceName: before?.name,
         action: 'space.delete', detail: `Suppression du space « ${before?.name || id} »`,
       };
-      const updated = { ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
+      // `...prev` d'abord : spacesToState ne connaît que les champs d'espace. Sans lui, les
+      // données GLOBALES (voyages, résidence, récurrences, simulations) étaient effacées.
+      const updated = { ...prev, ...next, history: [entry, ...(prev.history || [])].slice(0, HISTORY_CAP) };
       localStorage.setItem('fdxb_state', JSON.stringify(updated));
       if (userId) persistToFirebase(updated, userId);
       return updated;
@@ -1116,7 +1126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncStatus,
       hiddenMode, toggleHidden,
       theme, toggleTheme,
-      curMonth, setCurMonth,
+      curMonth, setCurMonth, revFocus, setRevFocus,
       curYear, setCurYear,
       dashCur, setDashCur,
       updateMonth, renameMonth,

@@ -5,9 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import Modal from '@/components/ui/Modal';
 import { todayISO } from '@/lib/utils';
+import GlobalSearch from '@/components/GlobalSearch';
 import {
   LayoutGrid, BarChart3, DollarSign, Home, Settings, Eye, EyeOff,
-  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane, Sun, Moon,
+  RefreshCw, LogOut, Globe, TrendingUp, Menu, X, MapPin, Plane, Sun, Moon, Search,
 } from 'lucide-react';
 
 const spaceNavItems = [
@@ -45,9 +46,19 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [rateEditing, setRateEditing] = useState(false);
   const [rateInput, setRateInput] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Auto-close drawer on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  // Recherche globale : ⌘K / Ctrl+K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearchOpen(o => !o); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Lock body scroll when drawer open
   useEffect(() => {
@@ -101,6 +112,7 @@ export default function Sidebar() {
 
   return (
     <>
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
       {/* Mobile top bar — visible < md */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-12 bg-bg-2/95 backdrop-blur border-b border-border z-40 flex items-center px-3 gap-3">
         <button
@@ -118,8 +130,16 @@ export default function Sidebar() {
           <span className="text-[13px] font-semibold tracking-tight truncate">{activeSpace.name}</span>
         </div>
         <button
-          onClick={toggleTheme}
+          onClick={() => setSearchOpen(true)}
           className="ml-auto w-8 h-8 flex items-center justify-center rounded-md text-t-3 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
+          title="Rechercher"
+          aria-label="Rechercher"
+        >
+          <Search size={14} />
+        </button>
+        <button
+          onClick={toggleTheme}
+          className="w-8 h-8 flex items-center justify-center rounded-md text-t-3 hover:text-t-1 hover:bg-bg-3 transition-all cursor-pointer"
           title={theme === 'dark' ? 'Mode jour' : 'Mode nuit'}
         >
           {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
@@ -175,6 +195,17 @@ export default function Sidebar() {
           </button>
         </div>
       )}
+
+      {/* Recherche globale */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="flex items-center gap-2 w-full px-3 py-2 mb-3 bg-bg-3 border border-border rounded-md text-t-3 hover:text-t-1 hover:border-border-2 transition-all cursor-pointer text-left"
+        title="Rechercher une dépense ou un revenu"
+      >
+        <Search size={13} className="shrink-0" />
+        <span className="text-[12px] flex-1">Rechercher…</span>
+        <kbd className="text-[9px] font-semibold text-t-4 border border-border rounded px-1 py-[1px]">⌘K</kbd>
+      </button>
 
       {/* Nav - Global (above space) */}
       <div className="text-[9px] text-t-4 uppercase tracking-[0.18em] font-semibold px-3 pb-1.5 pt-1">Global</div>

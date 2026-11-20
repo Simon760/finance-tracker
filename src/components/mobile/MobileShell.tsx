@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
 import { setForceDesktop } from '@/lib/useIsMobile';
-import { Monitor } from 'lucide-react';
+import { Monitor, Search } from 'lucide-react';
+import GlobalSearch from '@/components/GlobalSearch';
 
 const TABS = [
   { href: '/tracker', label: 'Tracker', icon: LayoutGrid },
@@ -37,6 +38,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [rateEditing, setRateEditing] = useState(false);
   const [rateInput, setRateInput] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -73,6 +75,13 @@ export default function MobileShell({ children }: { children: React.ReactNode })
           <ChevronRight size={14} className="text-t-3 shrink-0 rotate-90" />
         </button>
         <button
+          onClick={() => setSearchOpen(true)}
+          className="w-9 h-9 flex items-center justify-center rounded-full active:bg-bg-4 transition-colors text-t-2"
+          aria-label="Rechercher"
+        >
+          <Search size={18} />
+        </button>
+        <button
           onClick={toggleTheme}
           className="w-9 h-9 flex items-center justify-center rounded-full active:bg-bg-4 transition-colors text-t-2"
           aria-label={theme === 'dark' ? 'Mode jour' : 'Mode nuit'}
@@ -87,6 +96,8 @@ export default function MobileShell({ children }: { children: React.ReactNode })
           {hiddenMode ? <EyeOff size={18} /> : <Eye size={18} />}
         </button>
       </header>
+
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* Page content */}
       <main className="flex-1 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+72px)] overflow-x-hidden">
