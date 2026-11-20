@@ -8,6 +8,11 @@ import Modal from '@/components/ui/Modal';
 import { f$, f0, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
 import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { chartTooltipStyle } from '@/lib/chartTheme';
+import { Plus, Trash2 } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { useDialog } from '@/components/ui/Dialog';
+import BottomSheet from '@/components/mobile/BottomSheet';
+import { MButton, MCard, MDivider, MField, MIcon, MLabel, MNum, MRow } from '@/components/mobile/ui';
 
 interface Asset {
   name: string;
@@ -28,6 +33,8 @@ const ASSET_TYPES = [
 
 export default function NetWorthPage() {
   const { spaces, liveRate, theme } = useApp();
+  const isMobile = useIsMobile();
+  const { confirm } = useDialog();
   const tooltipStyle = chartTooltipStyle(theme);
   const [assets, setAssets] = useState<Asset[]>(() => {
     if (typeof window !== 'undefined') {
@@ -85,6 +92,114 @@ export default function NetWorthPage() {
   const typePie = ASSET_TYPES.filter(t => byType[t.value] > 0).map(t => ({
     name: t.label, value: byType[t.value], color: t.color,
   }));
+
+  // ─── UI mobile : mêmes données et mêmes actions, rendu en cartes fines ───
+  if (isMobile === true) {
+    const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899'];
+    const typeOf = (t: string) => ASSET_TYPES.find(x => x.value === t) || ASSET_TYPES[4];
+    const removeAsset = async (idx: number) => {
+      const a = assets[idx];
+      if (!a || !(await confirm(`Supprimer « ${a.name} » de ton patrimoine ?`, { danger: true }))) return;
+      // Après l'attente : relire la liste (elle a pu changer) et ne retirer que cet actif
+      const saved: Asset[] = JSON.parse(localStorage.getItem('fhq_assets') || '[]');
+      saveAssets(saved.filter((x, i) => !(i === idx && x.name === a.name)));
+    };
+    return (
+      <div className="-mx-1">
+        <div className="flex flex-col items-center pt-3 pb-6">
+          <span className="text-[13px] text-t-3">Patrimoine net</span>
+          <span className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-[36px] leading-none hero-num mono-value text-t-1">{f$(netWorth)}</span>
+            <span className="text-[16px] text-t-3 font-medium">€</span>
+          </span>
+          <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub">Banques {f0(totalBankEur)} € · actifs {f0(totalAssetsEur)} €</span>
+          <MButton className="!w-auto !h-11 px-6 mt-4" onClick={() => setAddOpen(true)}><Plus size={17} />Ajouter un actif</MButton>
+        </div>
+
+        <MLabel>Comptes bancaires</MLabel>
+        <MCard className="mb-4">
+          {bankBalances.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-t-3">Aucun solde bancaire suivi pour l’instant</div>}
+          {bankBalances.map((b, k) => (
+            <div key={b.space}>
+              {k > 0 && <MDivider />}
+              <MRow icon={<MIcon>{b.emoji || b.space[0]}</MIcon>} title={b.space} sub="Solde prévisionnel du dernier mois" right={<span className="mono-value">{f$(b.eurBalance)} €</span>} rightSub={<span className="mono-value">{f0(b.balance)} {b.currency}</span>} />
+            </div>
+          ))}
+        </MCard>
+
+        <MLabel>Autres actifs</MLabel>
+        <MCard className="mb-4">
+          {assets.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-t-3">Épargne, investissements, crypto, immobilier : ajoute ce qui n’est pas sur ton compte.</div>}
+          {assets.map((a, k) => (
+            <div key={`${a.name}-${k}`} className="flex items-stretch">
+              <div className="flex-1 min-w-0">
+                {k > 0 && <MDivider />}
+                <MRow
+                  icon={<MIcon color={typeOf(a.type).color}>{a.name.charAt(0).toUpperCase()}</MIcon>}
+                  title={a.name}
+                  sub={typeOf(a.type).label}
+                  right={<span className="mono-value">{f$(a.eurValue)} €</span>}
+                  rightSub={a.currency !== 'EUR' ? <span className="mono-value">{f0(a.value)} {a.currency}</span> : undefined}
+                />
+              </div>
+              <button type="button" onClick={() => removeAsset(k)} className="w-11 shrink-0 flex items-center justify-center text-t-3 active:text-danger" aria-label={`Supprimer ${a.name}`}><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </MCard>
+
+        {pieData.length > 0 && (
+          <>
+            <MLabel>Répartition</MLabel>
+            <MCard className="mb-2 pt-3">
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={46} outerRadius={72} paddingAngle={2} stroke="none">
+                    {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} formatter={v => `${f$(Number(v))} €`} />
+                </PieChart>
+              </ResponsiveContainer>
+              {pieData.map((d, i) => (
+                <div key={d.name}>
+                  <MDivider />
+                  <MRow className="!min-h-[46px]" icon={<span className="w-2.5 h-2.5 rounded-full shrink-0 mx-1" style={{ background: COLORS[i % COLORS.length] }} />} title={<span className="text-[14px] font-normal">{d.name}</span>} right={<span className="mono-value text-[14px]">{netWorth > 0 ? Math.round((d.value / netWorth) * 100) : 0} %</span>} />
+                </div>
+              ))}
+              {typePie.length > 1 && typePie.map(t => (
+                <div key={t.name}>
+                  <MDivider />
+                  <MRow className="!min-h-[46px]" icon={<span className="w-2.5 h-2.5 rounded-[3px] shrink-0 mx-1" style={{ background: t.color }} />} title={<span className="text-[14px] font-normal text-t-2">{t.name}</span>} right={<span className="mono-value text-[14px]">{f0(t.value)} €</span>} />
+                </div>
+              ))}
+            </MCard>
+          </>
+        )}
+
+        <BottomSheet open={addOpen} onClose={() => setAddOpen(false)} title="Ajouter un actif" footer={<MButton disabled={!form.name.trim()} onClick={addAsset}>Ajouter</MButton>}>
+          <div className="flex flex-col items-center pt-2 pb-4">
+            <span className="text-[13px] text-t-3 mb-1">Valeur</span>
+            <MNum className="m-amount text-center px-6" value={form.value} onChange={n => setForm({ ...form, value: n })} ariaLabel="Valeur de l’actif" />
+            <span className="text-[13px] text-t-3 mt-1">{form.currency}</span>
+          </div>
+          <MCard surface="sheet">
+            <MField label="Nom"><input className="m-input text-right" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Livret A, Bitcoin…" /></MField>
+            <MDivider />
+            <MField label="Type">
+              <select className="m-input text-right" dir="rtl" value={form.type} onChange={e => setForm({ ...form, type: e.target.value as Asset['type'] })}>
+                {ASSET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </MField>
+            <MDivider />
+            <MField label="Devise">
+              <select className="m-input text-right" dir="rtl" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })}>
+                {['EUR', 'AED', 'USD', 'GBP'].map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </MField>
+          </MCard>
+        </BottomSheet>
+      </div>
+    );
+  }
 
   return (
     <div>

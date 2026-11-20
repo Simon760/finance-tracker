@@ -7,7 +7,10 @@ import Card, { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { useDialog } from '@/components/ui/Dialog';
 import { ResidencyEntry, ResidencyCountry } from '@/lib/types';
-import { Plus, Pencil, X, ChevronLeft, ChevronRight, AlertTriangle, Plane } from 'lucide-react';
+import { Plus, Pencil, X, ChevronLeft, ChevronRight, AlertTriangle, Plane, Trash2 } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import BottomSheet from '@/components/mobile/BottomSheet';
+import { MBadge, MButton, MCard, MDivider, MField, MIcon, MLabel, MRow, MSeg, MToggle } from '@/components/mobile/ui';
 
 const MIN_YEAR = 2026;
 
@@ -243,6 +246,7 @@ function computeYear(year: number, entries: ResidencyEntry[]): Computed {
 export default function ResidencyPage() {
   const { residencyEntries, addResidencyEntry, updateResidencyEntry, deleteResidencyEntry } = useApp();
   const { confirm, alert } = useDialog();
+  const isMobile = useIsMobile();
 
   const nowYear = new Date().getUTCFullYear();
   const initialYear = nowYear < MIN_YEAR ? MIN_YEAR : nowYear;
@@ -342,6 +346,146 @@ export default function ResidencyPage() {
 
   const uaeZone = zoneForUae(computed.uae);
   const frZone = zoneForFrance(computed.fr);
+
+  /** Jours d'un séjour comptés dans l'année affichée (bornés à l'année et à aujourd'hui). */
+  const daysOf = (e: ResidencyEntry) => {
+    const sStart = parseYmd(e.start);
+    const sEnd = e.end ? parseYmd(e.end) : parseYmd(today);
+    const { start: yStart, endExcl: yEnd } = yearRange(year);
+    const clampStart = sStart < yStart ? yStart : sStart;
+    const cap = sEnd >= yEnd ? new Date(yEnd.getTime() - 86400000) : sEnd;
+    const today2 = parseYmd(today);
+    const realCap = cap > today2 ? today2 : cap;
+    return clampStart > realCap ? 0 : dayDiff(realCap, clampStart) + 1;
+  };
+
+  // ─── UI mobile : mêmes calculs et mêmes actions, rendu en cartes fines ───
+  if (isMobile === true) {
+    const flag = (c: ResidencyCountry) => COUNTRY_LABEL[c].split(' ')[0];
+    const nameOf = (e: { country: ResidencyCountry; countryName?: string }) => (e.country === 'OTHER' && e.countryName ? e.countryName : COUNTRY_LABEL[e.country].split(' ').slice(1).join(' '));
+    const shortFr = (d: string) => formatFr(d).slice(0, 5);
+    const saisis = computed.uae + computed.fr + computed.other;
+    const base = isCurrentYear ? computed.daysElapsed : computed.yearTotal;
+    const bar = (value: number, max: number, color: string) => (
+      <div className="px-4 pb-3 -mt-1">
+        <div className="h-[3px] bg-t-1/10 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.min(100, (value / max) * 100)}%`, background: color }} /></div>
+      </div>
+    );
+    const note = (key: string, tone: 'danger' | 'warning' | 'info', icon: React.ReactNode, children: React.ReactNode) => (
+      <div key={key} className={`flex items-start gap-3 rounded-[16px] px-4 py-3 mb-2 text-[13px] leading-snug ${tone === 'danger' ? 'bg-danger/10 text-danger' : tone === 'warning' ? 'bg-warning/10 text-warning' : 'bg-info/10 text-info'}`}>
+        <span className="mt-0.5 shrink-0">{icon}</span><div className="min-w-0">{children}</div>
+      </div>
+    );
+    const closeForm = () => { setModalOpen(false); resetForm(); };
+    return (
+      <div className="-mx-1">
+        <div className="flex flex-col items-center pt-3 pb-5">
+          <span className="text-[13px] text-t-3">Jours aux Émirats en {year}</span>
+          <span className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-[36px] leading-none hero-num mono-value text-t-1">{computed.uae}</span>
+            <span className="text-[16px] text-t-3 font-medium">sur 90</span>
+          </span>
+          <span className="text-[13px] mt-1.5" style={{ color: uaeZone.color }}>{uaeZone.label}</span>
+          <div className="flex items-center gap-1 mt-3.5">
+            <button type="button" onClick={() => setYear(y => Math.max(MIN_YEAR, y - 1))} disabled={year <= MIN_YEAR} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Année précédente"><ChevronLeft size={19} /></button>
+            <span className="h-9 px-5 rounded-full bg-bg-3 flex items-center text-[14px] font-medium text-t-1 mono-value">{year}</span>
+            <button type="button" onClick={() => setYear(y => y + 1)} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 active:bg-bg-3" aria-label="Année suivante"><ChevronRight size={19} /></button>
+          </div>
+          <MButton className="!w-auto !h-11 px-6 mt-4" onClick={openNew}><Plus size={17} />Ajouter un séjour</MButton>
+        </div>
+
+        {alerts.map((a, i) => note(`a${i}`, a.level === 'red' ? 'danger' : 'warning', <AlertTriangle size={16} />, a.msg))}
+        {computed.conflicts.map((c, i) => note(`c${i}`, 'warning', <AlertTriangle size={16} />, c))}
+        {computed.travelDays.length > 0 && note('t', 'info', <Plane size={16} />, (
+          <>
+            <div className="font-medium">{computed.travelDays.length} jour{computed.travelDays.length > 1 ? 's' : ''} de voyage, compté{computed.travelDays.length > 1 ? 's' : ''} pour le pays d’arrivée</div>
+            {computed.travelDays.map((t, i) => <div key={i} className="opacity-80">{t}</div>)}
+          </>
+        ))}
+
+        <MLabel className="mt-2">Par pays</MLabel>
+        <MCard className="mb-4">
+          <MRow icon={<MIcon>{flag('UAE')}</MIcon>} title="Émirats" sub={`Seuil 90 j${isCurrentYear ? ` · projection ${computed.projection.uae} j` : ''}`} right={<span className="mono-value">{computed.uae} j</span>} />
+          {bar(computed.uae, 90, uaeZone.color)}
+          <MDivider />
+          <MRow icon={<MIcon>{flag('FR')}</MIcon>} title="France" sub={<><span style={{ color: frZone.color }}>{frZone.label}</span> · plafond 183 j{isCurrentYear ? ` · projection ${computed.projection.fr} j` : ''}</>} right={<span className="mono-value">{computed.fr} j</span>} />
+          {bar(computed.fr, 183, frZone.color)}
+          <MDivider />
+          <MRow icon={<MIcon>{flag('OTHER')}</MIcon>} title="Autres pays" sub={isCurrentYear ? `Projection ${computed.projection.other} j` : undefined} right={<span className="mono-value">{computed.other} j</span>} />
+        </MCard>
+
+        <MCard className="mb-4">
+          <MRow title={<span className="text-[14px] font-normal text-t-2">Jours renseignés</span>} sub={base - saisis > 0 ? `${base - saisis} j non renseignés` : 'Tous renseignés'} right={<span className="mono-value">{saisis} / {base}</span>} />
+          <MDivider />
+          <MRow
+            title={<span className="text-[14px] font-normal text-t-2">Plus longue absence des Émirats</span>}
+            sub={computed.streakOutUaeFrom ? `${formatFr(computed.streakOutUaeFrom)} → ${formatFr(computed.streakOutUaeTo!)}` : 'Aucune'}
+            right={<span className="mono-value" style={{ color: computed.streakOutUae > 150 ? ZONE.red : computed.streakOutUae > 100 ? ZONE.orange : undefined }}>{computed.streakOutUae} / 180</span>}
+          />
+        </MCard>
+
+        <MLabel>{entriesForYear.length > 0 ? `${entriesForYear.length} séjour${entriesForYear.length > 1 ? 's' : ''} en ${year}` : `Séjours en ${year}`}</MLabel>
+        <MCard className="mb-4">
+          {entriesForYear.length === 0 && <div className="px-4 py-7 text-center text-[13px] text-t-3">Aucun séjour saisi pour {year}</div>}
+          {entriesForYear.map((e, k) => (
+            <div key={e.id}>
+              {k > 0 && <MDivider />}
+              <MRow
+                icon={<MIcon>{flag(e.country)}</MIcon>}
+                title={nameOf(e)}
+                badge={!e.end ? <MBadge tone="accent">En cours</MBadge> : undefined}
+                sub={`${shortFr(e.start)} → ${e.end ? shortFr(e.end) : 'aujourd’hui'}${e.note ? ` · ${e.note}` : ''}`}
+                right={<span className="mono-value">{daysOf(e)} j</span>}
+                onClick={() => openEdit(e)}
+              />
+            </div>
+          ))}
+        </MCard>
+
+        {computed.longestSegments.length > 0 && (
+          <>
+            <MLabel>Plus longs séjours</MLabel>
+            <MCard className="mb-2">
+              {computed.longestSegments.map((sg, k) => (
+                <div key={k}>
+                  {k > 0 && <MDivider />}
+                  <MRow className="!min-h-[50px]" icon={<MIcon>{flag(sg.country)}</MIcon>} title={nameOf(sg)} sub={`${formatFr(sg.start)} → ${formatFr(sg.end)}`} right={<span className="mono-value">{sg.days} j</span>} />
+                </div>
+              ))}
+            </MCard>
+          </>
+        )}
+
+        <BottomSheet open={modalOpen} onClose={closeForm} title={editing ? 'Modifier le séjour' : 'Nouveau séjour'} footer={<MButton onClick={handleSave}>{editing ? 'Enregistrer' : 'Ajouter'}</MButton>}>
+          <MSeg className="w-full mb-3" value={fCountry} options={[['UAE', 'Émirats'], ['FR', 'France'], ['OTHER', 'Autre']] as const} onChange={setFCountry} />
+          <MCard surface="sheet">
+            {fCountry === 'OTHER' && (
+              <>
+                <MField label="Pays"><input className="m-input text-right" value={fCountryName} onChange={ev => setFCountryName(ev.target.value)} placeholder="Italie, Thaïlande…" /></MField>
+                <MDivider />
+              </>
+            )}
+            <MField label="Arrivée"><input type="date" className="m-input text-right" value={fStart} onChange={ev => setFStart(ev.target.value)} /></MField>
+            <MDivider />
+            <MRow title={<span className="text-[14px] font-normal text-t-2">Séjour en cours</span>} sub="Compté jusqu’à aujourd’hui" right={<MToggle on={fOngoing} />} onClick={() => { setFOngoing(!fOngoing); if (!fOngoing) setFEnd(''); }} />
+            {!fOngoing && (
+              <>
+                <MDivider />
+                <MField label="Départ"><input type="date" className="m-input text-right" value={fEnd} onChange={ev => setFEnd(ev.target.value)} /></MField>
+              </>
+            )}
+            <MDivider />
+            <MField label="Note"><input className="m-input text-right" value={fNote} onChange={ev => setFNote(ev.target.value)} placeholder="Facultatif" /></MField>
+          </MCard>
+          {editing && (
+            <button type="button" onClick={async () => { const id = editing.id; closeForm(); await handleDelete(id); }} className="w-full flex items-center justify-center gap-2 h-12 mt-3 text-[15px] font-medium text-danger active:opacity-60">
+              <Trash2 size={16} />Supprimer ce séjour
+            </button>
+          )}
+        </BottomSheet>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -497,14 +641,7 @@ export default function ResidencyPage() {
               </thead>
               <tbody>
                 {entriesForYear.map(e => {
-                  const sStart = parseYmd(e.start);
-                  const sEnd = e.end ? parseYmd(e.end) : parseYmd(today);
-                  const { start: yStart, endExcl: yEnd } = yearRange(year);
-                  const clampStart = sStart < yStart ? yStart : sStart;
-                  const cap = sEnd >= yEnd ? new Date(yEnd.getTime() - 86400000) : sEnd;
-                  const today2 = parseYmd(today);
-                  const realCap = cap > today2 ? today2 : cap;
-                  const days = clampStart > realCap ? 0 : dayDiff(realCap, clampStart) + 1;
+                  const days = daysOf(e);
                   const label = e.country === 'OTHER' && e.countryName
                     ? `🌍 ${e.countryName}`
                     : COUNTRY_LABEL[e.country];
