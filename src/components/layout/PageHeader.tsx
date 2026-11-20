@@ -28,7 +28,8 @@ function LastUpdateBadge() {
 export default function PageHeader({ breadcrumb, title, subtitle, children }: PageHeaderProps) {
   return (
     <div className="animate-fade-up">
-      <div className="flex items-center gap-1.5 text-[11px] text-t-3 mb-5">
+      {/* UI mobile : le titre est déjà dans la barre du haut → ni fil d'Ariane ni h1 ici */}
+      <div className="flex items-center gap-1.5 text-[11px] text-t-3 mb-5 mob:hidden">
         {breadcrumb.map((b, i) => (
           <span key={i} className={b.current ? 'text-t-2 font-medium tracking-tight' : 'tracking-tight'}>
             {i > 0 && <span className="text-[10px] mx-1 text-t-4">›</span>}
@@ -37,8 +38,8 @@ export default function PageHeader({ breadcrumb, title, subtitle, children }: Pa
         ))}
         <LastUpdateBadge />
       </div>
-      <div className="flex justify-between items-start mb-7 flex-wrap gap-3">
-        <div>
+      <div className="flex justify-between items-start mb-7 flex-wrap gap-3 mob:mb-4">
+        <div className="mob:hidden">
           <h1 className="text-[26px] font-bold tracking-tightest leading-none text-t-1">{title}</h1>
           {subtitle && <p className="text-t-3 text-[12px] mt-2 tracking-tight">{subtitle}</p>}
         </div>

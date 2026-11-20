@@ -1,263 +1,118 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  LayoutGrid, DollarSign, Globe, MapPin, MoreHorizontal,
-  Eye, EyeOff, RefreshCw, LogOut, BarChart3, TrendingUp, Home, Settings, ChevronRight, X, Plane, Sun, Moon,
-} from 'lucide-react';
+import { Home, Coins, PieChart, MapPin, Menu, Eye, EyeOff, Search, ChevronLeft } from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
-import { setForceDesktop } from '@/lib/useIsMobile';
-import { Monitor, Search, FlaskConical, FileSpreadsheet } from 'lucide-react';
+import { useKeyboardInset } from '@/lib/useOverlay';
 import GlobalSearch from '@/components/GlobalSearch';
+import SpaceSheet from './SpaceSheet';
 
+/** Onglets de la barre du bas. */
 const TABS = [
-  { href: '/tracker', label: 'Tracker', icon: LayoutGrid },
-  { href: '/revenus', label: 'Revenus', icon: DollarSign },
-  { href: '/global', label: 'Global', icon: Globe },
+  { href: '/tracker', label: 'Accueil', icon: Home },
+  { href: '/revenus', label: 'Revenus', icon: Coins },
+  { href: '/dashboard', label: 'Stats', icon: PieChart },
   { href: '/residency', label: 'Résidence', icon: MapPin },
-];
+  { href: '/menu', label: 'Menu', icon: Menu },
+] as const;
 
-const MORE_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard du space', icon: BarChart3 },
-  { href: '/simulation', label: 'Simulateur', icon: FlaskConical },
-  { href: '/import', label: 'Relevé bancaire', icon: FileSpreadsheet },
-  { href: '/networth', label: 'Net Worth', icon: TrendingUp },
-  { href: '/trips', label: 'Voyages', icon: Plane },
-  { href: '/setup', label: 'Setup', icon: Home },
-  { href: '/settings', label: 'Paramètres', icon: Settings },
-];
+/** Pages ouvertes depuis Menu : barre du haut avec retour + titre. */
+export const MENU_PAGES: Record<string, string> = {
+  '/global': 'Vue globale',
+  '/networth': 'Patrimoine',
+  '/simulation': 'Simulateur',
+  '/import': 'Relevé bancaire',
+  '/trips': 'Voyages',
+  '/setup': 'Setup',
+  '/settings': 'Réglages',
+};
 
 export default function MobileShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const {
-    activeSpace, spaces, setActiveSpaceId, liveRate, refreshRate, rateRefreshing, setRateManually, lastRateFetch,
-    hiddenMode, toggleHidden, theme, toggleTheme, logout, userId,
-  } = useApp();
-
-  const [moreOpen, setMoreOpen] = useState(false);
+  const { activeSpace, hiddenMode, toggleHidden, syncStatus } = useApp();
   const [spaceOpen, setSpaceOpen] = useState(false);
-  const [rateEditing, setRateEditing] = useState(false);
-  const [rateInput, setRateInput] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  useKeyboardInset();
 
-  useEffect(() => {
-    setMoreOpen(false);
-    setSpaceOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (moreOpen || spaceOpen) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = prev; };
-    }
-  }, [moreOpen, spaceOpen]);
-
-  const currentTab = TABS.find(t => pathname.includes(t.href));
-  const currentMore = MORE_ITEMS.find(t => pathname.includes(t.href));
-  const headerTitle = currentTab?.label || currentMore?.label || 'FinanceHQ';
+  const tab = TABS.find(t => pathname.startsWith(t.href));
+  const subKey = Object.keys(MENU_PAGES).find(k => pathname.startsWith(k));
+  const isHome = tab?.href === '/tracker';
+  const activeHref = tab?.href || (subKey ? '/menu' : '');
+  const round = 'w-10 h-10 flex items-center justify-center rounded-full text-t-2 active:bg-bg-3 transition-colors shrink-0';
 
   return (
-    <div className="min-h-screen flex flex-col bg-bg-1">
-      {/* Top app bar */}
-      <header className="sticky top-0 z-40 bg-bg-2/95 backdrop-blur-md border-b border-border h-14 flex items-center px-4 gap-3">
-        <button
-          onClick={() => setSpaceOpen(true)}
-          className="flex items-center gap-2 min-w-0 flex-1 active:opacity-60 transition-opacity"
-        >
-          <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-black font-bold text-[13px] shrink-0">
-            {activeSpace?.emoji || (activeSpace?.name?.[0]?.toUpperCase() ?? 'F')}
-          </div>
-          <div className="min-w-0 text-left">
-            <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none">{headerTitle}</div>
-            <div className="text-[13px] font-semibold text-t-1 truncate leading-tight">{activeSpace?.name || 'Space'}</div>
-          </div>
-          <ChevronRight size={14} className="text-t-3 shrink-0 rotate-90" />
-        </button>
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="w-9 h-9 flex items-center justify-center rounded-full active:bg-bg-4 transition-colors text-t-2"
-          aria-label="Rechercher"
-        >
-          <Search size={18} />
-        </button>
-        <button
-          onClick={toggleTheme}
-          className="w-9 h-9 flex items-center justify-center rounded-full active:bg-bg-4 transition-colors text-t-2"
-          aria-label={theme === 'dark' ? 'Mode jour' : 'Mode nuit'}
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
-        <button
-          onClick={toggleHidden}
-          className="w-9 h-9 flex items-center justify-center rounded-full active:bg-bg-4 transition-colors text-t-2"
-          aria-label={hiddenMode ? 'Afficher montants' : 'Masquer montants'}
-        >
-          {hiddenMode ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
+    <div className="min-h-[100dvh] flex flex-col bg-bg">
+      <div className="m-statusbar" />
+
+      {/* Barre du haut */}
+      <header className="sticky top-0 z-40 bg-bg/90 backdrop-blur-md pt-[env(safe-area-inset-top)]">
+        <div className="h-[52px] flex items-center gap-2 px-3">
+          {subKey ? (
+            <button onClick={() => router.push('/menu')} className={round} aria-label="Retour au menu">
+              <ChevronLeft size={22} />
+            </button>
+          ) : (
+            <button onClick={() => setSpaceOpen(true)} className="relative w-10 h-10 flex items-center justify-center shrink-0 active:opacity-60" aria-label={`Espace ${activeSpace?.name || ''} — changer`}>
+              <span className="w-8 h-8 rounded-full bg-bg-3 flex items-center justify-center text-[14px] font-semibold text-t-1">
+                {activeSpace?.emoji || (activeSpace?.name?.[0]?.toUpperCase() ?? 'F')}
+              </span>
+              {/* Synchro : vert = à jour, orange = envoi en cours ou hors ligne */}
+              <span className={`absolute right-0.5 bottom-0.5 w-2.5 h-2.5 rounded-full border-2 border-bg ${syncStatus === 'ok' ? 'bg-accent' : 'bg-warning'}`} />
+            </button>
+          )}
+
+          {isHome ? (
+            <button onClick={() => setSearchOpen(true)} className="flex-1 h-9 rounded-full bg-bg-3 flex items-center gap-2 px-3.5 text-t-3 text-[14px] active:opacity-70 min-w-0">
+              <Search size={16} className="shrink-0" />
+              <span className="truncate">Rechercher</span>
+            </button>
+          ) : (
+            <>
+              <div className="flex-1 min-w-0 text-[17px] font-semibold tracking-tight text-t-1 truncate px-1">
+                {subKey ? MENU_PAGES[subKey] : tab?.label || 'FinanceHQ'}
+              </div>
+              <button onClick={() => setSearchOpen(true)} className={round} aria-label="Rechercher">
+                <Search size={19} />
+              </button>
+            </>
+          )}
+
+          <button onClick={toggleHidden} className={round} aria-label={hiddenMode ? 'Afficher les montants' : 'Masquer les montants'}>
+            {hiddenMode ? <EyeOff size={19} /> : <Eye size={19} />}
+          </button>
+        </div>
       </header>
 
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SpaceSheet open={spaceOpen} onClose={() => setSpaceOpen(false)} />
 
-      {/* Page content */}
-      <main className="flex-1 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+72px)] overflow-x-hidden">
+      {/* Contenu */}
+      <main className="flex-1 px-4 pt-1 pb-[calc(env(safe-area-inset-bottom)+84px)] overflow-x-hidden">
         {children}
       </main>
 
-      {/* Bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg-2/95 backdrop-blur-md border-t border-border pb-[env(safe-area-inset-bottom)]">
+      {/* Barre du bas */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg/90 backdrop-blur-md border-t border-t-1/[0.06] pb-[env(safe-area-inset-bottom)]" aria-label="Navigation principale">
         <div className="flex">
           {TABS.map(t => {
             const Icon = t.icon;
-            const active = pathname.includes(t.href);
+            const active = activeHref === t.href;
             return (
               <button
                 key={t.href}
                 onClick={() => router.push(t.href)}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 h-[60px] transition-colors active:bg-bg-3 ${active ? 'text-accent' : 'text-t-3'}`}
+                aria-current={active ? 'page' : undefined}
+                className={`flex-1 flex flex-col items-center justify-center gap-[3px] h-[56px] transition-colors active:opacity-60 ${active ? 'text-t-1' : 'text-t-3'}`}
               >
-                <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
-                <span className={`text-[10px] tracking-tight ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
+                <Icon size={21} strokeWidth={active ? 2.2 : 1.8} />
+                <span className={`text-[11px] tracking-tight ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
               </button>
             );
           })}
-          <button
-            onClick={() => setMoreOpen(true)}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 h-[60px] transition-colors active:bg-bg-3 ${currentMore ? 'text-accent' : 'text-t-3'}`}
-          >
-            <MoreHorizontal size={20} strokeWidth={currentMore ? 2.2 : 1.8} />
-            <span className={`text-[10px] tracking-tight ${currentMore ? 'font-semibold' : 'font-medium'}`}>Plus</span>
-          </button>
         </div>
       </nav>
-
-      {/* "Plus" sheet */}
-      {moreOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end animate-fade-in" onClick={() => setMoreOpen(false)}>
-          <div
-            className="w-full bg-bg-2 border-t border-border rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] animate-slide-up"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="w-10 h-1 bg-bg-4 rounded-full mx-auto mb-4" />
-            <div className="text-[11px] uppercase tracking-wider text-t-3 font-semibold mb-3 px-1">Autres pages</div>
-            <div className="space-y-1 mb-4">
-              {MORE_ITEMS.map(m => {
-                const Icon = m.icon;
-                const active = pathname.includes(m.href);
-                return (
-                  <button
-                    key={m.href}
-                    onClick={() => { router.push(m.href); setMoreOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors active:bg-bg-4 ${active ? 'bg-bg-3 text-t-1' : 'text-t-2'}`}
-                  >
-                    <Icon size={18} className={active ? 'text-accent' : ''} />
-                    <span className="text-[14px] font-medium">{m.label}</span>
-                    <ChevronRight size={16} className="ml-auto text-t-4" />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="border-t border-border pt-3 space-y-2">
-              <div className="flex items-center justify-between px-1 text-[11px] text-t-3">
-                <span>
-                  Taux EUR/{activeSpace?.localCurrency || '—'}
-                  {lastRateFetch != null && (
-                    <span className="text-t-4 ml-1.5">
-                      · maj {(() => {
-                        const ageMs = Date.now() - lastRateFetch;
-                        const min = Math.floor(ageMs / 60000);
-                        if (min < 1) return 'à l\'instant';
-                        if (min < 60) return `${min}min`;
-                        return `${Math.floor(min / 60)}h`;
-                      })()}
-                    </span>
-                  )}
-                </span>
-                <div className="flex items-center gap-2">
-                  {rateEditing ? (
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={rateInput}
-                      onChange={e => setRateInput(e.target.value)}
-                      autoFocus
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') { const n = parseFloat(rateInput); if (n > 0) setRateManually(n); setRateEditing(false); }
-                        else if (e.key === 'Escape') setRateEditing(false);
-                      }}
-                      onBlur={() => { const n = parseFloat(rateInput); if (n > 0) setRateManually(n); setRateEditing(false); }}
-                      className="bg-bg-3 border border-accent/40 rounded px-2 py-1 text-[13px] font-mono w-24 mono-value outline-none text-accent text-right"
-                    />
-                  ) : (
-                    <button
-                      onClick={() => { setRateInput(liveRate.toFixed(4)); setRateEditing(true); }}
-                      className="font-mono mono-value text-t-1 hover:text-accent active:text-accent"
-                      title="Cliquer pour saisir manuellement"
-                    >{liveRate?.toFixed(4) || '—'}</button>
-                  )}
-                  <button onClick={refreshRate} disabled={rateRefreshing} className="w-7 h-7 flex items-center justify-center rounded-full active:bg-bg-4 disabled:opacity-60">
-                    <RefreshCw size={13} className={rateRefreshing ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between px-1 text-[11px] text-t-3">
-                <span>Utilisateur</span>
-                <span className="text-t-2 font-mono">{userId || '—'}</span>
-              </div>
-              <button
-                onClick={() => setForceDesktop(true)}
-                className="w-full flex items-center justify-center gap-2 mt-3 py-3 bg-bg-3 text-t-2 border border-border rounded-lg font-semibold text-[12px] active:bg-bg-4"
-              >
-                <Monitor size={14} /> Forcer la vue desktop
-              </button>
-              <button onClick={logout} className="w-full flex items-center justify-center gap-2 mt-1.5 py-3 bg-danger/10 text-danger border border-danger/25 rounded-lg font-semibold text-[13px] active:bg-danger/20">
-                <LogOut size={16} /> Déconnexion
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Space switcher sheet */}
-      {spaceOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end animate-fade-in" onClick={() => setSpaceOpen(false)}>
-          <div
-            className="w-full bg-bg-2 border-t border-border rounded-t-2xl p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] animate-slide-up max-h-[80vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="w-10 h-1 bg-bg-4 rounded-full mx-auto mb-4" />
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-[11px] uppercase tracking-wider text-t-3 font-semibold px-1">Spaces</div>
-              <button onClick={() => setSpaceOpen(false)} className="w-7 h-7 flex items-center justify-center rounded-full active:bg-bg-4 text-t-3">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="space-y-1">
-              {spaces.map(s => {
-                const active = s.id === activeSpace?.id;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => { setActiveSpaceId(s.id); setSpaceOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors active:bg-bg-4 ${active ? 'bg-bg-3' : ''}`}
-                  >
-                    <div className="w-9 h-9 rounded-full bg-bg-4 flex items-center justify-center text-[15px]">
-                      {s.emoji || s.name[0]}
-                    </div>
-                    <div className="text-left flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold truncate ${active ? 'text-accent' : 'text-t-1'}`}>{s.name}</div>
-                      <div className="text-[11px] text-t-3">{s.localCurrency} · {s.status === 'active' ? 'Actif' : 'Brouillon'}</div>
-                    </div>
-                    {active && <div className="w-2 h-2 rounded-full bg-accent shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

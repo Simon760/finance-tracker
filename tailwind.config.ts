@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   content: [
@@ -56,6 +57,9 @@ const config: Config = {
         purple: { DEFAULT: 'rgb(var(--purple) / <alpha-value>)', light: 'rgb(var(--purple) / 0.1)' },
         cyan: { DEFAULT: 'rgb(var(--cyan) / <alpha-value>)', light: 'rgb(var(--cyan) / 0.1)' },
         pink: { DEFAULT: 'rgb(var(--pink) / <alpha-value>)', light: 'rgb(var(--pink) / 0.1)' },
+        // UI mobile : fond d'un volet (sheet) et cellule posée dessus
+        sheet: 'rgb(var(--sheet) / <alpha-value>)',
+        cell: 'rgb(var(--cell) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
@@ -82,6 +86,9 @@ const config: Config = {
         'fade-up': 'fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'fade-in': 'fadeIn 0.25s ease-out forwards',
         'slide-up': 'slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        // Sans `forwards` : une animation qui reste appliquée l'emporte sur le style
+        // inline, et le volet ne suivrait plus le doigt (glisser pour fermer).
+        'sheet-in': 'slideUp 0.26s cubic-bezier(0.16, 1, 0.3, 1)',
         'pulse-slow': 'pulseSoft 2.4s ease-in-out infinite',
         'shimmer': 'shimmer 2.4s linear infinite',
       },
@@ -113,6 +120,11 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `mob:` = uniquement quand l'UI mobile est active (data-ui posé sur <html> avant le
+    // premier rendu, cf. app/layout.tsx). Contrairement à `max-md:`, ne s'applique PAS à
+    // la vue desktop forcée sur téléphone.
+    plugin(({ addVariant }) => { addVariant('mob', 'html[data-ui="mobile"] &'); }),
+  ],
 };
 export default config;

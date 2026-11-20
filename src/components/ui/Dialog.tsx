@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { useOverlay } from '@/lib/useOverlay';
 
 /**
  * Boîtes de dialogue de l'app — remplacent `confirm()` / `alert()` / `prompt()` du
@@ -93,6 +94,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [current]);
 
+  // Retour du téléphone = Annuler (Échap reste géré ci-dessus, en capture)
+  useOverlay(!!current, () => closeRef.current(false), { escape: false });
+
   const o = current?.opts || {};
   const isAlert = current?.kind === 'alert';
   const title = o.title ?? (current?.kind === 'confirm' ? 'Confirmer' : current?.kind === 'prompt' ? 'Saisie' : 'Information');
@@ -103,7 +107,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {children}
       {current && (
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-md z-[400] flex items-center justify-center animate-fade-in p-4"
+          className="fixed inset-0 bg-black/70 backdrop-blur-md z-[400] flex items-center justify-center animate-fade-in p-4 mob:items-end mob:p-0 mob:backdrop-blur-none"
           onClick={() => close(false)}
           role="presentation"
         >
@@ -111,7 +115,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             role="alertdialog"
             aria-modal="true"
             aria-label={title}
-            className="bg-bg-3 border border-border-2 rounded-lg p-6 max-md:p-5 w-[420px] max-w-full max-h-[88vh] overflow-y-auto shadow-xl animate-fade-up"
+            className="bg-bg-3 border border-border-2 rounded-lg p-6 max-md:p-5 w-[420px] max-w-full max-h-[88vh] overflow-y-auto shadow-xl animate-fade-up mob:w-full mob:bg-sheet mob:border-0 mob:rounded-b-none mob:rounded-t-[24px] mob:px-5 mob:pt-6 mob:pb-[calc(env(safe-area-inset-bottom)+16px)] mob:animate-sheet-in mob:shadow-none"
             onClick={e => e.stopPropagation()}
           >
             <h3 className="text-[15px] font-bold mb-3 tracking-tight text-t-1">{title}</h3>
@@ -125,7 +129,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 placeholder={o.placeholder}
               />
             )}
-            <div className="flex gap-2.5 mt-6 justify-end max-md:flex-col-reverse">
+            <div className="flex gap-2.5 mt-6 justify-end max-md:flex-col-reverse mob:[&>button]:min-h-[48px] mob:[&>button]:text-[15px]">
               {!isAlert && (
                 <button onClick={() => close(false)} className="btn btn-ghost">
                   {o.cancelLabel ?? 'Annuler'}

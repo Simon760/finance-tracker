@@ -52,6 +52,10 @@
   --overlay: 0 0 0 / 0.6;
   --overlay-soft: 0 0 0 / 0.4;
 
+  /* UI mobile : un volet est un cran au-dessus de la page, une cellule un cran au-dessus du volet. */
+  --sheet: 21 21 26;
+  --cell: 32 32 41;
+
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
@@ -101,6 +105,9 @@
   --on-accent: 255 255 255;
   --overlay: 16 24 40 / 0.45;
   --overlay-soft: 16 24 40 / 0.3;
+
+  --sheet: 240 242 245;
+  --cell: 255 255 255;
 
   /* Ombres teintées bleu-nuit et étagées : un noir pur à 40-60 % salit le blanc. */
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
@@ -277,4 +284,82 @@ select.fi { @apply cursor-pointer; }
     scrollbar-width: thin;
     -webkit-overflow-scrolling: touch;
   }
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+   UI mobile (html[data-ui="mobile"], posé avant le premier rendu par le script
+   de app/layout.tsx puis tenu à jour par useIsMobile). Rien ici ne touche le
+   desktop ni la vue desktop forcée sur téléphone.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Le HTML pré-rendu est celui du desktop : on le cache tant que React n'a pas
+   basculé sur le shell mobile, sinon la barre latérale apparaît une fraction de
+   seconde à chaque ouverture. */
+html[data-ui="mobile"] [data-shell="desktop"] { display: none; }
+
+html[data-ui="mobile"] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+html[data-ui="mobile"] body { overscroll-behavior-y: none; }
+html[data-ui="mobile"] button,
+html[data-ui="mobile"] a,
+html[data-ui="mobile"] select,
+html[data-ui="mobile"] label { touch-action: manipulation; }
+
+/* iOS zoome sur tout champ dont le texte fait moins de 16px. */
+html[data-ui="mobile"] input,
+html[data-ui="mobile"] select,
+html[data-ui="mobile"] textarea { font-size: 16px !important; }
+html[data-ui="mobile"] .fi { min-height: 46px; border-radius: 12px; }
+html[data-ui="mobile"] .btn { min-height: 44px; font-size: 14px; border-radius: 999px; padding-left: 18px; padding-right: 18px; }
+
+/* Les chiffres restent en gras, un cran plus fin que sur desktop. */
+html[data-ui="mobile"] .mono-value { font-weight: 600; letter-spacing: -0.02em; }
+html[data-ui="mobile"] .hero-num { font-weight: 700; letter-spacing: -0.035em; }
+/* Ligne secondaire (sous-titre, « sur 1 500 ») : le chiffre s'efface derrière le principal. */
+html[data-ui="mobile"] .m-sub.mono-value,
+html[data-ui="mobile"] .m-sub .mono-value { font-weight: 500; letter-spacing: -0.01em; }
+
+/* Champ nu d'une cellule de formulaire mobile (le cadre est porté par la cellule). */
+.m-input {
+  background: transparent;
+  border: 0;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+  color: rgb(var(--t-1));
+  font-family: inherit;
+}
+.m-input::placeholder { color: rgb(var(--t-4)); }
+select.m-input { appearance: none; -webkit-appearance: none; }
+input[type="date"].m-input { min-height: 24px; }
+.m-noscroll::-webkit-scrollbar { display: none; }
+.m-noscroll { scrollbar-width: none; }
+
+/* App installée : la barre d'état d'iOS est transparente avec du texte blanc.
+   En thème clair on pose une bande sombre dessous pour qu'il reste lisible. */
+.m-statusbar { display: none; }
+@media (display-mode: standalone) {
+  [data-theme="light"] .m-statusbar {
+    display: block;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: env(safe-area-inset-top);
+    background: rgb(var(--t-1));
+    z-index: 60;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui="mobile"] * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Le gros montant d'un volet de saisie (passe devant la règle des 16px ci-dessus). */
+html[data-ui="mobile"] input.m-amount {
+  font-size: 34px !important;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  caret-color: rgb(var(--accent));
 }

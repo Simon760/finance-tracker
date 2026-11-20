@@ -1,361 +1,207 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Plus, ArrowDownLeft, Scale, MoreHorizontal, ChevronDown, ChevronLeft, ChevronRight, CalendarPlus, Pencil, ListPlus,
+  Target, PieChart as PieIcon, CalendarRange, Wallet, Receipt,
+} from 'lucide-react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed, monthRevenuConfirmedEur, isLegacyMonth, todayISO } from '@/lib/utils';
-import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
-import BottomSheet from './BottomSheet';
-// import MonthStatsCard from '@/components/MonthStatsCard'; // retiré temporairement
-import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Receipt, EyeOff } from 'lucide-react';
-import BudgetBalanceCard from '@/components/BudgetBalanceCard';
-import { applyRegul, clearRegul } from '@/lib/regul';
-import { newMonthId, buildNewMonth } from '@/lib/months';
+import { Month, Transaction } from '@/lib/types';
+import { f$, f0, toEur, toAed, rowEur, rowAedSpent, budgetEurOf, budgetAedOf, startedMonths, todayISO } from '@/lib/utils';
+import { TxnTarget } from '@/lib/trackerOps';
+import { useTrackerFigures } from '@/lib/useTrackerFigures';
 import { useRecurring } from '@/lib/useRecurring';
+import { monthLabel, shortDay, dayLabel } from '@/lib/labels';
+import { CAT_LABELS } from '@/lib/constants';
 import RecurringBanner from '@/components/RecurringBanner';
-import RegulHistory from '@/components/RegulHistory';
-import { useDialog } from '@/components/ui/Dialog';
+import BottomSheet from './BottomSheet';
+import { MAction, MBadge, MBar, MButton, MCard, MDivider, MEmpty, MIcon, MLabel, MRow, MSeg } from './ui';
+import PosteIcon from './tracker/PosteIcon';
+import TxnSheet from './tracker/TxnSheet';
+import PosteSheet, { PosteSel, groupByDay } from './tracker/PosteSheet';
+import { MonthPickerSheet, NewMonthSheet, RenameMonthSheet } from './tracker/MonthSheets';
+import { SoldeSheet, RegulSheet, AddPosteSheet, BilanSheet, ChartsSheet, PeriodSheet } from './tracker/MoreSheets';
 
-const todayStr = () => todayISO(); // date LOCALE (cf. todayISO)
+type Unit = 'local' | 'eur';
+type Sheet = 'picker' | 'newMonth' | 'rename' | 'solde' | 'regul' | 'more' | 'addPoste' | 'bilan' | 'charts' | 'period' | 'allTx' | null;
+const UNIT_KEY = 'fhq_m_unit';
+/** Posé avant d'aller sur Revenus : la page ouvre directement « Nouveau revenu ». */
+export const REV_ADD_FLAG = 'fhq_rev_add';
 
+interface Op { t: Transaction; target: TxnTarget; poste: string; cat: string }
+
+/**
+ * Accueil de l'UI mobile = le tracker du mois. Un gros chiffre (le solde prévisionnel),
+ * les actions rondes dessous, puis des listes fines : résumé du mois, postes, postes
+ * ponctuels, dernières opérations. Toutes les écritures passent par lib/trackerOps.
+ */
 export default function MobileTracker() {
-  const { state, save, getState, curMonth, setCurMonth, setState, liveRate, trips, renameMonth, logChange } = useApp();
-  const { confirm } = useDialog();
+  const { state, curMonth, setCurMonth, liveRate, activeSpace } = useApp();
+  const router = useRouter();
+  const cur = activeSpace?.localCurrency || 'AED';
   const months = state.months;
   const idx = months.findIndex(mo => mo.id === curMonth);
   const m: Month | undefined = idx >= 0 ? months[idx] : undefined;
+  const F = useTrackerFigures(m);
   const recur = useRecurring(m);
 
-  // Add / edit transaction state
-  const [txSheetOpen, setTxSheetOpen] = useState(false);
-  const [txTarget, setTxTarget] = useState<{ posteIdx: number; editIdx?: number } | null>(null);
-  const [tx, setTx] = useState({ label: '', amount: 0, currency: 'AED' as 'AED' | 'EUR', date: todayStr() });
-  const [showLabelSugg, setShowLabelSugg] = useState(false);
-  // Move-to / Create-poste
-  const [createPosteMode, setCreatePosteMode] = useState(false);
-  const [newPosteForm, setNewPosteForm] = useState<{ name: string; cat: 'vital' | 'lifestyle' | 'finance' | 'logement'; isAed: boolean; scope: 'permanent' | 'month' }>({ name: '', cat: 'vital', isAed: true, scope: 'month' });
+  const [unit, setUnit] = useState<Unit>('local');
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [posteSel, setPosteSel] = useState<PosteSel | null>(null);
+  const [txn, setTxn] = useState<{ open: boolean; target: TxnTarget | null }>({ open: false, target: null });
+  const swipe = useRef<{ x: number; y: number } | null>(null);
 
-  // Poste detail sheet
-  const [detailIdx, setDetailIdx] = useState<number | null>(null);
+  useEffect(() => { try { if (localStorage.getItem(UNIT_KEY) === 'eur') setUnit('eur'); } catch { /* préférence facultative */ } }, []);
+  const changeUnit = (u: Unit) => { setUnit(u); try { localStorage.setItem(UNIT_KEY, u); } catch { /* idem */ } };
+  // Changer de mois referme le détail d'un poste
+  useEffect(() => { setPosteSel(null); }, [curMonth]);
 
-  // Add new month sheet
-  const [newMonthOpen, setNewMonthOpen] = useState(false);
-  const [nmName, setNmName] = useState('');
-  const [nmError, setNmError] = useState('');
-  const [reconcileOpen, setReconcileOpen] = useState(false);
-  const [reconcileInput, setReconcileInput] = useState('');
-  const [nmSolde, setNmSolde] = useState(0);
-
-  // Rename month sheet
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
-  const [renameError, setRenameError] = useState('');
-
-  // Reset detail if month changes
-  useEffect(() => { setDetailIdx(null); }, [curMonth]);
-
+  const close = () => setSheet(null);
+  const openTxn = (target: TxnTarget) => setTxn({ open: true, target });
   const goPrev = () => { if (idx > 0) setCurMonth(months[idx - 1].id); };
   const goNext = () => { if (idx >= 0 && idx < months.length - 1) setCurMonth(months[idx + 1].id); };
 
-  // Revenue helpers (sync with revenus table)
-  const isSynced = m ? !isLegacyMonth(m) : false;
-  const revEntries = m ? monthRevenus(state.revenus?.months, m) : [];
-  const earnEur = m ? monthRevenuConfirmedEur(m, state.revenus?.months) : 0;
-  // Prévisions au taux du jour (cf. revenuLive) — mêmes valeurs que desktop
-  const previewEntries = m && isSynced
-    ? revEntries.filter(e => e.status === 'preview').map(e => revenuLive(e, liveRate))
-    : [];
-  const previewEur = previewEntries.reduce((s, e) => s + (e.cashed || 0), 0);
-  const previewAed = previewEntries.reduce((s, e) => s + (e.cashed || 0) * (e.rate || liveRate), 0);
-
-  // Aggregates
-  const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
-  const aA = m ? sumAed(m, state.postes, m.extraActual || []) : 0;
-  const aE = m ? sumEur(m, state.postes, m.extraActual || []) : 0;
-  const aABank = m ? sumAedBank(m, state.postes, m.extraActual || []) : 0;
-  const diff = earnEur - aE;
-  // AED réellement crédité par entrée (cashed × rate), comme desktop et Vue Globale —
-  // `earnEur × m.rate` prenait le taux de création du mois (−233 AED sur sept. 2026).
-  const earnAed = m ? monthRevenuConfirmedAed(m, state.revenus?.months, state.rate || liveRate) : 0;
-  const adjustment = m?.adjustment || 0;
-  const prevCompte = m ? (m.soldeStart || 0) + earnAed - aABank + adjustment : 0;
-
-  // Suggestions de libellés pour le poste courant — mois courant uniquement
-  const labelSuggestions = useMemo<{ label: string; count: number }[]>(() => {
-    if (!txTarget || txTarget.posteIdx < 0 || !m) return [];
-    const map = new Map<string, { label: string; count: number; lastDate: string }>();
-    (m.actual?.[txTarget.posteIdx]?.txns || []).forEach(t => {
-      const raw = (t.label || '').trim();
-      if (!raw || raw === '---') return;
-      const key = raw.toLowerCase();
-      const cur = map.get(key);
-      if (cur) {
-        cur.count++;
-        if ((t.date || '') > cur.lastDate) cur.lastDate = t.date || '';
-      } else {
-        map.set(key, { label: raw, count: 1, lastDate: t.date || '' });
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate));
-  }, [txTarget, m]);
-
-  const filteredSugg = useMemo(() => {
-    const q = tx.label.trim().toLowerCase();
-    const arr = q ? labelSuggestions.filter(s => s.label.toLowerCase().includes(q) && s.label.toLowerCase() !== q) : labelSuggestions;
-    return arr.slice(0, 6);
-  }, [labelSuggestions, tx.label]);
-
-  const resetPosteCreate = () => {
-    setCreatePosteMode(false);
-    setNewPosteForm({ name: '', cat: 'vital', isAed: true, scope: 'month' });
-  };
-
-  const openAddTx = (posteIdx: number) => {
-    setTxTarget({ posteIdx });
-    setTx({ label: '', amount: 0, currency: 'AED', date: todayStr() });
-    setShowLabelSugg(false);
-    resetPosteCreate();
-    setTxSheetOpen(true);
-  };
-
-  const openEditTx = (posteIdx: number, editIdx: number) => {
-    if (!m) return;
-    const t = m.actual[posteIdx]?.txns?.[editIdx];
-    if (!t) return;
-    setTxTarget({ posteIdx, editIdx });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setTx({ label: t.label || '', amount: (t as any).originalAmount || t.amount || 0, currency: t.currency || 'AED', date: t.date || todayStr() });
-    setShowLabelSugg(false);
-    resetPosteCreate();
-    setTxSheetOpen(true);
-  };
-
-  const saveTx = () => {
-    if (!m || !txTarget || tx.amount <= 0) return;
-    const rate = state.rate;
-    const amountAed = tx.currency === 'EUR' ? tx.amount * rate : tx.amount;
-    const eurVal = tx.currency === 'EUR' ? tx.amount : tx.amount / rate;
-    const entry: Transaction = {
-      label: tx.label || '---',
-      amount: Math.round(amountAed * 100) / 100,
-      rate,
-      eur: Math.round(eurVal * 100) / 100,
-      date: tx.date || todayStr(),
-      currency: tx.currency,
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (entry as any).originalAmount = Math.round(tx.amount * 100) / 100;
-
-    // Écrit TOUJOURS les deux devises, y compris pour un poste EUR. Avant, row.aed
-    // restait à 0 pour ces postes et la colonne AED devait re-dériver l'EUR au taux
-    // du mois : elle affichait 1 175 pour une tx saisie à 1 196 AED.
-    const recalc = (row: ActualRow): ActualRow => {
-      const txns = row.txns || [];
-      row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-      row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      return row;
-    };
-
-    const recalcExtra = (r: { aed?: number; eur?: number; txns?: Transaction[] }) => {
-      const txns = r.txns || [];
-      r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-      r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-    };
-
-    // CAS SPÉCIAL: création d'un poste "ce mois uniquement" → on crée un EXTRA
-    if (createPosteMode && newPosteForm.scope === 'month') {
-      const trimmed = newPosteForm.name.trim().toUpperCase();
-      if (!trimmed) return;
-      const updatedMonths = state.months.map(mo => {
-        if (mo.id !== m.id) return mo;
-        const actualArr = [...mo.actual];
-        let extraActual = [...(mo.extraActual || [])];
-        let extraBudget = [...(mo.extraBudget || [])];
-        // Si édition: retire de la source
-        if (txTarget.editIdx !== undefined) {
-          const srcRow = { ...(actualArr[txTarget.posteIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-          srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txTarget.editIdx);
-          recalc(srcRow);
-          actualArr[txTarget.posteIdx] = srcRow;
-        }
-        const newExtra = { name: trimmed, cat: newPosteForm.cat, aed: 0, eur: 0, txns: [entry] };
-        recalcExtra(newExtra);
-        extraActual = [...extraActual, newExtra];
-        extraBudget = [...extraBudget, { name: trimmed, cat: newPosteForm.cat, aed: 0, eur: 0 }];
-        return { ...mo, actual: actualArr, extraActual, extraBudget };
-      });
-      setState({ ...state, months: updatedMonths });
-      setTxSheetOpen(false);
-      save();
-      return;
-    }
-
-    // Détermine la cible (poste existant ou nouveau global)
-    let postes: Poste[] = state.postes;
-    let targetIdx = txTarget.posteIdx;
-    if (createPosteMode) {
-      const trimmed = newPosteForm.name.trim().toUpperCase();
-      if (!trimmed) return;
-      const existing = postes.findIndex(p => p.name === trimmed);
-      if (existing >= 0) {
-        targetIdx = existing;
-      } else {
-        postes = [...postes, { name: trimmed, cat: newPosteForm.cat, isAed: newPosteForm.isAed }];
-        targetIdx = postes.length - 1;
-      }
-    }
-    const sourceIdx = txTarget.posteIdx;
-    const isMove = txTarget.editIdx !== undefined && targetIdx !== sourceIdx;
-
-    const updatedMonths = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const actual = [...mo.actual];
-      if (isMove) {
-        const sourceRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        sourceRow.txns = (sourceRow.txns || []).filter((_, i) => i !== txTarget.editIdx);
-        recalc(sourceRow);
-        actual[sourceIdx] = sourceRow;
-
-        const targetRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        targetRow.txns = [...(targetRow.txns || []), entry];
-        recalc(targetRow);
-        actual[targetIdx] = targetRow;
-      } else {
-        const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        const txns = [...(row.txns || [])];
-        if (txTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txTarget.editIdx] = entry;
-        else txns.push(entry);
-        row.txns = txns;
-        recalc(row);
-        actual[targetIdx] = row;
-      }
-      return { ...mo, actual };
-    });
-    setState({ ...state, postes, months: updatedMonths });
-    setTxSheetOpen(false);
-    save();
-  };
-
-  const deleteTx = (posteIdx: number, txIdx: number) => {
-    if (!m) return;
-    // Appelé après une confirmation asynchrone → on repart du dernier état connu
-    const base = getState();
-    const rate = base.rate;
-    const updatedMonths = base.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const actual = [...mo.actual];
-      const row = { ...actual[posteIdx] };
-      const txns = (row.txns || []).filter((_, i) => i !== txIdx);
-      row.txns = txns;
-      // Les deux devises sont maintenues quel que soit le type de poste (cf. recalc).
-      row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-      row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      actual[posteIdx] = row;
-      return { ...mo, actual };
-    });
-    setState({ ...base, months: updatedMonths });
-    save();
-  };
-
-  const createMonth = () => {
-    // Même logique que le desktop (lib/months) ; sur mobile le budget est toujours
-    // recopié du mois précédent (création rapide) et le taux est le taux du jour.
-    const res = newMonthId(state.months, nmName);
-    if ('error' in res) { if (nmName.trim()) setNmError(res.error); return; }
-    setNmError('');
-    const newM = buildNewMonth(state.months, state.postes, { id: res.id, rate: liveRate, soldeStart: nmSolde, fill: 'copy' });
-    setState({ ...state, months: [...state.months, newM] });
-    setCurMonth(res.id);
-    setNewMonthOpen(false);
-    setNmName(''); setNmSolde(0);
-    save();
-    logChange?.('month.create', `Création du mois ${res.id} (${state.months.length === 0 ? 'vide' : 'copie M-1'})`);
-  };
-
-  const openRename = () => {
-    if (!m) return;
-    setRenameValue(m.id);
-    setRenameError('');
-    setRenameOpen(true);
-  };
-
-  const confirmRename = () => {
-    if (!m) return;
-    const result = renameMonth(m.id, renameValue);
-    if (result.error) { setRenameError(result.error); return; }
-    setRenameOpen(false);
-  };
-
   if (!m) {
     return (
-      <div className="mt-10 text-center">
-        <Receipt className="mx-auto text-t-4 mb-3" size={42} />
-        <div className="text-t-2 font-semibold mb-1">Aucun mois</div>
-        <div className="text-[12px] text-t-3 mb-5">Crée un mois pour commencer le tracking.</div>
-        <button onClick={() => { setNmError(''); setNewMonthOpen(true); }} className="px-5 py-2.5 bg-accent text-black font-semibold text-[13px] rounded-full">+ Nouveau mois</button>
-        <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} error={nmError} />
-      </div>
+      <>
+        <MEmpty
+          icon={<Receipt size={26} />}
+          title="Commence ton premier mois"
+          text="Un mois regroupe ton budget, tes dépenses et ton solde de départ."
+          action={<MButton onClick={() => setSheet('newMonth')}><Plus size={17} />Créer un mois</MButton>}
+        />
+        <NewMonthSheet open={sheet === 'newMonth'} onClose={close} />
+      </>
     );
   }
 
+  const local = unit === 'local';
+  const money = (aed: number, eur: number) => (local ? f0(aed) : `${f$(eur)} €`);
+  const started = startedMonths(months).some(mo => mo.id === m.id);
   const hidden = m.hiddenPostes || [];
-  const posteRows = state.postes
-    .map((p, i) => {
-      if (hidden.includes(p.name)) return null;
-      const bRow = m.budget[i] || { aed: 0, eur: null };
-      const aRow = m.actual[i] || { aed: 0, eur: null };
-      const budgetEur = budgetEurOf(bRow, p.isAed, liveRate);
-      const actualEur = aRow.eur ?? (p.isAed ? toEur(aRow.aed || 0, m.rate) : 0);
-      const pct = budgetEur > 0 ? actualEur / budgetEur : 0;
-      const txnsCount = (aRow.txns || []).length;
-      return { i, p, budgetEur, actualEur, pct, txnsCount };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+  const today = todayISO();
 
-  const hidePosteMobile = (posteName: string) => {
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const cur = mo.hiddenPostes || [];
-      if (cur.includes(posteName)) return mo;
-      return { ...mo, hiddenPostes: [...cur, posteName] };
-    });
-    setState({ ...state, months });
-    save();
-  };
+  // Postes réguliers visibles ce mois
+  const rows = state.postes.map((p, i) => {
+    if (hidden.includes(p.name)) return null;
+    const a = m.actual[i] || { aed: 0, eur: null };
+    const b = m.budget[i] || { aed: 0, eur: null };
+    const eur = rowEur(a, m.rate);
+    const aed = rowAedSpent(a, m.rate, { isAed: p.isAed });
+    const beur = budgetEurOf(b, p.isAed, liveRate);
+    const baed = budgetAedOf(b, p.isAed, liveRate);
+    return { i, p, eur, aed, beur, baed, n: (a.txns || []).length };
+  }).filter((r): r is NonNullable<typeof r> => r !== null);
+  // Consommation calculée dans la devise AFFICHÉE : en devise locale les opérations sont
+  // au taux du jour de saisie et le budget au taux du jour — un ratio en EUR pouvait
+  // afficher « 99 % » à côté de « dépassé de 1 ».
+  const pctOf = (r: { beur: number; baed: number; eur: number; aed: number }) => (r.beur <= 0 ? 0 : local ? (r.baed > 0 ? r.aed / r.baed : 0) : r.eur / r.beur);
 
-  const applyReconciliationMobile = (realBalance: number) => {
-    if (!m) return;
-    if (!isFinite(realBalance)) return;
-    // Même logique que le desktop (lib/regul) — et désormais consignée dans l'historique
-    const next = applyRegul(m, realBalance, (m.soldeStart || 0) + earnAed - aABank);
-    const newAdjustment = next.adjustment || 0;
-    setState({ ...state, months: state.months.map(mo => (mo.id === m.id ? next : mo)) });
-    save();
-    logChange?.('month.update', `Régul ${m.id}: balance réelle ${f0(realBalance)} AED, ajustement ${newAdjustment >= 0 ? '+' : ''}${f0(newAdjustment)} AED`);
-  };
+  // Postes ponctuels : ceux qui ont une ligne « réel », plus ceux qui n'ont qu'un budget
+  const extras = [
+    ...(m.extraActual || []).map(r => {
+      const b = (m.extraBudget || []).find(x => x.name === r.name);
+      const eur = r.eur > 0 ? r.eur : toEur(r.aed, m.rate);
+      const aed = r.aed > 0 ? r.aed : (r.eur > 0 ? toAed(r.eur, m.rate) : 0);
+      const beur = b ? (b.eur > 0 ? b.eur : toEur(b.aed, liveRate)) : 0;
+      const baed = b ? (b.eur > 0 ? toAed(b.eur, liveRate) : b.aed) : 0;
+      const txns = r.txns || [];
+      return { name: r.name, cat: r.cat, eur, aed, beur, baed, n: txns.length, swap: txns.length > 0 && txns.every(t => t.tripKind === 'swap') };
+    }),
+    ...(m.extraBudget || []).filter(b => !(m.extraActual || []).some(r => r.name === b.name)).map(b => {
+      const beur = b.eur > 0 ? b.eur : toEur(b.aed, liveRate);
+      const baed = b.eur > 0 ? toAed(b.eur, liveRate) : b.aed;
+      return { name: b.name, cat: b.cat, eur: 0, aed: 0, beur, baed, n: 0, swap: false };
+    }),
+  ];
 
-  const clearAdjustmentMobile = () => {
-    if (!m || !m.adjustment) return;
-    setState({ ...state, months: state.months.map(mo => (mo.id === m.id ? clearRegul(mo) : mo)) });
-    save();
-    logChange?.('month.update', `Régul ${m.id}: ajustement retiré`);
+  // Toutes les opérations du mois (postes masqués compris : elles existent)
+  const ops: Op[] = [
+    ...state.postes.flatMap((p, i) => (m.actual[i]?.txns || []).map((t, ti) => ({ t, target: { posteIdx: i, editIdx: ti }, poste: p.name, cat: p.cat as string }))),
+    ...(m.extraActual || []).flatMap((r, ei) => (r.txns || []).map((t, ti) => ({ t, target: { posteIdx: -1, isExtra: true, extraIdx: ei, editIdx: ti }, poste: r.name, cat: r.cat }))),
+  ];
+  const opGroups = groupByDay(ops);
+  const recent = opGroups.flatMap(g => g.items).slice(0, 5);
+
+  const subOf = (r: { beur: number; baed: number; eur: number; aed: number; n: number }) => {
+    if (r.beur <= 0) return r.n > 0 ? `${r.n} opération${r.n > 1 ? 's' : ''}` : 'Sans budget';
+    const left = local ? r.baed - r.aed : r.beur - r.eur;
+    const pct = `${Math.round(pctOf(r) * 100)} %`;
+    // Écart inférieur à l'unité affichée = budget atteint, pas « dépassé de 0 »
+    if (Math.abs(left) < (local ? 0.5 : 0.005)) return `${pct} · budget atteint`;
+    return left > 0
+      ? `${pct} · reste ${local ? f0(left) : f$(left)}`
+      : <span className="text-danger">{pct} · dépassé de {local ? f0(-left) : f$(-left)}</span>;
   };
+  const over = (r: { beur: number; baed: number; eur: number; aed: number }) => r.beur > 0 && (local ? r.aed - r.baed >= 0.5 : r.eur - r.beur >= 0.005);
+  const opRow = (o: Op, k: number) => (
+    <div key={`${o.poste}-${o.target.editIdx}-${k}`}>
+      {k > 0 && <MDivider />}
+      <MRow
+        icon={<PosteIcon name={o.poste} cat={o.cat} />}
+        title={o.t.label && o.t.label !== '---' ? o.t.label : o.poste}
+        badge={o.t.tripId ? <MBadge tone="info">Voyage</MBadge> : undefined}
+        sub={`${o.poste} · ${shortDay(o.t.date, today)}`}
+        right={<span className="mono-value">−{f0(o.t.amount)}</span>}
+        rightSub={<span className="mono-value">{f$(o.t.eur || o.t.amount / (o.t.rate || m.rate))} €</span>}
+        onClick={() => openTxn(o.target)}
+      />
+    </div>
+  );
+
+  const more: { icon: React.ReactNode; title: string; sub: string; go: Sheet }[] = [
+    { icon: <ListPlus size={17} />, title: 'Ajouter un poste', sub: 'Pour ce mois ou pour tous les mois', go: 'addPoste' },
+    { icon: <Target size={17} />, title: 'Bilan du mois', sub: 'Où tu en es par rapport au budget', go: 'bilan' },
+    { icon: <PieIcon size={17} />, title: 'Graphiques', sub: 'Répartition et budget face au réel', go: 'charts' },
+    { icon: <CalendarRange size={17} />, title: 'Totaux sur une période', sub: 'Trimestre, semestre, année', go: 'period' },
+    { icon: <Wallet size={17} />, title: 'Détail du solde', sub: 'Solde de départ, de fin, ajustement', go: 'solde' },
+    { icon: <CalendarPlus size={17} />, title: 'Nouveau mois', sub: 'Créer le mois suivant', go: 'newMonth' },
+    { icon: <Pencil size={17} />, title: 'Renommer ce mois', sub: m.id, go: 'rename' },
+  ];
 
   return (
-    <div className="pb-20">
-      {/* Month navigator */}
-      <div className="flex items-center gap-2 mb-4">
-        <button onClick={goPrev} disabled={idx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
-          <ChevronLeft size={18} />
+    <div className="-mx-1">
+      {/* Solde du mois — glisser à gauche / à droite change de mois */}
+      <div
+        className="flex flex-col items-center pt-3 pb-5"
+        onTouchStart={e => { swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+        onTouchEnd={e => {
+          const s = swipe.current; swipe.current = null;
+          if (!s) return;
+          const dx = e.changedTouches[0].clientX - s.x;
+          const dy = e.changedTouches[0].clientY - s.y;
+          if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) (dx > 0 ? goPrev : goNext)();
+        }}
+      >
+        <button type="button" onClick={() => setSheet('solde')} className="flex flex-col items-center active:opacity-70 transition-opacity">
+          <span className="text-[13px] text-t-3">Solde prévisionnel</span>
+          <span className="flex items-baseline gap-1.5 mt-1">
+            <span className={`text-[36px] leading-none hero-num mono-value ${F.prevCompte < 0 ? 'text-danger' : 'text-t-1'}`}>{f0(F.prevCompte)}</span>
+            <span className="text-[16px] text-t-3 font-medium">{cur}</span>
+          </span>
+          <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub">≈ {f$(liveRate > 0 ? F.prevCompte / liveRate : 0)} €</span>
+          {F.synced && F.previewEur > 0 && (
+            <span className="text-[13px] text-info mt-0.5 mono-value m-sub">{f0(F.prevOpti)} {cur} avec les revenus prévus</span>
+          )}
         </button>
-        <button onClick={openRename} className="flex-1 text-center bg-bg-3 border border-border-2 rounded-xl py-2.5 active:bg-bg-4">
-          <div className="text-[10px] uppercase tracking-wider text-t-4 font-semibold leading-none flex items-center justify-center gap-1">
-            <span>Mois</span><Pencil size={9} />
-          </div>
-          <div className="text-[16px] font-bold tracking-tight mt-0.5">{m.id}</div>
-        </button>
-        <button onClick={goNext} disabled={idx >= months.length - 1} className="w-10 h-10 flex items-center justify-center rounded-full bg-bg-3 border border-border text-t-2 disabled:opacity-30 active:bg-bg-4">
-          <ChevronRight size={18} />
-        </button>
+        <div className="flex items-center gap-1 mt-3.5">
+          <button type="button" onClick={goPrev} disabled={idx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Mois précédent"><ChevronLeft size={19} /></button>
+          <button type="button" onClick={() => setSheet('picker')} className="h-9 px-4 rounded-full bg-bg-3 flex items-center gap-1.5 text-[14px] font-medium text-t-1 active:opacity-70">
+            {monthLabel(m)}
+            {!started && <MBadge tone="info">À venir</MBadge>}
+            <ChevronDown size={15} className="text-t-3" />
+          </button>
+          <button type="button" onClick={goNext} disabled={idx >= months.length - 1} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Mois suivant"><ChevronRight size={19} /></button>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-around px-2 pb-6">
+        <MAction icon={<Plus size={21} />} label="Dépense" onClick={() => openTxn({ posteIdx: [...rows].sort((a, b) => b.n - a.n || a.i - b.i)[0]?.i ?? 0 })} />
+        <MAction icon={<ArrowDownLeft size={21} />} label="Revenu" onClick={() => { try { sessionStorage.setItem(REV_ADD_FLAG, '1'); } catch { /* sans stockage : on arrive sur la page */ } router.push('/revenus'); }} />
+        <MAction icon={<Scale size={20} />} label="Régul" onClick={() => setSheet('regul')} />
+        <MAction icon={<MoreHorizontal size={21} />} label="Plus" onClick={() => setSheet('more')} />
       </div>
 
       {/* Dépenses récurrentes échues (n'apparaît que s'il y en a) */}
@@ -367,472 +213,124 @@ export default function MobileTracker() {
         onSkip={recur.skipDue}
       />
 
-      {/* KPI cards horizontal scroll */}
-      <div className="grid grid-cols-3 gap-2 mb-5">
-        <KpiCardMobile label="Revenus" value={`${f$(earnEur)} €`} sub={previewEur > 0 ? `+${f$(previewEur)} prév.` : undefined} color="text-accent" />
-        <KpiCardMobile label="Dépenses" value={`${f$(aE)} €`} sub={`${f0(aA)} AED`} color="text-warning" />
-        <KpiCardMobile label="Reste" value={`${diff >= 0 ? '+' : ''}${f$(diff)} €`} color={diff >= 0 ? 'text-accent' : 'text-danger'} />
-      </div>
-
-      {/* Solde card */}
-      <button
-        onClick={() => { setReconcileInput(prevCompte.toFixed(0)); setReconcileOpen(true); }}
-        className="w-full bg-bg-3 border border-border rounded-xl p-4 mb-5 active:bg-bg-4 text-left"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Prévisionnel (AED)</span>
-          <span className={`text-[15px] font-bold mono-value ${prevCompte >= 0 ? 'text-accent' : 'text-danger'}`}>{f0(prevCompte)} AED</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-[11px]">
-          <div>
-            <div className="text-t-4 mb-0.5">Solde début</div>
-            <div className="text-t-2 font-mono mono-value">{f0(m.soldeStart || 0)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-t-4 mb-0.5">Budget total</div>
-            <div className="text-t-2 font-mono mono-value">{f$(bE)} €</div>
-          </div>
-        </div>
-        {adjustment !== 0 && (
-          <div className={`text-[10px] mt-2 font-mono mono-value ${adjustment > 0 ? 'text-accent' : 'text-warning'}`}>
-            Ajusté {adjustment > 0 ? '+' : ''}{f0(adjustment)} AED
-          </div>
-        )}
-        <div className="text-[10px] text-t-4 mt-1.5">Tap pour régulariser avec la balance réelle</div>
-      </button>
-
-      {/* Postes masqués : plus de bannière ici — statut et réactivation vivent dans Réglages */}
-
-      {/* Postes list */}
-      <div className="flex items-center justify-between mb-2.5 px-1">
-        <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Postes ({posteRows.length}{hidden.length > 0 && ` / ${state.postes.length}`})</span>
-        <span className="text-[10px] text-t-4 font-mono">Budget · Réel</span>
-      </div>
-      <div className="space-y-2">
-        {posteRows.map(({ i, p, budgetEur, actualEur, pct, txnsCount }) => (
-          <button
-            key={i}
-            onClick={() => setDetailIdx(i)}
-            className="w-full bg-bg-3 border border-border rounded-xl p-3.5 text-left active:bg-bg-4 transition-colors"
-          >
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-semibold tracking-tight text-t-1 truncate">{p.name}</div>
-                <div className="text-[10px] text-t-3 uppercase tracking-wider mt-0.5">{p.cat}{txnsCount > 0 && ` · ${txnsCount} tx`}</div>
-              </div>
-              <div className="text-right shrink-0">
-                <div className={`text-[14px] font-bold mono-value ${pct > 1 ? 'text-danger' : pct > 0.85 ? 'text-warning' : 'text-t-1'}`}>{f$(actualEur)} €</div>
-                <div className="text-[10px] text-t-4 mono-value">/ {f$(budgetEur)} €</div>
-              </div>
+      {/* Résumé du mois */}
+      <MCard className="mb-4">
+        <button type="button" onClick={() => setSheet('bilan')} className="w-full text-left px-4 pt-3.5 pb-3 active:bg-t-1/5 transition-colors">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="min-w-0">
+              <div className="text-[13px] text-t-3">Revenus</div>
+              <div className="text-[17px] text-t-1 mono-value mt-0.5 truncate">+{f$(F.earnEur)} €</div>
+              <div className="text-[13px] text-t-3 mono-value m-sub truncate">{F.previewEur > 0 ? `+ ${f$(F.previewEur)} € prévus` : F.synced ? 'confirmés' : 'saisis à la main'}</div>
             </div>
-            {budgetEur > 0 && (
-              <div className="h-1.5 bg-bg-2 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${pct > 1 ? 'bg-danger' : pct > 0.85 ? 'bg-warning' : 'bg-accent'}`}
-                  style={{ width: `${Math.min(100, pct * 100)}%` }}
-                />
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Bilan vs prévisionnel */}
-      <div className="mt-5">
-        <BudgetBalanceCard month={m} postes={state.postes} liveRate={liveRate} compact forecast={{ earnEur, previewEur, previewAed, prevCompteAed: prevCompte, pocketEur: pocketCashEur(trips, state.months) }} />
-      </div>
-
-      {/* Stats du mois — à retravailler */}
-      {/* <div className="mt-5"><MonthStatsCard month={m} postes={state.postes} compact /></div> */}
-
-      {/* New month button */}
-      <button
-        onClick={() => { setNmError(''); setNewMonthOpen(true); }}
-        className="w-full mt-5 py-3 border border-dashed border-border-2 rounded-xl text-[13px] text-t-3 active:bg-bg-3"
-      >
-        + Nouveau mois
-      </button>
-
-      {/* FAB */}
-      <button
-        onClick={() => { setDetailIdx(null); openAddTx(0); }}
-        className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+76px)] w-14 h-14 rounded-full bg-accent text-black shadow-lg flex items-center justify-center active:scale-95 transition-transform z-30"
-        aria-label="Nouvelle dépense"
-      >
-        <Plus size={26} strokeWidth={2.4} />
-      </button>
-
-      {/* Poste detail sheet */}
-      <BottomSheet
-        open={detailIdx !== null}
-        onClose={() => setDetailIdx(null)}
-        title={detailIdx !== null ? state.postes[detailIdx]?.name : ''}
-        fullHeight
-      >
-        {detailIdx !== null && (() => {
-          const row = m.actual[detailIdx];
-          const bRow = m.budget[detailIdx];
-          const txns = row?.txns || [];
-          const budgetEur = budgetEurOf(bRow, state.postes[detailIdx].isAed, liveRate);
-          const actualEur = row?.eur ?? (state.postes[detailIdx].isAed ? toEur(row?.aed || 0, m.rate) : 0);
-          return (
-            <div className="pt-1">
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="bg-bg-3 border border-border rounded-lg p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1">Budget</div>
-                  <div className="text-[15px] font-bold mono-value">{f$(budgetEur)} €</div>
-                </div>
-                <div className="bg-bg-3 border border-border rounded-lg p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1">Réel</div>
-                  <div className={`text-[15px] font-bold mono-value ${actualEur > budgetEur && budgetEur > 0 ? 'text-danger' : 'text-t-1'}`}>{f$(actualEur)} €</div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => { hidePosteMobile(state.postes[detailIdx].name); setDetailIdx(null); }}
-                className="w-full mb-3 py-2.5 text-[12px] font-semibold text-warning bg-warning/10 border border-warning/25 rounded-lg active:bg-warning/20 flex items-center justify-center gap-2"
-              >
-                <EyeOff size={13} /> Masquer ce poste dans {m.id}
-              </button>
-
-              <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-[11px] uppercase tracking-wider text-t-3 font-semibold">Transactions ({txns.length})</span>
-                <button onClick={() => openAddTx(detailIdx)} className="px-3 py-1.5 bg-accent/15 text-accent border border-accent/30 rounded-full text-[11px] font-semibold active:bg-accent/25">+ Ajouter</button>
-              </div>
-
-              {txns.length === 0 ? (
-                <div className="text-center py-8 text-t-4 text-[12px]">Aucune transaction</div>
-              ) : (
-                <div className="space-y-1.5">
-                  {txns.map((t, ti) => (
-                    <div key={ti} className="bg-bg-3 border border-border rounded-lg p-3 flex items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-semibold truncate">{t.label || '—'}</div>
-                        <div className="text-[10px] text-t-3 mt-0.5">{t.date || '—'}</div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-[13px] font-bold mono-value">{f0(t.amount)} {t.currency || 'AED'}</div>
-                        <div className="text-[10px] text-t-4 mono-value">{f$(t.eur || 0)} €</div>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => openEditTx(detailIdx, ti)} className="w-8 h-8 flex items-center justify-center rounded-full bg-info/10 text-info border border-info/25 active:bg-info/20">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={async () => { if (await confirm('Supprimer cette transaction ?', { danger: true })) deleteTx(detailIdx, ti); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-danger/10 text-danger border border-danger/25 active:bg-danger/20">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-      </BottomSheet>
-
-      {/* Add / Edit Tx sheet */}
-      <BottomSheet
-        open={txSheetOpen}
-        onClose={() => setTxSheetOpen(false)}
-        title={txTarget?.editIdx !== undefined ? 'Modifier la transaction' : 'Nouvelle dépense'}
-      >
-        <div className="space-y-4 pt-1">
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Poste</label>
-            {!createPosteMode ? (
-              <div className="flex gap-2">
-                <select
-                  className="fi !h-11 flex-1"
-                  value={txTarget?.posteIdx ?? 0}
-                  onChange={e => setTxTarget(prev => prev ? { ...prev, posteIdx: parseInt(e.target.value) } : null)}
-                >
-                  {state.postes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setCreatePosteMode(true)}
-                  className="px-3 h-11 text-[11px] font-semibold bg-accent/10 text-accent border border-accent/25 rounded-md active:bg-accent/20 whitespace-nowrap"
-                >
-                  + Nouveau
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2 border border-accent/30 rounded-md p-3 bg-accent/5">
-                <input
-                  className="fi !h-11"
-                  value={newPosteForm.name}
-                  onChange={e => setNewPosteForm({ ...newPosteForm, name: e.target.value.toUpperCase() })}
-                  placeholder="Nom (ex: TRANSPORT)"
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <select
-                    className="fi !h-11 flex-1"
-                    value={newPosteForm.cat}
-                    onChange={e => setNewPosteForm({ ...newPosteForm, cat: e.target.value as 'vital' | 'lifestyle' | 'finance' | 'logement' })}
-                  >
-                    <option value="vital">Vital</option>
-                    <option value="lifestyle">Lifestyle</option>
-                    <option value="finance">Finance</option>
-                    <option value="logement">Logement</option>
-                  </select>
-                  <div className="flex bg-bg-4 rounded-md p-0.5">
-                    {([['AED', true], ['EUR', false]] as const).map(([label, val]) => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => setNewPosteForm({ ...newPosteForm, isAed: val })}
-                        className={`px-3 text-[11px] font-semibold rounded transition-all ${newPosteForm.isAed === val ? 'bg-bg-2 text-t-1' : 'text-t-3'}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Portée</div>
-                  <div className="flex bg-bg-4 rounded-md p-0.5">
-                    {([['Ce mois', 'month'], ['Permanent', 'permanent']] as const).map(([label, val]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setNewPosteForm({ ...newPosteForm, scope: val })}
-                        className={`flex-1 py-1.5 text-[11px] font-semibold rounded transition-all ${newPosteForm.scope === val ? 'bg-bg-2 text-t-1' : 'text-t-3'}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[10px] text-t-4 mt-1">
-                    {newPosteForm.scope === 'month' ? `${m.id} uniquement` : 'Tous les mois'}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={resetPosteCreate}
-                  className="text-[11px] text-t-3 active:text-t-1"
-                >
-                  ← Choisir un poste existant
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Libellé</label>
-            <div className="relative">
-              <input
-                className="fi !h-11"
-                value={tx.label}
-                onChange={e => { setTx({ ...tx, label: e.target.value }); setShowLabelSugg(true); }}
-                onFocus={() => setShowLabelSugg(true)}
-                onBlur={() => setTimeout(() => setShowLabelSugg(false), 150)}
-                placeholder="Ex: Carrefour, Uber..."
-                autoComplete="off"
-              />
-              {showLabelSugg && filteredSugg.length > 0 && (
-                <div className="absolute z-20 left-0 right-0 mt-1 bg-bg-3 border border-border-2 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {filteredSugg.map(s => (
-                    <button
-                      key={s.label}
-                      type="button"
-                      onMouseDown={e => { e.preventDefault(); setTx({ ...tx, label: s.label }); setShowLabelSugg(false); }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] text-t-1 active:bg-bg-4"
-                    >
-                      <span className="truncate">{s.label}</span>
-                      <span className="text-[10px] text-t-3 shrink-0">×{s.count}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="min-w-0 text-right">
+              <div className="text-[13px] text-t-3">Dépenses</div>
+              <div className="text-[17px] text-t-1 mono-value mt-0.5 truncate">{local ? `${f0(F.aA)} ${cur}` : `${f$(F.aE)} €`}</div>
+              <div className="text-[13px] text-t-3 mono-value m-sub truncate">sur {local ? f0(F.bA) : `${f$(F.bE)} €`} de budget</div>
             </div>
           </div>
+          <div className="mt-3"><MBar pct={F.bE > 0 ? F.aE / F.bE : 0} tone={F.bE > 0 && F.aE / F.bE > 1 ? 'danger' : F.bE > 0 && F.aE / F.bE > 0.9 ? 'warning' : 'accent'} /></div>
+        </button>
+        <MDivider />
+        <MRow
+          className="!min-h-[50px]"
+          title={<span className="text-[14px] font-normal text-t-2">Revenus − dépenses</span>}
+          right={<span className={`mono-value ${F.diff >= 0 ? 'text-accent' : 'text-danger'}`}>{F.diff >= 0 ? '+' : ''}{f$(F.diff)} €</span>}
+          chevron
+          onClick={() => setSheet('bilan')}
+        />
+      </MCard>
 
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Devise</label>
-            <div className="flex bg-bg-4 rounded-lg p-1">
-              {(['AED', 'EUR'] as const).map(c => (
-                <button
-                  key={c}
-                  onClick={() => setTx({ ...tx, currency: c })}
-                  className={`flex-1 py-2 text-[13px] font-semibold rounded-md transition-all ${tx.currency === c ? 'bg-bg-2 text-t-1 shadow-sm' : 'text-t-3'}`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Montant ({tx.currency})</label>
-              <input
-                className="fi !h-11 mono-value"
-                type="number"
-                inputMode="decimal"
-                value={tx.amount || ''}
-                onChange={e => setTx({ ...tx, amount: parseFloat(e.target.value) || 0 })}
-                step="0.01"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Date</label>
-              <input
-                className="fi !h-11"
-                type="date"
-                value={tx.date}
-                onChange={e => setTx({ ...tx, date: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="bg-bg-4 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
-            <span className="text-[11px] text-t-3">Équivalent {tx.currency === 'AED' ? 'EUR' : 'AED'}</span>
-            <span className="text-[13px] font-mono mono-value text-accent">
-              {tx.amount > 0
-                ? tx.currency === 'AED'
-                  ? `${f$(tx.amount / state.rate)} €`
-                  : `${f0(tx.amount * state.rate)} AED`
-                : '—'}
-            </span>
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={() => setTxSheetOpen(false)}
-              className="flex-1 py-3 bg-bg-4 text-t-2 text-[14px] font-semibold rounded-full active:bg-bg-3"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={saveTx}
-              disabled={tx.amount <= 0}
-              className="flex-[1.4] py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30"
-            >
-              {txTarget?.editIdx !== undefined ? 'Enregistrer' : 'Ajouter'}
-            </button>
-          </div>
-        </div>
-      </BottomSheet>
-
-      {/* New month sheet */}
-      <NewMonthSheet open={newMonthOpen} onClose={() => setNewMonthOpen(false)} name={nmName} setName={setNmName} solde={nmSolde} setSolde={setNmSolde} onCreate={createMonth} error={nmError} />
-
-      {/* Rename month sheet */}
-      <RenameMonthSheet open={renameOpen} onClose={() => setRenameOpen(false)} value={renameValue} setValue={setRenameValue} onConfirm={confirmRename} error={renameError} />
-
-      {/* Régul sheet */}
-      <BottomSheet open={reconcileOpen} onClose={() => setReconcileOpen(false)} title="Régulariser le prévisionnel">
-        <div className="space-y-3.5 pt-1">
-          <div className="bg-bg-4 rounded-lg p-3 text-[12px] text-t-3 space-y-1">
-            <div className="flex justify-between"><span>Solde début</span><span className="font-mono text-t-2">{f0(m.soldeStart || 0)} AED</span></div>
-            <div className="flex justify-between"><span>+ Revenus</span><span className="font-mono text-accent">+{f0(earnAed)} AED</span></div>
-            <div className="flex justify-between"><span>− Dépenses</span><span className="font-mono text-danger">−{f0(aABank)} AED</span></div>
-            {adjustment !== 0 && (
-              <div className="flex justify-between border-t border-border pt-1 mt-1"><span>Ajustement actuel</span><span className={`font-mono ${adjustment > 0 ? 'text-accent' : 'text-warning'}`}>{adjustment > 0 ? '+' : ''}{f0(adjustment)} AED</span></div>
-            )}
-            <div className="flex justify-between border-t border-border pt-1 mt-1 font-bold"><span className="text-t-2">Prévisionnel actuel</span><span className={`font-mono mono-value ${prevCompte >= 0 ? 'text-accent' : 'text-danger'}`}>{f0(prevCompte)} AED</span></div>
-          </div>
-          <div>
-            <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Balance réelle (AED)</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              className="fi !h-11 mono-value"
-              value={reconcileInput}
-              onChange={e => setReconcileInput(e.target.value)}
-              autoFocus
-              placeholder="Ex: 11500"
+      {/* Postes */}
+      <MLabel right={<MSeg surface="page" value={unit} options={[['local', cur], ['eur', 'EUR']] as const} onChange={changeUnit} />}>
+        Postes{hidden.length > 0 ? ` · ${rows.length} sur ${state.postes.length}` : ''}
+      </MLabel>
+      <MCard className="mb-4">
+        {rows.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-t-3">Aucun poste visible ce mois-ci</div>}
+        {rows.map((r, k) => (
+          <div key={r.i}>
+            {k > 0 && <MDivider />}
+            <MRow
+              icon={<PosteIcon name={r.p.name} cat={r.p.cat} />}
+              title={r.p.name}
+              sub={subOf(r)}
+              right={<span className={`mono-value ${over(r) ? 'text-danger' : ''}`}>{money(r.aed, r.eur)}</span>}
+              rightSub={r.beur > 0 ? <span className="mono-value">sur {money(r.baed, r.beur)}</span> : undefined}
+              onClick={() => setPosteSel({ kind: 'poste', idx: r.i })}
             />
           </div>
-          {reconcileInput && !isNaN(parseFloat(reconcileInput)) && (() => {
-            const real = parseFloat(reconcileInput);
-            const diff = real - prevCompte;
-            return (
-              <div className="text-[11px] bg-bg-4 rounded-lg p-2.5 flex justify-between items-center">
-                <span className="text-t-3">Δ ajustement</span>
-                <span className={`font-mono mono-value font-bold ${Math.abs(diff) < 0.5 ? 'text-t-3' : diff > 0 ? 'text-accent' : 'text-warning'}`}>{diff >= 0 ? '+' : ''}{f0(diff)} AED</span>
+        ))}
+        <MDivider />
+        <button type="button" onClick={() => setSheet('addPoste')} className="w-full flex items-center gap-3 px-4 min-h-[52px] text-[15px] font-medium text-t-2 active:bg-t-1/5">
+          <MIcon><Plus size={17} /></MIcon>Ajouter un poste
+        </button>
+      </MCard>
+
+      {/* Postes ponctuels du mois */}
+      {extras.length > 0 && (
+        <>
+          <MLabel>Ponctuels de {monthLabel(m).split(' ')[0].toLowerCase()}</MLabel>
+          <MCard className="mb-4">
+            {extras.map((r, k) => (
+              <div key={`${r.name}-${k}`}>
+                {k > 0 && <MDivider />}
+                <MRow
+                  icon={<PosteIcon name={r.name} cat={r.cat} />}
+                  title={r.name}
+                  badge={r.swap ? <MBadge>Transfert</MBadge> : undefined}
+                  sub={r.swap ? 'Hors total des dépenses' : r.beur > 0 ? subOf(r) : `${CAT_LABELS[r.cat] || 'Ponctuel'}${r.n > 0 ? ` · ${r.n} opération${r.n > 1 ? 's' : ''}` : ''}`}
+                  right={<span className="mono-value">{money(r.aed, r.eur)}</span>}
+                  rightSub={r.beur > 0 ? <span className="mono-value">sur {money(r.baed, r.beur)}</span> : undefined}
+                  onClick={() => setPosteSel({ kind: 'extra', name: r.name })}
+                />
               </div>
-            );
-          })()}
-          <RegulHistory month={m} />
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => { const real = parseFloat(reconcileInput); if (isFinite(real)) { applyReconciliationMobile(real); setReconcileOpen(false); } }}
-              disabled={!reconcileInput || isNaN(parseFloat(reconcileInput))}
-              className="flex-1 py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30"
-            >Appliquer</button>
-            {adjustment !== 0 && (
-              <button
-                onClick={() => { clearAdjustmentMobile(); setReconcileOpen(false); }}
-                className="px-4 py-3 border border-warning/30 text-warning text-[12px] font-semibold rounded-full active:bg-warning/10"
-              >Effacer</button>
-            )}
-          </div>
-        </div>
+            ))}
+          </MCard>
+        </>
+      )}
+
+      {/* Dernières opérations */}
+      {recent.length > 0 && (
+        <>
+          <MLabel right={ops.length > recent.length ? <button type="button" onClick={() => setSheet('allTx')} className="text-[13px] text-t-1 font-medium h-8 px-1">Tout voir</button> : undefined}>
+            Dernières opérations
+          </MLabel>
+          <MCard className="mb-2">{recent.map(opRow)}</MCard>
+        </>
+      )}
+
+      {/* ─── Volets ─── */}
+      <PosteSheet open={posteSel !== null} onClose={() => setPosteSel(null)} month={m} sel={posteSel} unit={unit} onAdd={openTxn} onEdit={openTxn} />
+      <MonthPickerSheet open={sheet === 'picker'} onClose={close} onNew={() => setSheet('newMonth')} />
+      <NewMonthSheet open={sheet === 'newMonth'} onClose={close} />
+      <RenameMonthSheet open={sheet === 'rename'} onClose={close} />
+      <SoldeSheet open={sheet === 'solde'} onClose={close} month={m} onRegul={() => setSheet('regul')} />
+      <RegulSheet open={sheet === 'regul'} onClose={close} month={m} />
+      <AddPosteSheet open={sheet === 'addPoste'} onClose={close} month={m} />
+      <BilanSheet open={sheet === 'bilan'} onClose={close} month={m} />
+      <ChartsSheet open={sheet === 'charts'} onClose={close} month={m} />
+      <PeriodSheet open={sheet === 'period'} onClose={close} />
+
+      <BottomSheet open={sheet === 'more'} onClose={close} title={monthLabel(m)}>
+        <MCard surface="sheet">
+          {more.map((it, k) => (
+            <div key={it.title}>
+              {k > 0 && <MDivider />}
+              <MRow icon={<MIcon className="!bg-bg-4">{it.icon}</MIcon>} title={it.title} sub={it.sub} chevron onClick={() => setSheet(it.go)} />
+            </div>
+          ))}
+        </MCard>
       </BottomSheet>
+
+      <BottomSheet open={sheet === 'allTx'} onClose={close} title="Opérations" subtitle={`${monthLabel(m)} · ${ops.length} opération${ops.length > 1 ? 's' : ''}`} fullHeight>
+        {opGroups.map(g => (
+          <div key={g.day || 'x'} className="mb-3">
+            <MLabel right={<span className="text-[13px] text-t-3 mono-value">−{f0(g.total)}</span>}>{dayLabel(g.day, today)}</MLabel>
+            <MCard surface="sheet">{g.items.map(opRow)}</MCard>
+          </div>
+        ))}
+      </BottomSheet>
+      {/* En dernier : la saisie s'ouvre PAR-DESSUS le détail d'un poste ou la liste des opérations */}
+      <TxnSheet open={txn.open} onClose={() => setTxn(t => ({ ...t, open: false }))} month={m} target={txn.target} />
     </div>
-  );
-}
-
-function KpiCardMobile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div className="bg-bg-3 border border-border rounded-xl px-3 py-2.5">
-      <div className="text-[9px] uppercase tracking-wider text-t-3 font-semibold leading-none">{label}</div>
-      <div className={`text-[14px] font-bold mt-1 mono-value tracking-tight truncate ${color || 'text-t-1'}`}>{value}</div>
-      {sub && <div className="text-[10px] text-t-4 mono-value mt-0.5 truncate">{sub}</div>}
-    </div>
-  );
-}
-
-function NewMonthSheet({ open, onClose, name, setName, solde, setSolde, onCreate, error }: {
-  open: boolean; onClose: () => void; name: string; setName: (v: string) => void;
-  solde: number; setSolde: (v: number) => void; onCreate: () => void; error?: string;
-}) {
-  return (
-    <BottomSheet open={open} onClose={onClose} title="Nouveau mois">
-      <div className="space-y-4 pt-1">
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Nom du mois</label>
-          <input className="fi !h-11" value={name} onChange={e => setName(e.target.value.toUpperCase())} placeholder="Ex: JUIN" autoFocus />
-          <p className="text-[10px] text-t-4 mt-1">Si ce nom existe déjà pour une année précédente, l&apos;année sera ajoutée automatiquement.</p>
-          {error && <p className="text-[11px] text-danger mt-1">{error}</p>}
-        </div>
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Solde début (AED)</label>
-          <input className="fi !h-11 mono-value" type="number" inputMode="decimal" value={solde || ''} onChange={e => setSolde(parseFloat(e.target.value) || 0)} placeholder="0" />
-        </div>
-        <p className="text-[11px] text-t-3">Le budget sera copié depuis le mois précédent.</p>
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-3 bg-bg-4 text-t-2 text-[14px] font-semibold rounded-full active:bg-bg-3">Annuler</button>
-          <button onClick={onCreate} disabled={!name.trim()} className="flex-[1.4] py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30">Créer</button>
-        </div>
-      </div>
-    </BottomSheet>
-  );
-}
-
-function RenameMonthSheet({ open, onClose, value, setValue, onConfirm, error }: {
-  open: boolean; onClose: () => void; value: string; setValue: (v: string) => void;
-  onConfirm: () => void; error?: string;
-}) {
-  return (
-    <BottomSheet open={open} onClose={onClose} title="Renommer ce mois">
-      <div className="space-y-4 pt-1">
-        <div>
-          <label className="block text-[10px] text-t-3 uppercase tracking-wider font-semibold mb-1.5">Nom du mois</label>
-          <input className="fi !h-11" value={value} onChange={e => setValue(e.target.value.toUpperCase())} placeholder="Ex: OCTOBRE 2025" autoFocus />
-          <p className="text-[10px] text-t-4 mt-1">Si ce nom est déjà pris par un autre mois, celui-ci sera automatiquement renommé avec son année pour te le libérer.</p>
-          {error && <p className="text-[11px] text-danger mt-1">{error}</p>}
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-3 bg-bg-4 text-t-2 text-[14px] font-semibold rounded-full active:bg-bg-3">Annuler</button>
-          <button onClick={onConfirm} disabled={!value.trim()} className="flex-[1.4] py-3 bg-accent text-black text-[14px] font-bold rounded-full active:opacity-80 disabled:opacity-30">Renommer</button>
-        </div>
-      </div>
-    </BottomSheet>
   );
 }

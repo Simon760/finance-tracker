@@ -293,6 +293,21 @@ quelle que soit la date ; montant proche (≤ 1 ou 0,5 %) et dates à 5 j, marqu
 ↔ dépenses seulement, entrées ↔ revenus confirmés. Le relevé doit être dans la devise
 locale ; une entrée d'argent manquante se saisit dans Revenus (pas d'ajout automatique).
 
+## Synchro — relecture au retour dans l'app (`lib/sync.ts`, `AppProvider`)
+L'état est restauré depuis la copie locale à l'ouverture d'une page, et une sauvegarde
+envoie l'état ENTIER. Garde-fous en place (ce n'est PAS encore la détection de conflit) :
+- `pullRemote()` au montage et à chaque retour au premier plan (≥ 15 s d'écart) : la
+  version en ligne est adoptée si son `lastUpdate` est plus récent ET s'il ne reste aucune
+  modification locale non envoyée (`fdxb_dirty`, levé quand le PUT est confirmé). La copie
+  remplacée est gardée dans `fdxb_state_prev`. Jamais d'écriture ici.
+- Le taux (rafraîchi toutes les 10 min) part en `PATCH` du seul champ `rate` — avant,
+  chaque rafraîchissement renvoyait tout l'état : un onglet périmé écrasait le reste sans
+  aucune action.
+- `fbSet` rejette si le serveur refuse (un refus passait pour un succès).
+En test navigateur : un rechargement complet (souvent déclenché par le dev server après
+une modification d'`AppProvider`) fait tomber le bouchon `fetch` → revenir à la page de
+connexion AVANT de modifier du code, et ne jamais rester connecté en `testuser` sans bouchon.
+
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
 - Log via `logChange(action, detail)` exposé par `AppProvider` — déjà branché sur create/update/delete de space, mois, poste, revenu
@@ -304,14 +319,59 @@ Toggle dans Sidebar. Ajoute `.amounts-hidden` sur `<body>` → CSS `::after` mas
 ## Mobile
 **Architecture parallèle** : UI mobile dédiée via `src/components/mobile/`. Le switch desktop ↔ mobile se fait via `useIsMobile()` (`src/lib/useIsMobile.ts`, breakpoint 768px).
 
-- `MobileShell` (`(dashboard)/layout.tsx`) : top app bar (space switcher + privacy toggle) + bottom tabs (Tracker · Revenus · Global · Résidence · Plus) + drawer "Plus" pour les pages secondaires
-- `BottomSheet` : modal slide-up réutilisable (anim `slide-up` dans tailwind config)
-- Chaque page mobile fait `if (isMobile === true) return <MobileXxx />;` après les hooks et avant le return desktop
-- **Backup desktop** : `?desktop=1` URL ou bouton "Forcer la vue desktop" dans le sheet Plus → force la UI desktop sur mobile (utilise localStorage `fdxb_force_desktop`)
+**Direction validée par l'utilisateur (nov. 2026) : s'inspirer de Revolut, et RIEN de gros.**
+Il a rejeté une première maquette (« l'UI est horrible », « tes maquettes sont énormes ») :
+un seul gros chiffre par écran (le solde, centré, sans carte autour), actions rondes
+dessous, listes fines dans des cartes arrondies sans bordure, pilules, bouton principal
+neutre (`bg-t-1 text-bg`), couleur réservée aux pastilles / au vert du reste / au rouge
+d'un dépassement. Pas de bouton flottant, pas de barre de progression par ligne.
 
-**Pages mobile dédiées actuellement** : Tracker, Revenus, Vue Globale.
-**Pages utilisant encore la UI desktop** (responsive via `max-md:` + tables wrappées `overflow-x-auto`) : Dashboard, Net Worth, Résidence, Setup, Settings.
-**Pages conçues responsive dès le départ** (une seule UI, cartes empilées sur mobile) : Simulateur, Relevé bancaire — accessibles par le menu « Plus ». La recherche globale est dans la barre du haut.
+- **`data-ui="mobile"` sur `<html>`** : posé AVANT le premier rendu par le script de
+  `app/layout.tsx` (mêmes règles que `useIsMobile`, qui le tient ensuite à jour). Le CSS
+  s'en sert pour cacher le squelette desktop pré-rendu (`data-shell="desktop"`) — sinon la
+  barre latérale apparaît une fraction de seconde — et pour toutes les règles tactiles
+  (`globals.css`, fin de fichier). Variante Tailwind **`mob:`** = ce sélecteur ; à préférer
+  à `max-md:` dans un composant partagé (ne touche pas la vue desktop forcée).
+- **Kit `components/mobile/ui.tsx`** (`MCard`, `MRow`, `MIcon`, `MLabel`, `MPill`, `MSeg`,
+  `MAction`, `MButton`, `MField`, `MDivider`, `MEmpty`, `MBar`, `MBadge`) — tout nouvel
+  écran mobile s'en sert, pour garder la même densité. Tailles : titre de ligne 15px,
+  ligne secondaire 13px, ligne 56px, pastille 36px, zone tactile ≥ 44px. `surface="sheet"`
+  dans un volet (tokens `--sheet` / `--cell`).
+- **Champs de saisie : 16px minimum** (forcé en CSS sous `data-ui=mobile`) — en dessous,
+  iOS zoome à chaque frappe. Montants : `inputMode="decimal"` + `parseAmount()` (virgule
+  acceptée), jamais `type="number"`. Gros montant d'un volet : classe `m-amount`.
+- **Chiffres** : toujours `.mono-value` (masquage des montants), en 600 sur mobile ; une
+  ligne secondaire porte `m-sub` (500) — c'est fait d'office dans `MRow`.
+- **`BottomSheet`** = LA fenêtre mobile : glisser la poignée pour fermer, reste au-dessus
+  du clavier (`--kb`, `useKeyboardInset`), `footer` = barre d'actions fixe. `Modal` et
+  `SlideOver` s'y replient automatiquement sur mobile ; `Dialog` se colle en bas.
+  Ordre dans le JSX = ordre d'empilement (un volet ouvert PAR-DESSUS un autre se déclare après).
+- **`useOverlay()`** (`lib/useOverlay.ts`) : pile des fenêtres ouvertes — Échap et le
+  retour du téléphone ferment celle du dessus. Une seule entrée d'historique « garde »,
+  jamais de `history.back()` à la fermeture (course possible avec un `router.push`).
+- **`MobileShell`** : barre du haut (avatar d'espace + pastille de synchro, recherche,
+  œil) et barre du bas **Accueil · Revenus · Stats · Résidence · Menu**. « Menu » est une
+  page (`/menu`, `MobileMenu`) ; les pages qu'elle ouvre (`MENU_PAGES`) ont un retour +
+  titre dans la barre du haut. `PageHeader` masque son fil d'Ariane et son h1 sur mobile.
+- **Accueil = `MobileTracker`** (volets dans `mobile/tracker/`) : solde prévisionnel,
+  actions Dépense / Revenu / Régul / Plus, résumé du mois, postes, postes ponctuels,
+  dernières opérations. Couvre tout le tracker desktop (budget, montant direct, ponctuels,
+  période, graphiques, soldes, création / renommage de mois). Montants en devise locale
+  ou en EUR (bascule mémorisée, `fhq_m_unit`) ; le % consommé est calculé dans la devise
+  AFFICHÉE.
+- App installable : `public/manifest.webmanifest` + `public/icons/` (chemins relatifs,
+  le basePath est ajouté dans `app/layout.tsx`). **Pas de service worker** : une version
+  gardée en cache pourrait écraser les données tant que la synchro n'est pas fiabilisée.
+- Chaque page mobile fait `if (isMobile === true) return <MobileXxx />;` après les hooks et avant le return desktop
+- **Backup desktop** : `?desktop=1` ou « Afficher la version ordinateur » dans Menu (localStorage `fdxb_force_desktop` ; `?desktop=0` pour revenir)
+
+**Refonte en cours — écrans refaits** : shell, Menu, Accueil (tracker).
+**À refaire dans ce style** (ordre prévu) : Revenus, Vue Globale (UI mobile de l'ancien
+style) ; puis Dashboard (« Stats »), Résidence, Net Worth, Voyages, Setup, Settings,
+Simulateur, Relevé bancaire (UI desktop sur mobile, dans le nouveau shell). Avant chaque
+écran : inventaire des actions du desktop, et rien n'est livré tant qu'il en manque une
+(« aucun manquement »). Je ne peux tester qu'en émulation : clavier réel, encoche et mode
+installé sont à confirmer par l'utilisateur sur son téléphone → un push par étape.
 
 Piège React rencontré : ne jamais DÉFINIR un composant à l'intérieur d'un autre s'il
 contient des champs de saisie (`const Field = () => …` dans le rendu) — il est recréé à
@@ -326,8 +386,12 @@ Les deux UI ne doivent différer que par le RENDU. Toute règle métier vit dans
   (localStorage, Firebase, import) ; `looksLikeBackup()` protège l'import (un JSON valide
   quelconque, « {} », remplaçait toutes les données par du vide), qui demande en plus une
   confirmation.
-Restent dupliqués dans `tracker/page.tsx` et `MobileTracker.tsx` (à extraire quand on y
-retouche, pas avant) : la sauvegarde d'une transaction et l'ajout d'un poste ponctuel.
+- `lib/trackerOps.ts` — TOUTES les écritures du tracker (transaction : ajout, édition,
+  déplacement, suppression ; budget ; montant direct ; masquer ; ajouter / supprimer un
+  poste), pures et testées ; `lib/useTrackerFigures.ts` — les chiffres d'un mois ;
+- `lib/labels.ts` — « Novembre 2026 », « Hier », « 18 novembre » (jamais une date ISO brute à l'écran).
+Éditer une transaction conserve `tripId` / `tripKind` / `recur` (avant, modifier une dépense
+de voyage la faisait re-débiter le compte et la sortait du voyage).
 
 ### ⚠️ Règle de parité mobile (workflow utilisateur)
 **Chaque feature ajoutée sur la UI desktop DOIT être portée en mobile dans le même commit/push.** L'utilisateur ne valide pas un feature mobile manquante après-coup.

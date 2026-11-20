@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { f$, f0, sameWeekdayDatesInMonth } from '@/lib/utils';
 import { useRevenus } from '@/lib/useRevenus';
 import RecurringBanner from '@/components/RecurringBanner';
@@ -42,6 +42,15 @@ export default function MobileRevenus() {
   }, [R.clientSuggestions, form.client]);
 
   const openAdd = () => { setShowClientSugg(false); R.openAdd(); };
+  // Arrivée depuis le bouton « Revenu » de l'accueil : on ouvre directement la saisie
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('fhq_rev_add') !== '1') return;
+      sessionStorage.removeItem('fhq_rev_add');
+      openAdd();
+    } catch { /* stockage indisponible */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const openEdit = (month: string, idx: number) => { setShowClientSugg(false); R.openEdit(month, idx); };
 
   const goPrev = () => { if (curIdx > 0) setCurTab(orderedMonths[curIdx - 1]); };

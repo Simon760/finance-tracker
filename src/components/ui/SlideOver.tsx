@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import BottomSheet from '@/components/mobile/BottomSheet';
 
 interface SlideOverProps {
   open: boolean;
@@ -12,13 +14,20 @@ interface SlideOverProps {
 }
 
 export default function SlideOver({ open, onClose, title, subtitle, children }: SlideOverProps) {
+  const isMobile = useIsMobile();
+
   useEffect(() => {
-    if (open) {
+    if (open && isMobile !== true) {
       const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
       window.addEventListener('keydown', handler);
       return () => window.removeEventListener('keydown', handler);
     }
-  }, [open, onClose]);
+  }, [open, onClose, isMobile]);
+
+  // UI mobile : le panneau latéral devient un volet plein écran
+  if (isMobile === true) {
+    return <BottomSheet open={open} onClose={onClose} title={title} subtitle={subtitle} fullHeight><div className="pt-1">{children}</div></BottomSheet>;
+  }
 
   return (
     <>

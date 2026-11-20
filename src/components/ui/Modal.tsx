@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import BottomSheet from '@/components/mobile/BottomSheet';
 
 interface ModalProps {
   open: boolean;
@@ -12,9 +14,11 @@ interface ModalProps {
 
 export default function Modal({ open, onClose, title, children, width = 'w-[440px]' }: ModalProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
-    if (open) {
+    // UI mobile : c'est le volet du bas qui gère Échap, retour et défilement
+    if (open && isMobile !== true) {
       const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
       window.addEventListener('keydown', handler);
       document.body.style.overflow = 'hidden';
@@ -23,7 +27,12 @@ export default function Modal({ open, onClose, title, children, width = 'w-[440p
         document.body.style.overflow = '';
       };
     }
-  }, [open, onClose]);
+  }, [open, onClose, isMobile]);
+
+  // UI mobile : toute modale devient un volet du bas (glisser pour fermer, clavier géré)
+  if (isMobile === true) {
+    return <BottomSheet open={open} onClose={onClose} title={title}><div className="pt-1">{children}</div></BottomSheet>;
+  }
 
   if (!open) return null;
 

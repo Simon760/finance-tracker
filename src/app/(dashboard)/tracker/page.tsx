@@ -20,6 +20,7 @@ import RegulHistory from '@/components/RegulHistory';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import SlideOver from '@/components/ui/SlideOver';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
+import { saveTxn, removeTxn, removeTxnExtra, setBudget, setExtraBudget, setActual, hidePoste, addCustomRow as addRow } from '@/lib/trackerOps';
 
 const PIE_C = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'];
 
@@ -143,238 +144,31 @@ export default function TrackerPage() {
     setTxnOpen(true);
   };
 
-  const confirmTxn = () => {
-    if (!m || !txnTarget || txnForm.amount <= 0) return;
-    const rate = state.rate;
-    const amountAed = txnForm.currency === 'EUR' ? txnForm.amount * rate : txnForm.amount;
-    const eurVal = txnForm.currency === 'EUR' ? txnForm.amount : txnForm.amount / rate;
-    const txnEntry: Transaction = {
-      label: txnForm.label || '---',
-      amount: Math.round(amountAed * 100) / 100,
-      rate,
-      eur: Math.round(eurVal * 100) / 100,
-      date: txnForm.date || todayISO(),
-      currency: txnForm.currency,
-    };
-    txnEntry.originalAmount = Math.round(txnForm.amount * 100) / 100; // pour ré-éditer sans dérive
-
-    // Helper: recalcule aed/eur d'une row à partir de ses txns
-    // Écrit TOUJOURS les deux devises, y compris pour un poste EUR. Avant, row.aed
-    // restait à 0 pour ces postes et la colonne AED devait re-dériver l'EUR au taux
-    // du mois : elle affichait 1 175 pour une tx saisie à 1 196 AED.
-    const recalc = (row: ActualRow): ActualRow => {
-      const txns = row.txns || [];
-      row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-      row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      return row;
-    };
-
-    // Helper pour recalcul d'une extra row
-    const recalcExtra = (r: { aed?: number; eur?: number; txns?: Transaction[] }) => {
-      const txns = r.txns || [];
-      r.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-      r.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-    };
-
-    // CAS SPÉCIAL: création d'un poste "ce mois uniquement" → on crée un EXTRA
-    // (pas un poste global). La tx atterrit dans extraActual de ce mois, et un
-    // shadow apparaît dans extraBudget pour qu'il soit visible côté prévisionnel aussi.
-    if (createPosteMode && newPosteForm.scope === 'month') {
-      const trimmedName = newPosteForm.name.trim().toUpperCase();
-      if (!trimmedName) return;
-      const months = state.months.map(mo => {
-        if (mo.id !== m.id) return mo;
-        const actualArr = [...mo.actual];
-        let extraActual = [...(mo.extraActual || [])];
-        let extraBudget = [...(mo.extraBudget || [])];
-
-        // Si on éditait une tx existante, on la retire de la source
-        if (txnTarget.editIdx !== undefined) {
-          if (txnTarget.isExtra && txnTarget.extraIdx !== undefined) {
-            const srcRow = { ...extraActual[txnTarget.extraIdx] };
-            srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-            recalcExtra(srcRow);
-            extraActual[txnTarget.extraIdx] = srcRow;
-          } else {
-            const srcRow = { ...(actualArr[txnTarget.posteIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-            srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-            recalc(srcRow);
-            actualArr[txnTarget.posteIdx] = srcRow;
-          }
-        }
-
-        // Réutilise un extra du même nom s'il existe déjà ce mois (évite les doublons) ;
-        // sinon crée la nouvelle extra row avec la tx.
-        const dupIdx = extraActual.findIndex(r => (r.name || '').trim().toUpperCase() === trimmedName);
-        if (dupIdx >= 0) {
-          const row = { ...extraActual[dupIdx] };
-          row.txns = [...(row.txns || []), txnEntry];
-          recalcExtra(row);
-          extraActual[dupIdx] = row;
-        } else {
-          const newExtra = { name: trimmedName, cat: newPosteForm.cat, aed: 0, eur: 0, txns: [txnEntry] };
-          recalcExtra(newExtra);
-          extraActual = [...extraActual, newExtra];
-        }
-        // Shadow row dans extraBudget seulement s'il n'existe pas déjà
-        if (!extraBudget.some(b => (b.name || '').trim().toUpperCase() === trimmedName)) {
-          extraBudget = [...extraBudget, { name: trimmedName, cat: newPosteForm.cat, aed: 0, eur: 0 }];
-        }
-
-        return { ...mo, actual: actualArr, extraActual, extraBudget };
-      });
-      setState({ ...state, months });
-      setTxnOpen(false);
-      save();
-      logChange?.('poste.create', `Création poste ponctuel « ${trimmedName} » (${m.id} uniquement)`);
-      return;
-    }
-
-    // Détermine le poste cible (peut être un nouveau global)
-    let postes = state.postes;
-    let targetIdx = selectedPosteIdx; // -1 = "Garder dans extra source"
-    let createdNewPoste = false;
-    if (createPosteMode) {
-      const trimmedName = newPosteForm.name.trim().toUpperCase();
-      if (!trimmedName) return;
-      const existing = postes.findIndex(p => p.name === trimmedName);
-      if (existing >= 0) {
-        targetIdx = existing;
-      } else {
-        postes = [...postes, { name: trimmedName, cat: newPosteForm.cat, isAed: newPosteForm.isAed }];
-        targetIdx = postes.length - 1;
-        createdNewPoste = true;
-      }
-    }
-
-    const isExtraSrc = !!(txnTarget.isExtra && txnTarget.extraIdx !== undefined);
-    const sourceIdx = txnTarget.posteIdx;
-    // Cas où on garde dans l'extra (targetIdx === -1) — pas de déplacement
-    const stayInExtra = isExtraSrc && targetIdx === -1 && !createPosteMode;
-    const isMove = txnTarget.editIdx !== undefined && (
-      (isExtraSrc && !stayInExtra) || // extra → poste régulier
-      (!isExtraSrc && targetIdx !== sourceIdx) // poste régulier → autre régulier
-    );
-
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const actual = [...mo.actual];
-      const extraActual = [...(mo.extraActual || [])];
-
-      // ─── ADD ou EDIT IN PLACE dans EXTRA ───
-      if (stayInExtra) {
-        const r = { ...extraActual[txnTarget.extraIdx!] };
-        const txns = [...(r.txns || [])];
-        if (txnTarget.editIdx !== undefined) txns[txnTarget.editIdx] = txnEntry;
-        else txns.push(txnEntry);
-        r.txns = txns;
-        recalcExtra(r);
-        extraActual[txnTarget.extraIdx!] = r;
-        return { ...mo, actual, extraActual };
-      }
-
-      // ─── MOVE depuis EXTRA vers POSTE REGULIER (edit) ───
-      if (isMove && isExtraSrc) {
-        const srcRow = { ...extraActual[txnTarget.extraIdx!] };
-        srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-        recalcExtra(srcRow);
-        extraActual[txnTarget.extraIdx!] = srcRow;
-
-        const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
-        recalc(tgtRow);
-        actual[targetIdx] = tgtRow;
-        return { ...mo, actual, extraActual };
-      }
-
-      // ─── ADD depuis EXTRA vers POSTE REGULIER (pas d'edit, ajoute direct au régulier) ───
-      if (!isMove && isExtraSrc) {
-        const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
-        recalc(tgtRow);
-        actual[targetIdx] = tgtRow;
-        return { ...mo, actual, extraActual };
-      }
-
-      // ─── REGULIER ↔ REGULIER ───
-      if (isMove) {
-        const srcRow = { ...(actual[sourceIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        srcRow.txns = (srcRow.txns || []).filter((_, i) => i !== txnTarget.editIdx);
-        recalc(srcRow);
-        actual[sourceIdx] = srcRow;
-
-        const tgtRow = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        tgtRow.txns = [...(tgtRow.txns || []), txnEntry];
-        recalc(tgtRow);
-        actual[targetIdx] = tgtRow;
-      } else {
-        const row = { ...(actual[targetIdx] || { aed: 0, eur: null, txns: [] }) } as ActualRow;
-        const txns = [...(row.txns || [])];
-        if (txnTarget.editIdx !== undefined && targetIdx === sourceIdx) txns[txnTarget.editIdx] = txnEntry;
-        else txns.push(txnEntry);
-        row.txns = txns;
-        recalc(row);
-        actual[targetIdx] = row;
-      }
-      return { ...mo, actual, extraActual };
-    });
-
-    setState({ ...state, postes, months });
-    setTxnOpen(false);
+  // Écritures du tracker : fonctions pures partagées avec l'accueil mobile (lib/trackerOps,
+  // testées) — les deux UI ne diffèrent que par le rendu.
+  const applyOp = (r: { state: typeof state; logs: { action: string; detail: string }[] }) => {
+    setState(r.state);
     save();
-    if (createdNewPoste) {
-      const newP = postes[targetIdx];
-      logChange?.('poste.create', `Création poste « ${newP.name} » (${newP.cat}) depuis edit tx`);
-    }
-    if (isMove) {
-      const sName = isExtraSrc
-        ? state.months.find(mo => mo.id === m.id)?.extraActual?.[txnTarget.extraIdx!]?.name || '—'
-        : state.postes[sourceIdx]?.name || '—';
-      const tName = postes[targetIdx]?.name || '—';
-      logChange?.('txn.move', `Tx « ${txnEntry.label} » déplacée de ${sName} → ${tName}`);
-    }
+    r.logs.forEach(l => logChange?.(l.action, l.detail));
+  };
+
+  const confirmTxn = () => {
+    if (!m || !txnTarget) return;
+    const r = saveTxn(state, m.id, txnTarget, txnForm, { posteIdx: selectedPosteIdx, create: createPosteMode ? newPosteForm : null }, todayISO());
+    if (!r) return;
+    setTxnOpen(false);
+    applyOp(r);
   };
 
   const deleteTxn = (posteIdx: number, txnIdx: number) => {
     if (!m) return;
-    const rate = state.rate;
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const actual = [...mo.actual];
-      const row = { ...actual[posteIdx] };
-      const txns = (row.txns || []).filter((_, i) => i !== txnIdx);
-      row.txns = txns;
-      const p = state.postes[posteIdx];
-      // Les deux devises sont maintenues quel que soit le type de poste (cf. recalc).
-      if (txns.length === 0) {
-        row.aed = 0;
-        row.eur = p?.isAed ? null : 0;
-      } else {
-        row.aed = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
-        row.eur = Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100;
-      }
-      actual[posteIdx] = row;
-      return { ...mo, actual };
-    });
-    setState({ ...state, months });
+    setState(removeTxn(state, m.id, posteIdx, txnIdx));
     save();
   };
 
   const deleteTxnExtra = (extraIdx: number, txnIdx: number) => {
     if (!m) return;
-    const rate = state.rate;
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const extraActual = [...(mo.extraActual || [])];
-      const r = { ...extraActual[extraIdx] };
-      const txns = (r.txns || []).filter((_, i) => i !== txnIdx);
-      r.txns = txns;
-      r.aed = txns.length > 0 ? Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100 : 0;
-      r.eur = txns.length > 0 ? Math.round(txns.reduce((s, t) => s + (t.eur || t.amount / (t.rate || rate)), 0) * 100) / 100 : 0;
-      extraActual[extraIdx] = r;
-      return { ...mo, extraActual };
-    });
-    setState({ ...state, months });
+    setState(removeTxnExtra(state, m.id, extraIdx, txnIdx));
     save();
   };
 
@@ -426,71 +220,22 @@ export default function TrackerPage() {
     logChange?.('month.rename', detail);
   };
 
-  // Édite le budget en gardant AED et EUR synchronisés au taux live.
-  // Si user édite AED → eur = aed / liveRate. Si user édite EUR → aed = eur * liveRate.
-  // Les 2 valeurs restent cohérentes, donc Budget table et Réel table (rowEur) sont d'accord.
+  // Budget : la devise SAISIE devient la devise de référence du poste (elle reste figée,
+  // l'autre suit le taux) — cf. setBudget / setExtraBudget dans lib/trackerOps.
   const updateBudget = (idx: number, val: number, isEur = false) => {
     if (!m) return;
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const budget = [...mo.budget];
-      const prev = budget[idx] || { aed: 0, eur: null };
-      if (isEur) {
-        const eur = val;
-        const aed = Math.round(eur * liveRate * 100) / 100;
-        budget[idx] = { ...prev, eur, aed };
-      } else {
-        const aed = val;
-        const eur = liveRate > 0 ? Math.round((aed / liveRate) * 100) / 100 : 0;
-        budget[idx] = { ...prev, aed, eur };
-      }
-      return { ...mo, budget };
-    });
-    // La devise dans laquelle on SAISIT devient la devise de référence du poste :
-    // elle reste figée, l'autre colonne suit le taux. Sans ça, saisir un objectif en
-    // euros le stockait en AED et l'euro dérivait avec le taux (contre-sens).
-    const target = state.postes[idx];
-    const flipped = target && target.isAed === isEur;
-    const postes = flipped
-      ? state.postes.map((p, i) => (i === idx ? { ...p, isAed: !isEur } : p))
-      : state.postes;
-    setState({ ...state, postes, months });
-    save();
-    if (flipped) {
-      logChange?.('poste.update', `« ${target.name} » : budget désormais fixé en ${isEur ? 'EUR' : 'AED'}`);
-    }
+    applyOp(setBudget(state, m.id, idx, val, isEur, liveRate));
   };
 
-  // Même logique pour les postes du mois (extras) : la devise saisie devient la
-  // référence. Ici pas de flag isAed — on stocke UNIQUEMENT la devise de référence
-  // et on laisse l'autre à 0, ce que sumEurBudget/sumAedBudget interprètent déjà
-  // comme « dérive au taux live ».
   const updateExtraBudget = (idx: number, val: number, isEur = false) => {
     if (!m) return;
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const extraBudget = [...(mo.extraBudget || [])];
-      const prev = extraBudget[idx];
-      if (!prev) return mo;
-      extraBudget[idx] = isEur ? { ...prev, eur: val, aed: 0 } : { ...prev, aed: val, eur: 0 };
-      return { ...mo, extraBudget };
-    });
-    setState({ ...state, months });
+    setState(setExtraBudget(state, m.id, idx, val, isEur));
     save();
   };
 
   const updateActual = (idx: number, val: number, isEur = false) => {
     if (!m) return;
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const actual = [...mo.actual];
-      const prev = actual[idx] || { aed: 0, eur: null };
-      actual[idx] = isEur
-        ? { ...prev, eur: val, aed: 0 }
-        : { ...prev, aed: val, eur: null };
-      return { ...mo, actual };
-    });
-    setState({ ...state, months });
+    setState(setActual(state, m.id, idx, val, isEur));
     save();
   };
 
@@ -518,69 +263,14 @@ export default function TrackerPage() {
   // Masque un poste régulier pour ce mois (pas globalement)
   const hidePosteThisMonth = (posteName: string) => {
     if (!m) return;
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      const cur = mo.hiddenPostes || [];
-      if (cur.includes(posteName)) return mo;
-      return { ...mo, hiddenPostes: [...cur, posteName] };
-    });
-    setState({ ...state, months });
-    save();
-    logChange?.('poste.hide', `Masqué « ${posteName} » dans ${m.id}`);
+    applyOp(hidePoste(state, m.id, posteName));
   };
 
+  // Permanent = vrai poste (tous les mois) ; sinon poste ponctuel du mois (extra)
   const addCustomRow = () => {
     if (!m) return;
-    const name = arName.trim().toUpperCase() || 'AUTRE';
-
-    // SCOPE = PERMANENT : crée un VRAI poste dans state.postes (visible dans tous les mois)
-    if (arScope === 'permanent') {
-      // Vérif unicité par nom — si existant, on ne re-crée pas, on update juste la valeur du mois courant
-      const existingIdx = state.postes.findIndex(p => p.name === name);
-      let newPostes = state.postes;
-      let posteIdx = existingIdx;
-      if (existingIdx < 0) {
-        newPostes = [...state.postes, { name, cat: arCat, isAed: arIsAed }];
-        posteIdx = newPostes.length - 1;
-      }
-      const months = state.months.map(mo => {
-        if (mo.id !== m.id) return mo;
-        const budget = [...mo.budget];
-        const actual = [...mo.actual];
-        if (arSection === 'budget') {
-          // Set le budget du mois courant
-          budget[posteIdx] = arIsAed
-            ? { aed: arAed, eur: arEur > 0 ? arEur : null }
-            : { aed: 0, eur: arEur > 0 ? arEur : (arAed > 0 ? arAed : null) };
-          if (!actual[posteIdx]) actual[posteIdx] = { aed: 0, eur: null };
-        } else {
-          // section actual: set le réel du mois
-          actual[posteIdx] = arIsAed
-            ? { aed: arAed, eur: arEur > 0 ? arEur : null }
-            : { aed: 0, eur: arEur > 0 ? arEur : (arAed > 0 ? arAed : null) };
-          if (!budget[posteIdx]) budget[posteIdx] = { aed: 0, eur: null };
-        }
-        return { ...mo, budget, actual };
-      });
-      setState({ ...state, postes: newPostes, months });
-      setAddRowOpen(false);
-      save();
-      if (existingIdx < 0) logChange?.('poste.create', `Création poste permanent « ${name} » (${arCat})`);
-      return;
-    }
-
-    // SCOPE = MONTH : extras (comportement précédent)
-    const row = { name, cat: arCat, aed: arAed, eur: arEur };
-    const months = state.months.map(mo => {
-      if (mo.id !== m.id) return mo;
-      if (arSection === 'budget') {
-        return { ...mo, extraBudget: [...(mo.extraBudget || []), row], extraActual: [...(mo.extraActual || []), { ...row, aed: 0, eur: 0 }] };
-      }
-      return { ...mo, extraActual: [...(mo.extraActual || []), row] };
-    });
-    setState({ ...state, months });
     setAddRowOpen(false);
-    save();
+    applyOp(addRow(state, m.id, { section: arSection, name: arName, cat: arCat, aed: arAed, eur: arEur, scope: arScope, isAed: arIsAed }));
   };
 
   // Period aggregation — mois pas encore commencés (simulations) exclus des totaux et

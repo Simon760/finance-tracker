@@ -23,13 +23,18 @@ export function useIsMobile(breakpoint = 768): boolean | null {
     } else if (urlDesktop === '0') {
       localStorage.removeItem(FORCE_KEY);
     }
+    // data-ui sur <html> : même information pour le CSS (cf. globals.css et le script de
+    // app/layout.tsx, qui le pose avant le premier rendu). Tenu à jour ici quand la
+    // fenêtre change de taille.
+    const mark = (mobile: boolean) => { if (breakpoint === 768) document.documentElement.setAttribute('data-ui', mobile ? 'mobile' : 'desktop'); };
     if (localStorage.getItem(FORCE_KEY) === '1') {
       setIsMobile(false);
+      mark(false);
       return;
     }
 
     const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const update = () => setIsMobile(mq.matches);
+    const update = () => { setIsMobile(mq.matches); mark(mq.matches); };
     update();
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
