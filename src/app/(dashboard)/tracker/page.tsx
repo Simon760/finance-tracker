@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import MobileTracker from '@/components/mobile/MobileTracker';
@@ -9,7 +9,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import { f$, f0, toEur, toAed, rowEur, rowAedSpent, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, detectYears, inferNextMonthYear, shortMonth, pocketCashEur, budgetEurOf, budgetAedOf, budgetIsEurRef, monthRevenus, revenuLive, startedMonths } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS, CAT_COLORS } from '@/lib/constants';
+import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow } from '@/lib/types';
 import { EyeOff, Pencil } from 'lucide-react';
 import BudgetBalanceCard from '@/components/BudgetBalanceCard';
@@ -181,7 +181,7 @@ export default function TrackerPage() {
       if (!trimmedName) return;
       const months = state.months.map(mo => {
         if (mo.id !== m.id) return mo;
-        let actualArr = [...mo.actual];
+        const actualArr = [...mo.actual];
         let extraActual = [...(mo.extraActual || [])];
         let extraBudget = [...(mo.extraBudget || [])];
 
@@ -453,16 +453,6 @@ export default function TrackerPage() {
     save();
     const fillLabel = nmFillMode === 'avg3' ? 'moyenne 3 mois' : nmFillMode === 'copy' ? 'copie M-1' : 'vide';
     logChange?.('month.create', `Création du mois ${id} (${fillLabel})`);
-  };
-
-  const deleteMonth = () => {
-    if (!curMonth || !confirm(`Supprimer ${curMonth} ?`)) return;
-    const removed = curMonth;
-    const months = state.months.filter(mo => mo.id !== curMonth);
-    setState({ ...state, months });
-    setCurMonth(months.length > 0 ? months[months.length - 1].id : null as unknown as string);
-    save();
-    logChange?.('month.delete', `Suppression du mois ${removed}`);
   };
 
   const openRename = () => {

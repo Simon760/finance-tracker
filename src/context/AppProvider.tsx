@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from 'react';
-import { AppState, Month, Space, Poste, HistoryEntry, ResidencyEntry, Trip, Transaction, Theme } from '@/lib/types';
+import { AppState, Month, Space, HistoryEntry, ResidencyEntry, Trip, Transaction, Theme } from '@/lib/types';
 import { DEFAULT_POSTES, MOIS_LIST, monthBaseName, monthYearSuffix } from '@/lib/constants';
 import { fbGet, fbSet } from '@/lib/firebase';
 import { fetchRate, detectYears } from '@/lib/utils';
@@ -157,21 +157,6 @@ interface AppContextType {
 }
 
 const HISTORY_CAP = 200;
-
-const DEFAULT_SPACE: Space = {
-  id: 'dubai',
-  name: 'Dubai',
-  emoji: '🇦🇪',
-  localCurrency: 'AED',
-  baseCurrency: 'EUR',
-  status: 'active',
-  dateFrom: '2024-10',
-  dateTo: null,
-  postes: JSON.parse(JSON.stringify(DEFAULT_POSTES)),
-  months: [],
-  revenus: { objectif: 5000, categories: ['ITC VIP', 'EDUCATEUR', 'CONCIERGERIE', 'MOON BUNDLE', 'AUTRE'], months: {} },
-  emmenagement: [],
-};
 
 const defaultState: AppState = {
   rate: 4.3284,

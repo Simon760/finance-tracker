@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, sumEur, sumAed, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths } from '@/lib/utils';
+import { f$, f0, sumEur, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths } from '@/lib/utils';
 import { INSTALL_CAPITAL } from '@/lib/constants';
 import { ChevronRight, TrendingUp } from 'lucide-react';
 

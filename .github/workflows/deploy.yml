@@ -23,6 +23,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Filet de sécurité : rien ne part en ligne si le typage, le lint ou un test échoue.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
       - run: npx next build
       - run: touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v3

@@ -10,3 +10,6 @@ out/
 # TS build cache
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Jeux de données de test locaux (copie de prod) — ne JAMAIS committer
+public/__test/

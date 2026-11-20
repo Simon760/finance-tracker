@@ -149,8 +149,8 @@ export default function DataAudit() {
       ...state,
       postes: postes.filter((_, i) => !removeIdxs.includes(i)),
       months: months.map(mo => {
-        let budget = [...(mo.budget || [])];
-        let actual = [...(mo.actual || [])];
+        const budget = [...(mo.budget || [])];
+        const actual = [...(mo.actual || [])];
 
         // Snapshot des valeurs pour SUMMING
         const budgetEntries = idxs.map(idx => budget[idx] || { aed: 0, eur: null });

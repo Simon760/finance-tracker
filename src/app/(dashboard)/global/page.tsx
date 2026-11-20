@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import MobileGlobal from '@/components/mobile/MobileGlobal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { KpiCard } from '@/components/ui/Card';
-import { f$, f0, sumEur, sumAed, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths } from '@/lib/utils';
+import { f$, f0, sumEur, shortMonth, lastMonthWithBalance, monthBankBalance, bankRealDelta, monthRevenuConfirmedEur, startedMonths } from '@/lib/utils';
 import { PIE_COLORS, INSTALL_CAPITAL } from '@/lib/constants';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 import {

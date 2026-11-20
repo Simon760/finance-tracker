@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Month, Poste } from '@/lib/types';
-import { f$, f0, toEur, toAed, rowEur, budgetEurOf } from '@/lib/utils';
+import { f$, f0, toAed, rowEur, budgetEurOf } from '@/lib/utils';
 import { computeBudgetBalance, budgetBalanceMessage, isPosteFixed } from '@/lib/budgetBalance';
 import { Target, ChevronDown } from 'lucide-react';
 

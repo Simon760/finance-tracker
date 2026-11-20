@@ -5,13 +5,9 @@ import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { KpiCard } from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
-import { f$, f0, sumAed, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
-import { LEGACY_EARN_MONTHS } from '@/lib/constants';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from 'recharts';
-import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
+import { f$, f0, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { chartTooltipStyle } from '@/lib/chartTheme';
 
 interface Asset {
   name: string;

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppProvider';
-import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, sumAedBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed } from '@/lib/utils';
+import { f$, f0, toEur, sumEur, sumAed, sumAedBank, sumEurBudget, inferNextMonthYear, pocketCashEur, budgetEurOf, monthRevenus, revenuLive, monthRevenuConfirmedAed } from '@/lib/utils';
 import { LEGACY_EARN_MONTHS } from '@/lib/constants';
 import { Month, Transaction, ActualRow, Poste } from '@/lib/types';
 import BottomSheet from './BottomSheet';
@@ -63,7 +63,6 @@ export default function MobileTracker() {
   const previewAed = previewEntries.reduce((s, e) => s + (e.cashed || 0) * (e.rate || liveRate), 0);
 
   // Aggregates
-  const bA = m ? sumAedBudget(m, state.postes, liveRate) : 0;
   const bE = m ? sumEurBudget(m, state.postes, liveRate) : 0;
   const aA = m ? sumAed(m, state.postes, m.extraActual || []) : 0;
   const aE = m ? sumEur(m, state.postes, m.extraActual || []) : 0;
@@ -163,7 +162,7 @@ export default function MobileTracker() {
       if (!trimmed) return;
       const updatedMonths = state.months.map(mo => {
         if (mo.id !== m.id) return mo;
-        let actualArr = [...mo.actual];
+        const actualArr = [...mo.actual];
         let extraActual = [...(mo.extraActual || [])];
         let extraBudget = [...(mo.extraBudget || [])];
         // Si édition: retire de la source
