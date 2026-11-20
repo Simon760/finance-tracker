@@ -304,9 +304,10 @@ envoie l'état ENTIER. Garde-fous en place (ce n'est PAS encore la détection de
   chaque rafraîchissement renvoyait tout l'état : un onglet périmé écrasait le reste sans
   aucune action.
 - `fbSet` rejette si le serveur refuse (un refus passait pour un succès).
-En test navigateur : un rechargement complet (souvent déclenché par le dev server après
-une modification d'`AppProvider`) fait tomber le bouchon `fetch` → revenir à la page de
-connexion AVANT de modifier du code, et ne jamais rester connecté en `testuser` sans bouchon.
+**Tests navigateur sans toucher la prod** : `scripts/mock-firebase.js` (faux Firebase
+local, écritures en mémoire) + `NEXT_PUBLIC_FB_URL` dans `.env.local` (lu par
+`lib/firebase.ts`, jamais commité, à supprimer ensuite). Remplace l'ancien bouchon
+`fetch`, qui tombait à chaque rechargement complet de la page.
 
 ## History (Settings)
 - `HistoryEntry[]` capé à 200 dans `AppState.history`
@@ -365,12 +366,19 @@ d'un dépassement. Pas de bouton flottant, pas de barre de progression par ligne
 - Chaque page mobile fait `if (isMobile === true) return <MobileXxx />;` après les hooks et avant le return desktop
 - **Backup desktop** : `?desktop=1` ou « Afficher la version ordinateur » dans Menu (localStorage `fdxb_force_desktop` ; `?desktop=0` pour revenir)
 
-**Refonte en cours — écrans refaits** : shell, Menu, Accueil (tracker).
-**À refaire dans ce style** (ordre prévu) : Revenus, Vue Globale (UI mobile de l'ancien
-style) ; puis Dashboard (« Stats »), Résidence, Net Worth, Voyages, Setup, Settings,
-Simulateur, Relevé bancaire (UI desktop sur mobile, dans le nouveau shell). Avant chaque
-écran : inventaire des actions du desktop, et rien n'est livré tant qu'il en manque une
-(« aucun manquement »). Je ne peux tester qu'en émulation : clavier réel, encoche et mode
+**Refonte en cours — écrans refaits** : shell, Menu, Accueil (tracker), Revenus (vues Mois
+et Année), Vue Globale, Stats (Dashboard), Résidence, Patrimoine, Voyages, Setup, Réglages.
+**Reste à faire** : Simulateur et Relevé bancaire (déjà responsives, à passer au kit),
+puis les finitions (page de connexion, recherche, bandeau des récurrences, carte « Bilan »,
+contrôle thème clair / 320 px / tablette). Avant chaque écran : inventaire des actions du
+desktop, et rien n'est livré tant qu'il en manque une (« aucun manquement »).
+
+**Comment un écran mobile est construit** : quand la page a déjà un hook partagé
+(`useRevenus`), un composant `Mobile<Page>` ne fait que du rendu. Sinon la branche mobile
+vit DANS le fichier de la page (`if (isMobile === true) return (…)`, après les calculs) et
+réutilise ses états et ses handlers tels quels — parité garantie sans dupliquer la logique.
+Les composants partagés (`HealthCard`, `BalanceCard`, `RecurringSettings`) ont la même
+branche. `DataAudit` reste un outil technique, simplement rendu utilisable (`.m-legacy`). Je ne peux tester qu'en émulation : clavier réel, encoche et mode
 installé sont à confirmer par l'utilisateur sur son téléphone → un push par étape.
 
 Piège React rencontré : ne jamais DÉFINIR un composant à l'intérieur d'un autre s'il
