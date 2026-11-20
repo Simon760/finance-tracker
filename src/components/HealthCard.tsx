@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { useApp } from '@/context/AppProvider';
 import { monthFigures, lastCompleted, savingsRate, runwayMonths, yearOverYear, pctChange, MonthFigures } from '@/lib/insights';
 import { f$, f0, lastMonthWithBalance, monthBankBalance } from '@/lib/utils';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { MBadge, MCard, MDivider, MLabel, MRow } from '@/components/mobile/ui';
 
 const pct = (v: number | null, digits = 0) => (v === null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(digits)} %`);
 
@@ -14,6 +16,7 @@ const pct = (v: number | null, digits = 0) => (v === null ? '—' : `${v >= 0 ? 
  */
 export default function HealthCard({ dashCur }: { dashCur: 'EUR' | 'AED' }) {
   const { state, liveRate, activeSpace } = useApp();
+  const isMobile = useIsMobile();
   const cur = activeSpace?.localCurrency || 'AED';
   const rate = state.rate || liveRate;
 
@@ -50,6 +53,74 @@ export default function HealthCard({ dashCur }: { dashCur: 'EUR' | 'AED' }) {
   );
   // Revenus : la hausse est bonne ; dépenses : c'est la baisse
   const tone = (v: number | null, upIsGood: boolean) => (v === null || Math.abs(v) < 0.005 ? 'text-t-3' : (v > 0) === upIsGood ? 'text-accent' : 'text-danger');
+
+  // UI mobile : mêmes chiffres, en lignes fines (cf. components/mobile/ui)
+  if (isMobile === true) {
+    const soft = (t: string) => <span className="text-[14px] font-normal text-t-2">{t}</span>;
+    return (
+      <>
+        <MLabel>Santé financière</MLabel>
+        <MCard className="mb-2">
+          <MRow
+            title={soft('Taux d’épargne')}
+            sub={`${done12.length} dernier${done12.length > 1 ? 's' : ''} mois · 3 derniers : ${sr3 === null ? '—' : `${(sr3 * 100).toFixed(0)} %`}`}
+            right={<span className={`mono-value ${sr12 === null ? 'text-t-3' : sr12 >= 0 ? 'text-accent' : 'text-danger'}`}>{sr12 === null ? '—' : `${(sr12 * 100).toFixed(0)} %`}</span>}
+          />
+          <MDivider />
+          <MRow
+            title={soft('Autonomie sans revenu')}
+            sub={rw.months === null ? 'Il faut un solde et un mois terminé' : <span className="mono-value">{f0(balance)} {cur} ÷ {f0(rw.avgSpentLocal)} par mois</span>}
+            right={<span className={`mono-value ${rw.months === null ? 'text-t-3' : rw.months >= 6 ? 'text-accent' : rw.months >= 3 ? 'text-warning' : 'text-danger'}`}>{rw.months === null ? '—' : `${rw.months.toFixed(1).replace('.', ',')} mois`}</span>}
+          />
+          <MDivider />
+          <MRow
+            title={soft('Revenus, sur un an')}
+            sub={full.length === 0 ? 'Pas encore de mois comparable' : `${full.length} mois comparable${full.length > 1 ? 's' : ''}`}
+            right={<span className={`mono-value ${full.length === 0 ? 'text-t-3' : tone(revDelta, true)}`}>{full.length === 0 ? '—' : pct(revDelta)}</span>}
+          />
+          <MDivider />
+          <MRow title={soft('Dépenses, sur un an')} right={<span className={`mono-value ${full.length === 0 ? 'text-t-3' : tone(spDelta, false)}`}>{full.length === 0 ? '—' : pct(spDelta)}</span>} />
+        </MCard>
+        <p className="text-[12px] text-t-4 px-4 mb-4 leading-relaxed">Sur les mois terminés : le mois en cours, encore partiel, n’entre pas dans les calculs.</p>
+
+        {rows.length > 0 && (
+          <>
+            <MLabel>Même mois, un an plus tôt</MLabel>
+            <MCard className="mb-4">
+              {rows.map((r, k) => {
+                const dRev = pctChange(r.prev.revenueEur, r.cur.revenueEur);
+                const dSp = pctChange(r.prev.spentEur, r.cur.spentEur);
+                const line = (label: string, a: number, b: number, d: number | null, upIsGood: boolean) => (
+                  <div className="flex items-baseline justify-between gap-2 text-[13px] m-sub">
+                    <span className="text-t-3 shrink-0">{label}</span>
+                    <span className="text-right min-w-0 truncate">
+                      <span className="mono-value text-t-3">{money(a)}</span>
+                      <span className="text-t-4"> → </span>
+                      <span className="mono-value text-t-1">{money(b)}</span>
+                      {!r.partial && <span className={`mono-value ml-2 ${tone(d, upIsGood)}`}>{pct(d)}</span>}
+                    </span>
+                  </div>
+                );
+                return (
+                  <div key={`m-${r.cur.year}-${r.cur.idx}`} className={r.partial ? 'opacity-70' : ''}>
+                    {k > 0 && <MDivider />}
+                    <div className="px-4 py-3 space-y-1">
+                      <div className="flex items-center gap-2 text-[15px] font-medium text-t-1">
+                        {r.name.charAt(0) + r.name.slice(1).toLowerCase()} <span className="text-[13px] text-t-3 font-normal">{r.prev.year} → {r.cur.year}</span>
+                        {r.partial && <MBadge tone="info">En cours</MBadge>}
+                      </div>
+                      {line('Revenus', r.prev[revKey], r.cur[revKey], dRev, true)}
+                      {line('Dépenses', r.prev[spKey], r.cur[spKey], dSp, false)}
+                    </div>
+                  </div>
+                );
+              })}
+            </MCard>
+          </>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="bg-bg-3 border border-border rounded-md p-4 mb-3.5">

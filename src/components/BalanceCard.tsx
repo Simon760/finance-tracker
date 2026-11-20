@@ -6,6 +6,8 @@ import { useApp } from '@/context/AppProvider';
 import { dailyBalance, balanceExtremes, balanceAt } from '@/lib/balanceHistory';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
 import { f$, f0 } from '@/lib/utils';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { MCard, MDivider, MField, MLabel, MRow, MSeg } from '@/components/mobile/ui';
 
 type Range = '3m' | '6m' | 'all';
 const RANGES: { id: Range; label: string; days: number }[] = [
@@ -24,6 +26,7 @@ const frDate = (d: string) => (d && d.length >= 10 ? `${d.slice(8, 10)}/${d.slic
  */
 export default function BalanceCard() {
   const { state, liveRate, theme, activeSpace } = useApp();
+  const isMobile = useIsMobile();
   const ct = chartTheme(theme);
   const cur = activeSpace?.localCurrency || 'AED';
   const [range, setRange] = useState<Range>('all');
@@ -58,6 +61,54 @@ export default function BalanceCard() {
       {sub && <div className="text-[10px] text-t-4 mt-1 truncate">{sub}</div>}
     </div>
   );
+
+  // UI mobile : courbe compacte puis les repères en lignes fines
+  if (isMobile === true) {
+    const soft = (t: string) => <span className="text-[14px] font-normal text-t-2">{t}</span>;
+    return (
+      <>
+        <MLabel right={<MSeg surface="page" value={range} options={RANGES.map(r => [r.id, r.label] as const)} onChange={setRange} />}>Solde du compte</MLabel>
+        <MCard className="mb-4">
+          <div className="px-1 pt-3" style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={pts} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="balFillM" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fill: ct.tick, fontSize: 10 }} tickFormatter={d => `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}`} minTickGap={56} axisLine={false} tickLine={false} />
+                <YAxis domain={[yMin, yMax]} ticks={yTicks} tick={{ fill: ct.tick, fontSize: 10 }} tickFormatter={v => `${Math.round(Number(v) / 1000)}k`} width={34} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={chartTooltipStyle(theme)} labelFormatter={d => frDate(String(d))} formatter={v => [`${f0(Number(v))} ${cur}`, 'Solde']} />
+                <Area type="monotone" dataKey="balance" stroke="#3b82f6" strokeWidth={2} fill="url(#balFillM)" dot={false} isAnimationActive={false} />
+                {high && <ReferenceDot x={high.date} y={high.balance} r={4} fill="#10b981" stroke={ct.tooltipBg} strokeWidth={2} />}
+                {low && <ReferenceDot x={low.date} y={low.balance} r={4} fill="#f59e0b" stroke={ct.tooltipBg} strokeWidth={2} />}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <MRow className="!min-h-[50px]" title={soft('Solde actuel')} right={<span className="mono-value">{f0(last.balance)} {cur}</span>} rightSub={liveRate > 0 ? <span className="mono-value">≈ {f$(last.balance / liveRate)} €</span> : undefined} />
+          <MDivider />
+          <MRow className="!min-h-[50px]" title={soft('Plus haut')} sub={high ? `le ${frDate(high.date)}` : undefined} right={<span className="mono-value text-accent">{high ? `${f0(high.balance)} ${cur}` : '—'}</span>} />
+          <MDivider />
+          <MRow className="!min-h-[50px]" title={soft('Plus bas')} sub={low ? `le ${frDate(low.date)}` : undefined} right={<span className="mono-value text-warning">{low ? `${f0(low.balance)} ${cur}` : '—'}</span>} />
+          <MDivider />
+          <MRow className="!min-h-[50px]" title={soft('Solde moyen')} sub={`sur ${pts.length} jours`} right={<span className="mono-value">{f0(avg)} {cur}</span>} />
+          <MDivider />
+          <MField label="Solde à une date">
+            <input type="date" className="m-input text-right" min={all[0].date} max={last.date} value={pick} onChange={e => setPick(e.target.value)} aria-label="Date" />
+          </MField>
+          {pick && (
+            <div className="px-4 pb-3 -mt-1 text-[13px] text-t-3 text-right">
+              {picked === null
+                ? `Pas de donnée (suivi du ${frDate(all[0].date)} au ${frDate(last.date)})`
+                : <>au soir : <span className="mono-value text-t-1">{f0(picked)} {cur}</span>{liveRate > 0 && <> · ≈ <span className="mono-value">{f$(picked / liveRate)} €</span></>}</>}
+            </div>
+          )}
+        </MCard>
+      </>
+    );
+  }
 
   return (
     <div className="bg-bg-3 border border-border rounded-md p-4 mb-3.5">

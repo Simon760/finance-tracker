@@ -11,15 +11,24 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { chartTheme, chartTooltipStyle } from '@/lib/chartTheme';
+import { useState } from 'react';
+import { PieChart as PieIcon } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { MCard, MEmpty, MLabel, MSeg } from '@/components/mobile/ui';
 
 
 export default function DashboardPage() {
   const { state, dashCur, setDashCur, activeSpace, theme } = useApp();
+  const isMobile = useIsMobile();
+  const [allBars, setAllBars] = useState(false);
   const ct = chartTheme(theme);
   // Mois pas encore commencés (simulations créées à l'avance) exclus de TOUT le Dashboard :
   // totaux, moyennes (« Répartition moyenne » divisait par le nb total de mois), graphes.
   const ms = startedMonths(state.months);
 
+  if (ms.length === 0 && isMobile === true) {
+    return <MEmpty icon={<PieIcon size={26} />} title="Pas encore de statistiques" text="Elles apparaissent dès qu’un mois a commencé dans le tracker." />;
+  }
   if (ms.length === 0) {
     return (
       <div>
@@ -106,6 +115,78 @@ export default function DashboardPage() {
   const totalPieData = Object.entries(posteTotals).filter(([, v]) => v > 1).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
 
   const tooltipStyle = chartTooltipStyle(theme);
+
+  // ─── UI mobile (« Stats ») : mêmes calculs, rendu en cartes fines ───
+  if (isMobile === true) {
+    const cur = activeSpace?.localCurrency || 'AED';
+    const legend = (items: [string, string][]) => (
+      <div className="flex gap-4 px-3 pb-2 pt-1">
+        {items.map(([label, color]) => (
+          <span key={label} className="flex items-center gap-1.5 text-[12px] text-t-3"><span className="w-2 h-2 rounded-full" style={{ background: color }} />{label}</span>
+        ))}
+      </div>
+    );
+    const bars = (data: { name: string; value: number }[]) => (allBars ? data : data.slice(0, 8));
+    const more = (n: number) => (n > 8 ? <button type="button" onClick={() => setAllBars(v => !v)} className="text-[13px] text-t-1 font-medium h-8 px-1">{allBars ? 'Réduire' : 'Tout voir'}</button> : undefined);
+    return (
+      <div className="-mx-1">
+        <div className="flex flex-col items-center pt-3 pb-6">
+          <span className="text-[13px] text-t-3">Total dépensé sur {ms.length} mois</span>
+          <span className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-[36px] leading-none hero-num mono-value text-t-1">{dashCur === 'EUR' ? f$(totalSpent) : f0(toAed(totalSpent, avgRate))}</span>
+            <span className="text-[16px] text-t-3 font-medium">{dashCur === 'EUR' ? '€' : cur}</span>
+          </span>
+          <span className="text-[13px] text-t-3 mt-1.5 mono-value m-sub">{dcFmt(avg, avgRate).replace(' AED', ` ${cur}`)} par mois en moyenne</span>
+          <MSeg surface="page" className="mt-3.5" value={dashCur} options={[['EUR', 'EUR'], ['AED', cur]] as const} onChange={setDashCur} />
+        </div>
+
+        <HealthCard dashCur={dashCur} />
+        <BalanceCard />
+
+        <MLabel>Dépenses et revenus par mois</MLabel>
+        <MCard className="mb-4 pt-3">
+          <div className="px-1" style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={evoData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={24} />
+                <YAxis tick={{ fill: ct.tick, fontSize: 10 }} width={34} axisLine={false} tickLine={false} tickFormatter={v => (Number(v) >= 1000 ? `${Math.round(Number(v) / 1000)}k` : String(v))} />
+                <Tooltip contentStyle={tooltipStyle} formatter={v => barFmt(Number(v)).replace(' AED', ` ${cur}`)} />
+                <Line type="monotone" dataKey="Dépenses" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="Revenus" stroke="#10b981" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          {legend([['Dépenses', '#ef4444'], ['Revenus', '#10b981']])}
+        </MCard>
+
+        {soldeData.length > 0 && (
+          <>
+            <MLabel>Solde saisi en début et fin de mois ({cur})</MLabel>
+            <MCard className="mb-4 pt-3">
+              <div className="px-1" style={{ height: 180 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={soldeData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={24} />
+                    <YAxis domain={[soldeMin, soldeMax]} allowDataOverflow tick={{ fill: ct.tick, fontSize: 10 }} width={34} axisLine={false} tickLine={false} tickFormatter={v => `${Math.round(Number(v) / 1000)}k`} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={v => `${f0(Number(v))} ${cur}`} />
+                    <Line type="monotone" dataKey="Début" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="Fin" stroke="#06b6d4" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              {legend([['Début', '#3b82f6'], ['Fin', '#06b6d4']])}
+            </MCard>
+          </>
+        )}
+
+        <MLabel right={more(pieData.length)}>Moyenne par mois, par poste</MLabel>
+        <MCard className="mb-4 px-4 py-3"><RankedBars data={bars(pieData)} fmt={v => barFmt(v).replace(' AED', ` ${cur}`)} /></MCard>
+
+        <MLabel right={more(totalPieData.length)}>Total par poste, sur {ms.length} mois</MLabel>
+        <MCard className="mb-2 px-4 py-3"><RankedBars data={bars(totalPieData)} fmt={v => barFmt(v).replace(' AED', ` ${cur}`)} /></MCard>
+      </div>
+    );
+  }
 
   return (
     <div>

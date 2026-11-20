@@ -31,17 +31,17 @@ export default function RankedBars({
         return (
           <div
             key={d.name}
-            className="group grid grid-cols-[minmax(0,6.5rem)_1fr_auto] items-center gap-2.5 -mx-1.5 px-1.5 py-0.5 rounded transition-colors hover:bg-bg-4/70"
+            className="group grid grid-cols-[minmax(0,6.5rem)_1fr_auto] items-center gap-2.5 -mx-1.5 px-1.5 py-0.5 rounded transition-colors hover:bg-bg-4/70 mob:grid-cols-[minmax(0,7.5rem)_1fr_auto] mob:py-1.5"
             title={`${d.name} — ${fmt(d.value)}`}
           >
-            <span className="text-[11px] text-t-3 truncate transition-colors group-hover:text-t-1">{d.name}</span>
+            <span className="text-[11px] mob:text-[13px] text-t-3 truncate transition-colors group-hover:text-t-1">{d.name}</span>
             <div className="h-2.5 flex items-center">
               <div
                 className={`h-full ${barClass} rounded-r-[4px] transition-opacity group-hover:!opacity-100`}
                 style={{ width: `${Math.max(ratio * 100, 1)}%`, opacity: 0.4 + 0.6 * ratio }}
               />
             </div>
-            <span className="text-[11px] text-t-2 mono-value whitespace-nowrap transition-colors group-hover:text-t-1">{fmt(d.value)}</span>
+            <span className="text-[11px] mob:text-[13px] text-t-2 mono-value whitespace-nowrap transition-colors group-hover:text-t-1">{fmt(d.value)}</span>
           </div>
         );
       })}
