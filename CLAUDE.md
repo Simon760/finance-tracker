@@ -366,20 +366,28 @@ d'un dépassement. Pas de bouton flottant, pas de barre de progression par ligne
 - Chaque page mobile fait `if (isMobile === true) return <MobileXxx />;` après les hooks et avant le return desktop
 - **Backup desktop** : `?desktop=1` ou « Afficher la version ordinateur » dans Menu (localStorage `fdxb_force_desktop` ; `?desktop=0` pour revenir)
 
-**Refonte en cours — écrans refaits** : shell, Menu, Accueil (tracker), Revenus (vues Mois
-et Année), Vue Globale, Stats (Dashboard), Résidence, Patrimoine, Voyages, Setup, Réglages.
-**Reste à faire** : Simulateur et Relevé bancaire (déjà responsives, à passer au kit),
-puis les finitions (page de connexion, recherche, bandeau des récurrences, carte « Bilan »,
-contrôle thème clair / 320 px / tablette). Avant chaque écran : inventaire des actions du
-desktop, et rien n'est livré tant qu'il en manque une (« aucun manquement »).
+**Refonte terminée (nov. 2026)** : tous les écrans ont leur rendu mobile — shell, Menu,
+Accueil (tracker), Revenus (vues Mois et Année), Vue Globale, Stats (Dashboard), Résidence,
+Patrimoine, Voyages, Setup, Réglages, Simulateur, Relevé bancaire, connexion, recherche.
+Toute nouvelle fonction se livre sur les deux UI (règle de parité plus bas) : inventaire des
+actions du desktop d'abord, et rien n'est livré tant qu'il en manque une.
+
+- UI mobile = `(max-width: 768px)` OU téléphone en paysage (`pointer: coarse` et hauteur
+  ≤ 520px) — même requête dans `useIsMobile` et dans le script de `app/layout.tsx`.
+  Contenu borné à 600px de large et centré (tablette en portrait).
+- Composants hérités affichés sur mobile (`BudgetBalanceCard`, `RecurringBanner`,
+  `RegulHistory`, `GlobalSearch`, page de connexion) : adaptés par variantes `mob:` ;
+  `.btn-primary` / `.btn-ghost` y prennent les rôles du kit (principal neutre).
+- Vérifié en émulation : 375 px et 320 px (aucun débordement, champs à 16px), 768 px,
+  thèmes clair et sombre. NON vérifiable ici : gestes au doigt, clavier réel, encoche,
+  mode installé, paysage — à confirmer sur le téléphone de l'utilisateur.
 
 **Comment un écran mobile est construit** : quand la page a déjà un hook partagé
 (`useRevenus`), un composant `Mobile<Page>` ne fait que du rendu. Sinon la branche mobile
 vit DANS le fichier de la page (`if (isMobile === true) return (…)`, après les calculs) et
 réutilise ses états et ses handlers tels quels — parité garantie sans dupliquer la logique.
 Les composants partagés (`HealthCard`, `BalanceCard`, `RecurringSettings`) ont la même
-branche. `DataAudit` reste un outil technique, simplement rendu utilisable (`.m-legacy`). Je ne peux tester qu'en émulation : clavier réel, encoche et mode
-installé sont à confirmer par l'utilisateur sur son téléphone → un push par étape.
+branche. `DataAudit` reste un outil technique, simplement rendu utilisable (`.m-legacy`).
 
 Piège React rencontré : ne jamais DÉFINIR un composant à l'intérieur d'un autre s'il
 contient des champs de saisie (`const Field = () => …` dans le rendu) — il est recréé à

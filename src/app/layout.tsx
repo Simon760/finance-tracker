@@ -34,8 +34,9 @@ export const viewport: Viewport = {
 //    temps que React monte (clé alignée sur THEME_KEY dans AppProvider) ;
 //  - data-ui (mobile / desktop), pour que le CSS cache le squelette desktop pré-rendu
 //    sur téléphone et applique les règles tactiles sans attendre React. Mêmes règles
-//    que useIsMobile (768px, vue desktop forcée par ?desktop=1 ou fdxb_force_desktop).
-const themeInit = `(function(){var d=document.documentElement;try{var t=localStorage.getItem('fhq_theme')==='light'?'light':'dark';d.setAttribute('data-theme',t);var c=document.querySelector('meta[name="theme-color"]');if(c)c.setAttribute('content',t==='light'?'#f0f2f5':'#09090b');}catch(e){d.setAttribute('data-theme','dark');}try{var q=location.search;if(/[?&]desktop=1/.test(q))localStorage.setItem('fdxb_force_desktop','1');else if(/[?&]desktop=0/.test(q))localStorage.removeItem('fdxb_force_desktop');var m=localStorage.getItem('fdxb_force_desktop')!=='1'&&window.matchMedia('(max-width: 768px)').matches;d.setAttribute('data-ui',m?'mobile':'desktop');}catch(e){d.setAttribute('data-ui','desktop');}})();`;
+//    que useIsMobile (768px ou téléphone en paysage, vue desktop forcée par ?desktop=1 ou
+//    fdxb_force_desktop).
+const themeInit = `(function(){var d=document.documentElement;try{var t=localStorage.getItem('fhq_theme')==='light'?'light':'dark';d.setAttribute('data-theme',t);var c=document.querySelector('meta[name="theme-color"]');if(c)c.setAttribute('content',t==='light'?'#f0f2f5':'#09090b');}catch(e){d.setAttribute('data-theme','dark');}try{var q=location.search;if(/[?&]desktop=1/.test(q))localStorage.setItem('fdxb_force_desktop','1');else if(/[?&]desktop=0/.test(q))localStorage.removeItem('fdxb_force_desktop');var m=localStorage.getItem('fdxb_force_desktop')!=='1'&&window.matchMedia('(max-width: 768px), (pointer: coarse) and (max-height: 520px)').matches;d.setAttribute('data-ui',m?'mobile':'desktop');}catch(e){d.setAttribute('data-ui','desktop');}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

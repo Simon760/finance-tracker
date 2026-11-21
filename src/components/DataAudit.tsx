@@ -259,21 +259,21 @@ export default function DataAudit() {
         <span className="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
           🔧 Audit & repair data
           {totalWarnings > 0 && (
-            <span className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded-full font-bold">
+            <span className="text-[10px] mob:text-[12px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded-full font-bold">
               {totalWarnings} mois avec warnings
             </span>
           )}
           {totalWarnings === 0 && (
-            <span className="text-[10px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded-full font-bold">
+            <span className="text-[10px] mob:text-[12px] text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded-full font-bold">
               alignement OK
             </span>
           )}
         </span>
-        <span className={`text-t-3 text-[11px] transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+        <span className={`text-t-3 text-[11px] mob:text-[13px] transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
       {open && (
         <div className="p-4 space-y-3">
-          <div className="text-[11px] text-t-3 leading-relaxed">
+          <div className="text-[11px] mob:text-[13px] text-t-3 leading-relaxed">
             <strong className="text-t-2">postes globaux : {postes.length}</strong> — chaque mois doit avoir {postes.length} entrées dans budget/actual. Si plus → orphelins, si moins → désalignement. Les extras (extraBudget/extraActual) ont leurs propres noms et ne posent pas de problème d'index.
           </div>
 
@@ -281,24 +281,24 @@ export default function DataAudit() {
           {extraConflicts.length > 0 && (
             <div className="bg-warning/10 border border-warning/30 rounded-md p-3 space-y-2">
               <div className="text-[12px] font-bold text-warning">⚠ {extraConflicts.length} extra{extraConflicts.length > 1 ? 's' : ''} avec le même nom qu'un poste régulier</div>
-              <div className="text-[10px] text-t-3">
+              <div className="text-[10px] mob:text-[12px] text-t-3">
                 Probablement créés par erreur. Tu peux les fusionner dans le poste régulier homonyme (somme des valeurs + txns) ou les supprimer.
               </div>
               {extraConflicts.map((c, i) => (
-                <div key={i} className="flex items-center gap-2 text-[11px] bg-bg-3 px-2 py-1.5 rounded">
+                <div key={i} className="flex items-center gap-2 text-[11px] mob:text-[13px] bg-bg-3 px-2 py-1.5 rounded">
                   <span className="font-mono text-t-2 flex-1">
                     <strong>{c.name}</strong> · {c.monthId} · extra<span className="text-t-4">.{c.section}</span> · {f0(c.aed)} AED · {f$(c.eur)} €
                     {c.section === 'actual' && c.txnsCount > 0 && <span className="text-t-3"> · {c.txnsCount} txns</span>}
                   </span>
                   <button
                     onClick={() => mergeExtraIntoPoste(c.monthId, c.section, c.idx)}
-                    className="text-[10px] font-semibold text-accent bg-accent/15 border border-accent/30 px-2 py-0.5 rounded hover:bg-accent/25"
+                    className="text-[10px] mob:text-[12px] font-semibold text-accent bg-accent/15 border border-accent/30 px-2 py-0.5 rounded hover:bg-accent/25"
                   >
                     Fusionner
                   </button>
                   <button
                     onClick={() => deleteExtra(c.monthId, c.section, c.idx)}
-                    className="text-[10px] font-semibold text-danger bg-danger/15 border border-danger/30 px-2 py-0.5 rounded hover:bg-danger/25"
+                    className="text-[10px] mob:text-[12px] font-semibold text-danger bg-danger/15 border border-danger/30 px-2 py-0.5 rounded hover:bg-danger/25"
                   >
                     ✕ Supprimer
                   </button>
@@ -314,19 +314,19 @@ export default function DataAudit() {
                 <span className="text-[12px] font-bold text-danger">⚠ {duplicates.length} doublon{duplicates.length > 1 ? 's' : ''} détecté{duplicates.length > 1 ? 's' : ''}</span>
               </div>
               {duplicates.map(({ name, idxs }) => (
-                <div key={name} className="flex items-center gap-2 text-[11px]">
+                <div key={name} className="flex items-center gap-2 text-[11px] mob:text-[13px]">
                   <span className="font-mono text-t-2 flex-1">
                     <strong>{name}</strong> aux index <span className="text-danger">{idxs.join(', ')}</span> ({idxs.length}×)
                   </span>
                   <button
                     onClick={() => mergeDuplicates(name, idxs)}
-                    className="text-[11px] font-semibold text-accent bg-accent/15 border border-accent/30 px-2.5 py-1 rounded hover:bg-accent/25"
+                    className="text-[11px] mob:text-[13px] font-semibold text-accent bg-accent/15 border border-accent/30 px-2.5 py-1 rounded hover:bg-accent/25"
                   >
                     Fusionner
                   </button>
                 </div>
               ))}
-              <div className="text-[10px] text-t-3 pt-1 border-t border-danger/20">
+              <div className="text-[10px] mob:text-[12px] text-t-3 pt-1 border-t border-danger/20">
                 Fusion = somme des montants budget+actual du nom, txns concaténées, indices supplémentaires retirés cleanly de tous les mois.
               </div>
             </div>
@@ -334,8 +334,8 @@ export default function DataAudit() {
 
           {/* Liste des postes globaux pour reference */}
           <details className="bg-bg-2 border border-border rounded-md p-2">
-            <summary className="cursor-pointer text-[11px] font-semibold text-t-2">Postes globaux ({postes.length}) — par index</summary>
-            <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1 text-[11px] font-mono">
+            <summary className="cursor-pointer text-[11px] mob:text-[13px] font-semibold text-t-2">Postes globaux ({postes.length}) — par index</summary>
+            <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1 text-[11px] mob:text-[13px] font-mono">
               {postes.map((p, i) => (
                 <div key={i} className={`${duplicates.some(d => d.idxs.includes(i)) ? 'text-danger font-bold' : 'text-t-3'}`}>
                   <span className="text-t-4">{i}.</span> {p.name}
@@ -345,7 +345,7 @@ export default function DataAudit() {
           </details>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
+            <table className="w-full text-[11px] mob:text-[13px]">
               <thead>
                 <tr className="text-t-3 border-b border-border">
                   <th className="text-left py-1.5 px-2">Mois</th>
@@ -367,14 +367,14 @@ export default function DataAudit() {
                     <td className="py-1.5 px-2 text-right font-mono mono-value text-t-3">{d.extraBudgetCount}</td>
                     <td className="py-1.5 px-2 text-right font-mono mono-value text-t-3">{d.extraActualCount}</td>
                     <td className="py-1.5 px-2 text-right font-mono mono-value text-t-3">{d.txnsTotal}</td>
-                    <td className="py-1.5 px-2 text-[10px]">
+                    <td className="py-1.5 px-2 text-[10px] mob:text-[12px]">
                       {d.warnings.length === 0 ? <span className="text-accent">✓</span> : <span className="text-danger" title={d.warnings.join('\n')}>⚠ {d.warnings.length}</span>}
                     </td>
                     <td className="py-1.5 px-2 text-right">
                       <div className="flex gap-1 justify-end">
-                        <button onClick={() => setMonthDetail(d.monthId === monthDetail ? null : d.monthId)} className="text-[10px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded">Détail</button>
+                        <button onClick={() => setMonthDetail(d.monthId === monthDetail ? null : d.monthId)} className="text-[10px] mob:text-[12px] text-info bg-info/10 border border-info/25 px-1.5 py-0.5 rounded">Détail</button>
                         {d.hasOrphans && (
-                          <button onClick={() => trimOrphansTail(d.monthId)} className="text-[10px] text-warning bg-warning/10 border border-warning/25 px-1.5 py-0.5 rounded" title={`Trim au max ${postes.length}`}>Trim</button>
+                          <button onClick={() => trimOrphansTail(d.monthId)} className="text-[10px] mob:text-[12px] text-warning bg-warning/10 border border-warning/25 px-1.5 py-0.5 rounded" title={`Trim au max ${postes.length}`}>Trim</button>
                         )}
                       </div>
                     </td>
@@ -392,20 +392,20 @@ export default function DataAudit() {
               {/* Noms apparaissant dans plusieurs sources */}
               {multiSourceNames.length > 0 && (
                 <div className="bg-danger/10 border border-danger/30 rounded-md p-2.5 space-y-1.5">
-                  <div className="text-[11px] font-bold text-danger">⚠ {multiSourceNames.length} nom{multiSourceNames.length > 1 ? 's' : ''} dans plusieurs sources</div>
+                  <div className="text-[11px] mob:text-[13px] font-bold text-danger">⚠ {multiSourceNames.length} nom{multiSourceNames.length > 1 ? 's' : ''} dans plusieurs sources</div>
                   {multiSourceNames.map(([key, srcs]) => (
-                    <div key={key} className="text-[11px] bg-bg-3 p-2 rounded">
+                    <div key={key} className="text-[11px] mob:text-[13px] bg-bg-3 p-2 rounded">
                       <div className="font-semibold text-t-1 mb-1">{srcs[0].name} ({srcs.length} sources)</div>
                       {srcs.map((s, i) => (
-                        <div key={i} className="flex items-center gap-2 text-[10px] font-mono text-t-3 pl-2">
+                        <div key={i} className="flex items-center gap-2 text-[10px] mob:text-[12px] font-mono text-t-3 pl-2">
                           <span className="text-t-4 w-3">{i+1}.</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${s.kind === 'regular' ? 'bg-info/15 text-info' : 'bg-warning/15 text-warning'}`}>{s.kind === 'regular' ? `regular[${s.idx}]` : s.kind === 'extraBudget' ? `extraBudget[${s.idx}]` : `extraActual[${s.idx}]`}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] mob:text-[12px] font-bold ${s.kind === 'regular' ? 'bg-info/15 text-info' : 'bg-warning/15 text-warning'}`}>{s.kind === 'regular' ? `regular[${s.idx}]` : s.kind === 'extraBudget' ? `extraBudget[${s.idx}]` : `extraActual[${s.idx}]`}</span>
                           <span className="flex-1">budget {f0(s.budgetAed)} · actual {f0(s.actualAed)} · {s.txnsCount} txns</span>
                         </div>
                       ))}
                     </div>
                   ))}
-                  <div className="text-[10px] text-t-3 pt-1 border-t border-danger/20">
+                  <div className="text-[10px] mob:text-[12px] text-t-3 pt-1 border-t border-danger/20">
                     Si tu vois 2+ sources pour un même nom (ex: 1 regular + 1 extraBudget), c'est ça qui fausse les % entre Budget et Réel. Supprime la mauvaise via les ✕ dans la liste extras plus bas, OU édite manuellement les valeurs.
                   </div>
                 </div>
@@ -413,10 +413,10 @@ export default function DataAudit() {
 
               {/* budget par index — éditable */}
               <details open>
-                <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">
+                <summary className="cursor-pointer text-[11px] mob:text-[13px] font-semibold text-t-2 mb-1">
                   budget[] ({(detailMonth.budget || []).length} entrées) — clic sur la valeur AED pour éditer
                 </summary>
-                <div className="space-y-0.5 text-[11px] font-mono mt-1">
+                <div className="space-y-0.5 text-[11px] mob:text-[13px] font-mono mt-1">
                   {(detailMonth.budget || []).map((row, i) => {
                     const expectedName = postes[i]?.name;
                     const isOrphan = i >= postes.length;
@@ -431,11 +431,11 @@ export default function DataAudit() {
                             const v = parseFloat(e.target.value) || 0;
                             if (v !== (row?.aed || 0)) setRowAed(detailMonth.id, 'budget', i, v);
                           }}
-                          className="w-24 bg-bg-3 border border-border rounded px-2 py-0.5 text-right text-[11px] mono-value focus:border-accent outline-none"
+                          className="w-24 bg-bg-3 border border-border rounded px-2 py-0.5 text-right text-[11px] mob:text-[13px] mono-value focus:border-accent outline-none"
                           step="0.01"
                           title="Édite m.budget[i].aed directement"
                         />
-                        <span className="text-t-4 text-[10px]">AED · EUR {row?.eur != null ? f$(row.eur) : '—'}</span>
+                        <span className="text-t-4 text-[10px] mob:text-[12px]">AED · EUR {row?.eur != null ? f$(row.eur) : '—'}</span>
                       </div>
                     );
                   })}
@@ -444,10 +444,10 @@ export default function DataAudit() {
 
               {/* actual par index — éditable */}
               <details open>
-                <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">
+                <summary className="cursor-pointer text-[11px] mob:text-[13px] font-semibold text-t-2 mb-1">
                   actual[] ({(detailMonth.actual || []).length} entrées) — clic sur la valeur AED pour éditer
                 </summary>
-                <div className="space-y-1 text-[11px] font-mono mt-1">
+                <div className="space-y-1 text-[11px] mob:text-[13px] font-mono mt-1">
                   {(detailMonth.actual || []).map((row, i) => {
                     const expectedName = postes[i]?.name;
                     const isOrphan = i >= postes.length;
@@ -457,7 +457,7 @@ export default function DataAudit() {
                         <div className="flex items-center gap-2">
                           <span className="text-t-4 w-6">{i}.</span>
                           <span className="flex-1 font-semibold">{expectedName || '⚠ ORPHELIN'}</span>
-                          <span className="text-t-3 text-[10px]">{txns.length} txns</span>
+                          <span className="text-t-3 text-[10px] mob:text-[12px]">{txns.length} txns</span>
                           <input
                             type="number"
                             defaultValue={row?.aed || 0}
@@ -465,14 +465,14 @@ export default function DataAudit() {
                               const v = parseFloat(e.target.value) || 0;
                               if (v !== (row?.aed || 0)) setRowAed(detailMonth.id, 'actual', i, v);
                             }}
-                            className="w-24 bg-bg-3 border border-border rounded px-2 py-0.5 text-right text-[11px] mono-value focus:border-accent outline-none"
+                            className="w-24 bg-bg-3 border border-border rounded px-2 py-0.5 text-right text-[11px] mob:text-[13px] mono-value focus:border-accent outline-none"
                             step="0.01"
                             title="Édite m.actual[i].aed directement"
                           />
-                          <span className="text-t-4 text-[10px]">AED</span>
+                          <span className="text-t-4 text-[10px] mob:text-[12px]">AED</span>
                         </div>
                         {txns.length > 0 && (
-                          <div className="ml-8 mt-1 space-y-0.5 text-[10px] text-t-3">
+                          <div className="ml-8 mt-1 space-y-0.5 text-[10px] mob:text-[12px] text-t-3">
                             {txns.map((t: Transaction, ti: number) => (
                               <div key={ti}>· {t.date} · {t.label || '—'} · {f0(t.amount)} {t.currency || 'AED'}</div>
                             ))}
@@ -487,28 +487,28 @@ export default function DataAudit() {
               {/* extras */}
               {((detailMonth.extraBudget || []).length > 0 || (detailMonth.extraActual || []).length > 0) && (
                 <details open>
-                  <summary className="cursor-pointer text-[11px] font-semibold text-t-2 mb-1">Extras du mois</summary>
+                  <summary className="cursor-pointer text-[11px] mob:text-[13px] font-semibold text-t-2 mb-1">Extras du mois</summary>
                   <div className="space-y-2 mt-1">
                     {(detailMonth.extraBudget || []).length > 0 && (
                       <div>
-                        <div className="text-[10px] text-t-3 uppercase tracking-wider mb-1">extraBudget</div>
+                        <div className="text-[10px] mob:text-[12px] text-t-3 uppercase tracking-wider mob:normal-case mob:tracking-normal mb-1">extraBudget</div>
                         {(detailMonth.extraBudget || []).map((r, i) => (
-                          <div key={i} className="flex items-center gap-2 text-[11px] font-mono bg-bg-3 px-2 py-1 rounded mb-0.5">
+                          <div key={i} className="flex items-center gap-2 text-[11px] mob:text-[13px] font-mono bg-bg-3 px-2 py-1 rounded mb-0.5">
                             <span className="flex-1">{r.name}</span>
                             <span className="text-t-3">AED {f0(r.aed)} · EUR {f$(r.eur || 0)}</span>
-                            <button onClick={() => deleteExtra(detailMonth.id, 'budget', i)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">✕</button>
+                            <button onClick={() => deleteExtra(detailMonth.id, 'budget', i)} className="text-[10px] mob:text-[12px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">✕</button>
                           </div>
                         ))}
                       </div>
                     )}
                     {(detailMonth.extraActual || []).length > 0 && (
                       <div>
-                        <div className="text-[10px] text-t-3 uppercase tracking-wider mb-1">extraActual</div>
+                        <div className="text-[10px] mob:text-[12px] text-t-3 uppercase tracking-wider mob:normal-case mob:tracking-normal mb-1">extraActual</div>
                         {(detailMonth.extraActual || []).map((r, i) => (
-                          <div key={i} className="flex items-center gap-2 text-[11px] font-mono bg-bg-3 px-2 py-1 rounded mb-0.5">
+                          <div key={i} className="flex items-center gap-2 text-[11px] mob:text-[13px] font-mono bg-bg-3 px-2 py-1 rounded mb-0.5">
                             <span className="flex-1">{r.name}</span>
                             <span className="text-t-3">{(r.txns || []).length} txns · AED {f0(r.aed)}</span>
-                            <button onClick={() => deleteExtra(detailMonth.id, 'actual', i)} className="text-[10px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">✕</button>
+                            <button onClick={() => deleteExtra(detailMonth.id, 'actual', i)} className="text-[10px] mob:text-[12px] text-danger bg-danger/10 border border-danger/25 px-1.5 py-0.5 rounded">✕</button>
                           </div>
                         ))}
                       </div>
@@ -519,7 +519,7 @@ export default function DataAudit() {
             </div>
           )}
 
-          <div className="text-[10px] text-t-4 leading-relaxed pt-2 border-t border-border">
+          <div className="text-[10px] mob:text-[12px] text-t-4 leading-relaxed pt-2 border-t border-border">
             <strong>Comment ça marche :</strong><br/>
             • <span className="text-danger">budget.len ou actual.len ≠ postes.len</span> = désalignement. Si plus → orphelins (data laissée après suppressions de postes), bouton <em>Trim</em> coupe la queue.<br/>
             • Clique <em>Détail</em> pour voir mois par mois ce qu'il y a dans chaque index, et purger les extras créés par erreur.<br/>

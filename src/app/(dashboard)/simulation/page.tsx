@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { Copy, Trash2, Plus, X, FlaskConical } from 'lucide-react';
+import { Copy, Trash2, Plus, X, FlaskConical, CalendarPlus, RotateCw } from 'lucide-react';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { MAction, MButton, MCard, MDivider, MEmpty, MField, MLabel, MNum, MPill, MRow } from '@/components/mobile/ui';
 import { useApp } from '@/context/AppProvider';
 import PageHeader from '@/components/layout/PageHeader';
 import { useDialog } from '@/components/ui/Dialog';
@@ -23,6 +25,7 @@ const num = (v: string) => parseFloat(v.replace(',', '.')) || 0;
 export default function SimulationPage() {
   const { state, setState, save, getState, liveRate, activeSpace, activeSpaceId, setCurMonth, theme, logChange } = useApp();
   const { confirm, alert } = useDialog();
+  const isMobile = useIsMobile();
   const router = useRouter();
   const ct = chartTheme(theme);
   const cur = activeSpace?.localCurrency || 'AED';
@@ -153,6 +156,16 @@ export default function SimulationPage() {
     </PageHeader>
   );
 
+  if (!draft && isMobile === true) {
+    return (
+      <MEmpty
+        icon={<FlaskConical size={26} />}
+        title="Teste un budget avant de le vivre"
+        text="Projette ton solde sur plusieurs mois, sans créer de mois à l’avance. Une simulation ne compte dans aucune statistique."
+        action={<MButton onClick={create}><Plus size={17} />Nouvelle simulation</MButton>}
+      />
+    );
+  }
   if (!draft) {
     return (
       <div>
@@ -176,6 +189,152 @@ export default function SimulationPage() {
   const firstLabel = simPeriod(draft, 0).label;
   const chartData = res.rows.map(r => ({ name: `${r.label.slice(0, 3)} ${r.label.slice(-2)}`, Solde: r.end }));
   const tone = (v: number) => (v > 0 ? 'text-accent' : v < 0 ? 'text-danger' : 'text-t-1');
+
+  // ─── UI mobile : mêmes calculs, même enregistrement automatique, rendu en cartes fines ───
+  if (isMobile === true) {
+    const capLabel = (l: string) => l.slice(0, 1) + l.slice(1).toLowerCase();
+    const soft = (t: string) => <span className="text-[14px] font-normal text-t-2">{t}</span>;
+    const below = realAvg > 0 && spentTotal < realAvg * 0.8;
+    return (
+      <div className="-mx-1">
+        <div className="flex flex-col items-center pt-3 pb-5">
+          <span className="text-[13px] text-t-3">Solde fin {res.rows[horizon - 1].label.toLowerCase()}</span>
+          <span className="flex items-baseline gap-1.5 mt-1">
+            <span className={`text-[36px] leading-none hero-num mono-value ${res.endBalance < 0 ? 'text-danger' : 'text-t-1'}`}>{f0(res.endBalance)}</span>
+            <span className="text-[16px] text-t-3 font-medium">{cur}</span>
+          </span>
+          <span className={`text-[13px] mt-1.5 mono-value m-sub ${tone(res.delta)}`}>{res.delta >= 0 ? '+' : ''}{f0(res.delta)} en {horizon} mois</span>
+        </div>
+
+        {sims.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto m-noscroll px-1 pb-5">
+            {sims.map(sm => <MPill key={sm.id} active={sm.id === draft.id} onClick={() => select(sm.id)}>{(sm.id === draft.id ? draft.name : sm.name) || 'Sans nom'}</MPill>)}
+          </div>
+        )}
+
+        <div className="flex justify-around px-2 pb-6">
+          <MAction icon={<Plus size={21} />} label="Nouvelle" onClick={create} />
+          <MAction icon={<Copy size={18} />} label="Dupliquer" onClick={duplicate} />
+          <MAction icon={<CalendarPlus size={19} />} label="Créer le mois" onClick={createRealMonth} />
+          <MAction icon={<Trash2 size={18} />} label="Supprimer" onClick={remove} />
+        </div>
+
+        <MCard className="mb-4">
+          <MRow className="!min-h-[50px]" title={soft('Net d’un mois type')} sub="Revenu − budget, hors ponctuels" right={<span className={`mono-value ${tone(res.monthlyNet)}`}>{res.monthlyNet >= 0 ? '+' : ''}{f0(res.monthlyNet)} {cur}</span>} />
+          <MDivider />
+          <MRow className="!min-h-[50px]" title={soft('Point bas')} sub={res.lowest ? `Fin ${res.lowest.label.toLowerCase()}` : undefined} right={<span className={`mono-value ${res.lowest && res.lowest.balance < 0 ? 'text-danger' : 'text-warning'}`}>{res.lowest ? `${f0(res.lowest.balance)} ${cur}` : '—'}</span>} />
+        </MCard>
+
+        <MLabel>Solde en fin de mois</MLabel>
+        <MCard className="mb-4 pt-3 px-1">
+          <div style={{ height: 170 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: ct.tick, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: ct.tick, fontSize: 10 }} tickFormatter={v => `${Math.round(Number(v) / 1000)}k`} width={34} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={chartTooltipStyle(theme)} formatter={v => [`${f0(Number(v))} ${cur}`, 'Solde']} cursor={{ fill: 'transparent' }} />
+                <ReferenceLine y={0} stroke={ct.tick} />
+                <Bar dataKey="Solde" radius={5} maxBarSize={40} isAnimationActive={false}>
+                  {chartData.map((d, i) => <Cell key={i} fill={d.Solde < 0 ? '#ef4444' : '#3b82f6'} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </MCard>
+
+        <MLabel>Paramètres</MLabel>
+        <MCard className="mb-2">
+          <MField label="Nom"><input className="m-input text-right" value={draft.name} onChange={e => update({ name: e.target.value })} aria-label="Nom de la simulation" /></MField>
+          <MDivider />
+          <MField label="Premier mois"><input className="m-input text-right" type="month" value={draft.start} onChange={e => e.target.value && update({ start: e.target.value })} /></MField>
+          <MDivider />
+          <MField label="Durée (1 à 12 mois)"><MNum className="text-right" value={draft.months} onChange={n => update({ months: Math.min(12, Math.max(0, Math.round(n))) })} /></MField>
+          <MDivider />
+          <MField label={`Solde de départ (${cur})`}>
+            <span className="flex items-center justify-end gap-2">
+              <MNum className="text-right" value={draft.startBalance} onChange={n => update({ startBalance: n })} />
+              <button type="button" onClick={useCurrentBalance} className="h-10 w-10 -mr-1 rounded-full bg-bg-4 text-t-2 flex items-center justify-center shrink-0 active:opacity-60" aria-label="Reprendre le solde prévisionnel actuel"><RotateCw size={15} /></button>
+            </span>
+          </MField>
+          <MDivider />
+          <MField label="Revenu mensuel (€)"><MNum className="text-right" value={draft.revenueEur} onChange={n => update({ revenueEur: n })} /></MField>
+          <MDivider />
+          <MField label={`Taux EUR / ${cur}`}><MNum className="text-right" value={draft.rate} onChange={n => update({ rate: n })} /></MField>
+        </MCard>
+        <p className="text-[12px] text-t-4 px-4 mb-4 leading-relaxed">Soit <span className="mono-value text-t-2">{f0((draft.revenueEur || 0) * (draft.rate || 0))} {cur}</span> de revenu par mois. Tout est enregistré automatiquement.</p>
+
+        <MLabel right={<span className="text-[13px] text-t-1 mono-value">{f0(spentTotal)} {cur}</span>}>Budget mensuel</MLabel>
+        <datalist id="sim-postes-m">{(state.postes || []).map(po => <option key={po.name} value={po.name} />)}</datalist>
+        <MCard className="mb-2">
+          {draft.lines.map((l, i) => (
+            <div key={i}>
+              {i > 0 && <MDivider />}
+              <div className="flex items-center gap-2 pl-4 pr-1 min-h-[52px]">
+                <input className="m-input uppercase flex-1" list="sim-postes-m" value={l.name} placeholder="POSTE" aria-label={`Poste de la ligne ${i + 1}`} onChange={e => update({ lines: draft.lines.map((x, j) => (j === i ? { ...x, name: e.target.value.toUpperCase() } : x)) })} />
+                <MNum className="text-right !w-[92px] shrink-0" value={l.amount} ariaLabel={`Montant de ${l.name || `la ligne ${i + 1}`}`} onChange={n => update({ lines: draft.lines.map((x, j) => (j === i ? { ...x, amount: n } : x)) })} />
+                <button type="button" onClick={() => update({ lines: draft.lines.filter((_, j) => j !== i) })} className="w-11 h-11 shrink-0 flex items-center justify-center text-t-3 active:text-danger" aria-label={`Retirer ${l.name || 'la ligne'}`}><X size={16} /></button>
+              </div>
+            </div>
+          ))}
+          {draft.lines.length > 0 && <MDivider />}
+          <button type="button" onClick={() => update({ lines: [...draft.lines, { name: '', amount: 0 }] })} className="w-full flex items-center gap-2 px-4 min-h-[50px] text-[15px] font-medium text-t-2 active:bg-t-1/5"><Plus size={17} />Ajouter une ligne</button>
+        </MCard>
+        {realAvg > 0 && (
+          <p className={`text-[12px] px-4 mb-2 leading-relaxed ${below ? 'text-warning' : 'text-t-4'}`}>
+            Tu dépenses réellement <span className="mono-value">{f0(realAvg)} {cur}</span> par mois (moyenne des 3 derniers mois terminés){below ? ' : ce budget est nettement en dessous, la projection sera optimiste.' : '.'}
+          </p>
+        )}
+        <div className="flex gap-2 overflow-x-auto m-noscroll px-1 pb-5">
+          <MPill onClick={() => fillLines('real')}>Remplir avec ma moyenne réelle</MPill>
+          <MPill onClick={() => fillLines('budget')}>Avec le budget du mois</MPill>
+        </div>
+
+        <MLabel>Dépenses ou rentrées ponctuelles</MLabel>
+        <MCard className="mb-2">
+          {draft.extras.map((x, i) => (
+            <div key={i}>
+              {i > 0 && <MDivider />}
+              <div className="pl-4 pr-1 py-1.5">
+                <div className="flex items-center gap-2 min-h-[44px]">
+                  <input className="m-input flex-1" value={x.label} placeholder="Voyage, achat…" aria-label={`Libellé du ponctuel ${i + 1}`} onChange={e => update({ extras: draft.extras.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)) })} />
+                  <button type="button" onClick={() => update({ extras: draft.extras.filter((_, j) => j !== i) })} className="w-11 h-11 shrink-0 flex items-center justify-center text-t-3 active:text-danger" aria-label="Retirer ce ponctuel"><X size={16} /></button>
+                </div>
+                <div className="flex items-center gap-2 min-h-[40px] pr-3">
+                  <select className="m-input !w-auto text-t-2" value={Math.min(x.month, horizon - 1)} aria-label={`Mois du ponctuel ${i + 1}`} onChange={e => update({ extras: draft.extras.map((y, j) => (j === i ? { ...y, month: parseInt(e.target.value, 10) } : y)) })}>
+                    {res.rows.map(r => <option key={r.n} value={r.n}>{capLabel(r.label)}</option>)}
+                  </select>
+                  <MNum className="text-right flex-1" value={x.amount} ariaLabel={`Montant du ponctuel ${i + 1}`} onChange={n => update({ extras: draft.extras.map((y, j) => (j === i ? { ...y, amount: n } : y)) })} />
+                </div>
+              </div>
+            </div>
+          ))}
+          {draft.extras.length > 0 && <MDivider />}
+          <button type="button" onClick={() => update({ extras: [...draft.extras, { label: '', amount: 0, month: 0 }] })} className="w-full flex items-center gap-2 px-4 min-h-[50px] text-[15px] font-medium text-t-2 active:bg-t-1/5"><Plus size={17} />Ajouter un ponctuel</button>
+        </MCard>
+        <p className="text-[12px] text-t-4 px-4 mb-4 leading-relaxed">Un montant négatif compte comme une rentrée d’argent.</p>
+
+        <MLabel>Mois par mois</MLabel>
+        <MCard className="mb-4">
+          {res.rows.map((r, k) => (
+            <div key={r.n}>
+              {k > 0 && <MDivider />}
+              <MRow
+                title={capLabel(r.label)}
+                sub={<span className="mono-value">+{f0(r.revenue)} revenu · −{f0(r.spent)} budget{r.extras !== 0 ? ` · ${r.extras > 0 ? '−' : '+'}${f0(Math.abs(r.extras))} ponctuel` : ''}</span>}
+                right={<span className={`mono-value ${r.end < 0 ? 'text-danger' : ''}`}>{f0(r.end)}</span>}
+                rightSub={<span className="mono-value">début {f0(r.start)}</span>}
+              />
+            </div>
+          ))}
+        </MCard>
+
+        <p className="text-[13px] text-t-3 px-4 mb-3 leading-relaxed">
+          Quand {firstLabel.toLowerCase()} arrive, crée-le dans le tracker avec ce solde de départ et ce budget (≈ <span className="mono-value">{f$(draft.rate > 0 ? spentTotal / draft.rate : 0)} €</span>). La simulation reste intacte.
+        </p>
+        <div className="px-1"><MButton onClick={createRealMonth}><CalendarPlus size={17} />Créer {capLabel(firstLabel)} dans le tracker</MButton></div>
+      </div>
+    );
+  }
 
   return (
     <div>

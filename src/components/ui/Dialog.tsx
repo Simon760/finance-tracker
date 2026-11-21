@@ -115,7 +115,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             role="alertdialog"
             aria-modal="true"
             aria-label={title}
-            className="bg-bg-3 border border-border-2 rounded-lg p-6 max-md:p-5 w-[420px] max-w-full max-h-[88vh] overflow-y-auto shadow-xl animate-fade-up mob:w-full mob:bg-sheet mob:border-0 mob:rounded-b-none mob:rounded-t-[24px] mob:px-5 mob:pt-6 mob:pb-[calc(env(safe-area-inset-bottom)+16px)] mob:animate-sheet-in mob:shadow-none"
+            className="bg-bg-3 border border-border-2 rounded-lg p-6 max-md:p-5 w-[420px] max-w-full max-h-[88vh] overflow-y-auto shadow-xl animate-fade-up mob:w-full mob:max-w-[600px] mob:bg-sheet mob:border-0 mob:rounded-b-none mob:rounded-t-[24px] mob:px-5 mob:pt-6 mob:pb-[calc(env(safe-area-inset-bottom)+16px)] mob:animate-sheet-in mob:shadow-none"
             onClick={e => e.stopPropagation()}
           >
             <h3 className="text-[15px] font-bold mb-3 tracking-tight text-t-1">{title}</h3>

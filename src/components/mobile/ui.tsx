@@ -103,7 +103,7 @@ export function MPill({ children, active, onClick, className = '', surface = 'pa
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-full text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors active:opacity-70 ${
+      className={`inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors active:opacity-70 ${
         active ? 'bg-t-1 text-bg' : `${surface === 'sheet' ? 'bg-cell' : 'bg-bg-3'} text-t-2`
       } ${className}`}
     >
@@ -123,7 +123,7 @@ export function MSeg<T extends string>({ value, options, onChange, className = '
           key={v}
           type="button"
           onClick={() => onChange(v)}
-          className={`h-8 px-3.5 rounded-full text-[13px] font-medium transition-colors flex-1 whitespace-nowrap ${value === v ? 'bg-t-1 text-bg' : 'text-t-3'}`}
+          className={`h-9 px-3.5 rounded-full text-[13px] font-medium transition-colors flex-1 whitespace-nowrap ${value === v ? 'bg-t-1 text-bg' : 'text-t-3'}`}
         >
           {label}
         </button>

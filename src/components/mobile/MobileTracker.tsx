@@ -187,7 +187,7 @@ export default function MobileTracker() {
         </button>
         <div className="flex items-center gap-1 mt-3.5">
           <button type="button" onClick={goPrev} disabled={idx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Mois précédent"><ChevronLeft size={19} /></button>
-          <button type="button" onClick={() => setSheet('picker')} className="h-9 px-4 rounded-full bg-bg-3 flex items-center gap-1.5 text-[14px] font-medium text-t-1 active:opacity-70">
+          <button type="button" onClick={() => setSheet('picker')} className="h-10 px-4 rounded-full bg-bg-3 flex items-center gap-1.5 text-[14px] font-medium text-t-1 active:opacity-70">
             {monthLabel(m)}
             {!started && <MBadge tone="info">À venir</MBadge>}
             <ChevronDown size={15} className="text-t-3" />
@@ -291,7 +291,7 @@ export default function MobileTracker() {
       {/* Dernières opérations */}
       {recent.length > 0 && (
         <>
-          <MLabel right={ops.length > recent.length ? <button type="button" onClick={() => setSheet('allTx')} className="text-[13px] text-t-1 font-medium h-8 px-1">Tout voir</button> : undefined}>
+          <MLabel right={ops.length > recent.length ? <button type="button" onClick={() => setSheet('allTx')} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">Tout voir</button> : undefined}>
             Dernières opérations
           </MLabel>
           <MCard className="mb-2">{recent.map(opRow)}</MCard>

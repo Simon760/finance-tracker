@@ -48,7 +48,7 @@ export default function MobileShell({ children }: { children: React.ReactNode })
 
       {/* Barre du haut */}
       <header className="sticky top-0 z-40 bg-bg/90 backdrop-blur-md pt-[env(safe-area-inset-top)]">
-        <div className="h-[52px] flex items-center gap-2 px-3">
+        <div className="h-[52px] flex items-center gap-2 px-3 w-full max-w-[600px] mx-auto">
           {subKey ? (
             <button onClick={() => router.push('/menu')} className={round} aria-label="Retour au menu">
               <ChevronLeft size={22} />
@@ -89,13 +89,13 @@ export default function MobileShell({ children }: { children: React.ReactNode })
       <SpaceSheet open={spaceOpen} onClose={() => setSpaceOpen(false)} />
 
       {/* Contenu */}
-      <main className="flex-1 px-4 pt-1 pb-[calc(env(safe-area-inset-bottom)+84px)] overflow-x-hidden">
+      <main className="flex-1 w-full max-w-[600px] mx-auto px-4 pt-1 pb-[calc(env(safe-area-inset-bottom)+84px)] overflow-x-hidden">
         {children}
       </main>
 
       {/* Barre du bas */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg/90 backdrop-blur-md border-t border-t-1/[0.06] pb-[env(safe-area-inset-bottom)]" aria-label="Navigation principale">
-        <div className="flex">
+        <div className="flex w-full max-w-[600px] mx-auto">
           {TABS.map(t => {
             const Icon = t.icon;
             const active = activeHref === t.href;

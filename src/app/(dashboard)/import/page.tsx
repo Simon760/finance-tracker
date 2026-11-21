@@ -11,6 +11,9 @@ import {
 } from '@/lib/bankCsv';
 import { makeTxn, addTxnsToPoste } from '@/lib/txns';
 import { f0, f$, startedMonths } from '@/lib/utils';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { monthLabel } from '@/lib/labels';
+import { MBadge, MCard, MDivider, MField, MLabel, MRow, MToggle } from '@/components/mobile/ui';
 
 const LABEL = 'block text-[10px] text-t-3 uppercase tracking-[0.12em] font-semibold mb-1.5';
 /** 2026-11-05 → 05/11 */
@@ -25,6 +28,7 @@ const dm = (d: string) => (d && d.length >= 10 ? `${d.slice(8, 10)}/${d.slice(5,
 export default function ImportPage() {
   const { state, setState, save, getState, liveRate, activeSpace, curMonth, logChange } = useApp();
   const { confirm } = useDialog();
+  const isMobile = useIsMobile();
   const cur = activeSpace?.localCurrency || 'AED';
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -119,6 +123,175 @@ export default function ImportPage() {
     setMap(next);
   };
   const gap = rec ? Math.round((rec.totals.bankOut - rec.totals.trackerOut) * 100) / 100 : 0;
+
+  // ─── UI mobile : mêmes étapes (fichier, colonnes, rapprochement), rendu en cartes fines ───
+  if (isMobile === true) {
+    const soft = (t: string) => <span className="text-[14px] font-normal text-t-2">{t}</span>;
+    const colSelect = (label: string, value: number, key: 'date' | 'label' | 'debit' | 'credit' | 'amount') => (
+      <MField label={label}>
+        <select className="m-input text-right" dir="rtl" value={value} onChange={e => setCol({ [key]: parseInt(e.target.value, 10) })}>
+          <option value={-1}>Aucune</option>
+          {colOptions.map(c => <option key={c.i} value={c.i}>{c.name}</option>)}
+        </select>
+      </MField>
+    );
+    const nMissing = missingOut.length + missingIn.length;
+    return (
+      <div className="-mx-1">
+        <input ref={fileRef} id="imp-file-m" type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={e => onFile(e.target.files?.[0])} />
+
+        {/* Étape 1 : mois + fichier */}
+        <MCard className="mb-2 mt-2">
+          <MField label="Mois à comparer">
+            <select className="m-input text-right" dir="rtl" value={effectiveMonthId} onChange={e => setMonthId(e.target.value)}>
+              {months.map(m => <option key={m.id} value={m.id}>{monthLabel(m)}</option>)}
+            </select>
+          </MField>
+          {rows && (
+            <>
+              <MDivider />
+              <MRow icon={<FileSpreadsheet size={18} className="text-accent shrink-0 mx-1" />} title={<span className="text-[14px]">{fileName}</span>} sub={parsed ? `${parsed.lines.length} ligne${parsed.lines.length > 1 ? 's' : ''} lue${parsed.lines.length > 1 ? 's' : ''}` : undefined} right={<span className="text-[13px] text-t-1 font-medium">Changer</span>} onClick={reset} />
+            </>
+          )}
+        </MCard>
+        {!rows && (
+          <>
+            <label htmlFor="imp-file-m" className="w-full h-12 mt-3 rounded-full bg-t-1 text-bg text-[15px] font-semibold tracking-tight flex items-center justify-center gap-2 active:opacity-70">
+              <Upload size={17} />Choisir le relevé (.csv)
+            </label>
+            <p className="text-[12px] text-t-4 px-4 pt-3 leading-relaxed">Exporte le relevé du mois au format CSV depuis ta banque (compte en {cur}). Le fichier reste sur ton téléphone : il est lu ici, rien n’est envoyé ni conservé. Seules les dépenses que tu choisis d’ajouter sont enregistrées.</p>
+          </>
+        )}
+        {error && <p className="text-[13px] text-danger px-4 pt-3">{error}</p>}
+
+        {/* Étape 2 : colonnes */}
+        {rows && map && (
+          <>
+            <MLabel className="mt-4">Colonnes du fichier</MLabel>
+            <MCard className="mb-2">
+              {colSelect('Date', map.date, 'date')}
+              <MDivider />
+              {colSelect('Libellé', map.label, 'label')}
+              <MDivider />
+              {twoCols ? (
+                <>
+                  {colSelect('Sorties (débit)', map.debit, 'debit')}
+                  <MDivider />
+                  {colSelect('Entrées (crédit)', map.credit, 'credit')}
+                </>
+              ) : colSelect('Montant', map.amount, 'amount')}
+              <MDivider />
+              <MRow className="!min-h-[50px]" title={soft('Deux colonnes débit / crédit')} right={<MToggle on={twoCols} />} onClick={() => setMap(twoCols ? { ...map, amount: map.debit, debit: -1, credit: -1 } : { ...map, amount: -1, debit: map.amount >= 0 ? map.amount : 0, credit: -1 })} />
+              <MDivider />
+              <MRow className="!min-h-[50px]" title={soft('Dates américaines (mois/jour)')} right={<MToggle on={map.order === 'MDY'} />} onClick={() => setMap({ ...map, order: map.order === 'MDY' ? 'DMY' : 'MDY' })} />
+              {!twoCols && (
+                <>
+                  <MDivider />
+                  <MRow className="!min-h-[50px]" title={soft('Dépenses écrites en positif')} right={<MToggle on={map.invert} />} onClick={() => setMap({ ...map, invert: !map.invert })} />
+                </>
+              )}
+            </MCard>
+            {parsed && (
+              <MCard className="mb-4">
+                <div className="px-4 pt-3 text-[13px] text-t-3">Aperçu{parsed.skipped > 0 ? ` · ${parsed.skipped} ligne${parsed.skipped > 1 ? 's' : ''} ignorée${parsed.skipped > 1 ? 's' : ''} (sans date ou sans montant)` : ''}</div>
+                {parsed.lines.length === 0
+                  ? <div className="px-4 py-3 text-[13px] text-warning">Aucune ligne lisible avec ces colonnes : vérifie la date et le montant.</div>
+                  : parsed.lines.slice(0, 3).map(l => (
+                    <MRow key={l.idx} className="!min-h-[44px]" title={<span className="text-[14px] font-normal">{l.label || 'Sans libellé'}</span>} sub={dm(l.date)} right={<span className={`mono-value text-[14px] ${l.amount < 0 ? '' : 'text-accent'}`}>{l.amount < 0 ? '−' : '+'}{f$(Math.abs(l.amount))}</span>} />
+                  ))}
+              </MCard>
+            )}
+          </>
+        )}
+
+        {/* Étape 3 : rapprochement */}
+        {rec && scoped && month && (
+          <>
+            <div className="flex flex-col items-center pt-2 pb-5">
+              <span className="text-[13px] text-t-3">Écart entre le relevé et le tracker</span>
+              <span className="flex items-baseline gap-1.5 mt-1">
+                <span className={`text-[32px] leading-none mono-value ${Math.abs(gap) < 1 ? 'text-accent' : 'text-warning'}`}>{gap > 0 ? '+' : ''}{f0(gap)}</span>
+                <span className="text-[15px] text-t-3 font-medium">{cur}</span>
+              </span>
+              <span className="text-[13px] text-t-3 mt-1.5">{Math.abs(gap) < 1 ? 'Les deux concordent' : gap > 0 ? 'Le relevé a plus de sorties' : 'Le tracker a plus de sorties'}</span>
+            </div>
+            <MCard className="mb-4">
+              <MRow className="!min-h-[50px]" title={soft('Sorties du relevé')} sub={`${scoped.lines.filter(l => l.amount < 0).length} ligne(s) en ${monthLabel(month).toLowerCase()}`} right={<span className="mono-value">{f0(rec.totals.bankOut)} {cur}</span>} />
+              <MDivider />
+              <MRow className="!min-h-[50px]" title={soft('Sorties dans le tracker')} sub="Hors dépenses payées en voyage" right={<span className="mono-value">{f0(rec.totals.trackerOut)} {cur}</span>} />
+              <MDivider />
+              <MRow className="!min-h-[50px]" title={soft('Lignes retrouvées')} sub={scoped.outside > 0 ? `${scoped.outside} ligne(s) hors du mois, non comptée(s)` : undefined} right={<span className="mono-value">{rec.matched.length} / {scoped.lines.length}</span>} />
+            </MCard>
+
+            <MLabel right={ready.length > 1 ? <button type="button" onClick={addAll} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">Tout ajouter ({ready.length})</button> : undefined}>
+              Dans le relevé, pas dans le tracker · {nMissing}
+            </MLabel>
+            <MCard className="mb-2">
+              {nMissing === 0 && <div className="px-4 py-4 text-[14px] text-accent flex items-center gap-2"><Check size={16} />Tout ce qui est dans le relevé est dans le tracker.</div>}
+              {missingOut.map((l, k) => {
+                const t = targetOf(l);
+                return (
+                  <div key={l.idx}>
+                    {k > 0 && <MDivider />}
+                    <MRow title={l.label || 'Sans libellé'} sub={dm(l.date)} right={<span className="mono-value">−{f$(Math.abs(l.amount))}</span>} />
+                    <div className="flex items-center gap-2 pl-4 pr-1 pb-2 -mt-1">
+                      <select className="m-input flex-1 !text-[15px] text-t-2" value={t} onChange={e => setTargets({ ...targets, [l.idx]: parseInt(e.target.value, 10) })} aria-label={`Poste pour ${l.label}`}>
+                        <option value={-1}>Choisir un poste…</option>
+                        {posteOptions.map(po => <option key={po.i} value={po.i}>{po.name}</option>)}
+                      </select>
+                      <button type="button" onClick={() => addLines([{ line: l, posteIdx: t }])} disabled={t < 0} className="h-9 px-4 rounded-full bg-t-1 text-bg text-[13px] font-semibold shrink-0 disabled:opacity-30 active:opacity-70">Ajouter</button>
+                      <button type="button" onClick={() => setIgnored([...ignored, l.idx])} className="w-11 h-11 flex items-center justify-center text-t-3 shrink-0 active:opacity-60" aria-label={`Ignorer ${l.label}`}><X size={16} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+              {missingIn.map((l, k) => (
+                <div key={l.idx}>
+                  {(k > 0 || missingOut.length > 0) && <MDivider />}
+                  <MRow title={l.label || 'Sans libellé'} sub={`${dm(l.date)} · à saisir dans Revenus`} right={<span className="mono-value text-accent">+{f$(l.amount)}</span>} />
+                </div>
+              ))}
+            </MCard>
+            {ignored.length > 0 && (
+              <button type="button" onClick={() => setIgnored([])} className="w-full text-left text-[12px] text-t-3 px-4 mb-2 h-9">{ignored.length} ligne(s) ignorée(s) · <span className="text-t-1 font-medium">les réafficher</span></button>
+            )}
+            {missingOut.length > 0
+              ? <p className="text-[12px] text-t-4 px-4 mb-4 leading-relaxed">Des dépenses que tu n’as pas saisies : choisis le poste, puis ajoute.</p>
+              : <div className="mb-4" />}
+
+            <MLabel>Dans le tracker, pas dans le relevé · {rec.trackerOnly.length}</MLabel>
+            <MCard className="mb-2">
+              {rec.trackerOnly.length === 0 && <div className="px-4 py-4 text-[14px] text-accent flex items-center gap-2"><Check size={16} />Tout ce qui est saisi apparaît dans le relevé.</div>}
+              {rec.trackerOnly.map((t, k) => (
+                <div key={t.id}>
+                  {k > 0 && <MDivider />}
+                  <MRow title={t.label} sub={`${t.date ? dm(t.date) : 'Sans date'} · ${t.kind === 'revenue' ? 'Revenu' : t.where}${t.date ? '' : ' · montant sans opération'}`} right={<span className={`mono-value ${t.kind === 'revenue' ? 'text-accent' : ''}`}>{t.kind === 'revenue' ? '+' : ''}{f$(t.amount)}</span>} />
+                </div>
+              ))}
+            </MCard>
+            <p className="text-[12px] text-t-4 px-4 mb-4 leading-relaxed">Saisi mais introuvable à la banque : doublon, montant ou mois erroné, paiement en espèces, ou pas encore débité.</p>
+
+            <MLabel right={rec.matched.length > 0 ? <button type="button" onClick={() => setShowMatched(v => !v)} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">{showMatched ? 'Masquer' : 'Afficher'}</button> : undefined}>Retrouvées des deux côtés · {rec.matched.length}</MLabel>
+            {showMatched && (
+              <MCard className="mb-2">
+                {rec.matched.map((mt, k) => (
+                  <div key={`${mt.bank.idx}-${mt.item.id}`}>
+                    {k > 0 && <MDivider />}
+                    <MRow
+                      title={<span className="text-[14px]">{mt.bank.label || 'Sans libellé'}</span>}
+                      badge={!mt.exact ? <MBadge tone="warning">≈ {mt.diff > 0 ? '+' : ''}{f$(mt.diff)}</MBadge> : undefined}
+                      sub={`${dm(mt.bank.date)} · ${mt.item.label} · ${mt.item.where}${mt.dayGap ? ` · ${mt.dayGap} j d’écart` : ''}`}
+                      right={<span className="mono-value text-[14px]">{f$(Math.abs(mt.bank.amount))}</span>}
+                    />
+                  </div>
+                ))}
+              </MCard>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>

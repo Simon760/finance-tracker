@@ -70,35 +70,35 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
   const globalCls = b.globalNet >= -0.5 ? 'text-accent' : 'text-danger';
 
   return (
-    <div className={`bg-bg-3 border ${toneBorder} rounded-md mb-5 overflow-hidden`}>
+    <div className={`bg-bg-3 border ${toneBorder} rounded-md mb-5 overflow-hidden mob:bg-cell mob:border-0 mob:rounded-[20px]`}>
       {/* Header */}
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-2 min-w-0">
           <Target size={15} className={toneColor} />
-          <span className="text-[12px] uppercase tracking-wider text-t-3 font-semibold">Bilan vs prévisionnel</span>
-          {b.excludedFixed.length > 0 && <span className="text-[9px] text-t-4 normal-case tracking-normal">hors charges fixes</span>}
+          <span className="text-[12px] mob:text-[14px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-t-3 font-semibold">Bilan vs prévisionnel</span>
+          {b.excludedFixed.length > 0 && <span className="text-[9px] mob:text-[12px] text-t-4 normal-case tracking-normal">hors charges fixes</span>}
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[9px] uppercase tracking-wider text-t-4 font-semibold leading-none">Solde global</div>
+          <div className="text-[9px] mob:text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-t-4 font-semibold leading-none">Solde global</div>
           <div className={`text-[16px] font-bold mono-value ${globalCls} leading-tight`}>{signed(b.globalNet)}</div>
         </div>
       </div>
 
       {/* Message */}
       <div className="px-4 pb-3">
-        <p className={`text-[12px] leading-relaxed ${toneColor}`}>{msg.text}</p>
+        <p className={`text-[12px] mob:text-[14px] leading-relaxed ${toneColor}`}>{msg.text}</p>
         {b.excludedFixed.length > 0 && (
-          <p className="text-[10px] text-t-4 mt-1">Exclus (payés quoi qu'il arrive) : {b.excludedFixed.join(', ')}</p>
+          <p className="text-[10px] mob:text-[12px] text-t-4 mt-1">Exclus (payés quoi qu'il arrive) : {b.excludedFixed.join(', ')}</p>
         )}
       </div>
 
       {/* Breakdown 2 colonnes */}
       <div className="grid grid-cols-2 gap-px bg-border">
         {/* Postes prévus */}
-        <div className="bg-bg-3 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1.5">Postes prévus</div>
+        <div className="bg-bg-3 mob:bg-cell px-4 py-3">
+          <div className="text-[10px] mob:text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-t-3 font-semibold mb-1.5">Postes prévus</div>
           <div className={`text-[15px] font-bold mono-value ${b.prevuNet >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(b.prevuNet)}</div>
-          <div className="mt-1.5 space-y-0.5 text-[10px]">
+          <div className="mt-1.5 space-y-0.5 text-[10px] mob:text-[12px]">
             {b.overrunTotal > 0.5 && (
               <div className="flex justify-between text-t-3">
                 <span>Dépassements <span className="text-t-4">({b.overruns.length})</span></span>
@@ -115,12 +115,12 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
         </div>
 
         {/* Non prévus */}
-        <div className="bg-bg-3 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-t-3 font-semibold mb-1.5">Extras non prévus</div>
+        <div className="bg-bg-3 mob:bg-cell px-4 py-3">
+          <div className="text-[10px] mob:text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-t-3 font-semibold mb-1.5">Extras non prévus</div>
           {b.hasNonPrevu ? (
             <>
               <div className="text-[15px] font-bold mono-value text-danger">{signed(b.nonPrevuNet)}</div>
-              <div className="text-[10px] text-t-3 mt-1.5">
+              <div className="text-[10px] mob:text-[12px] text-t-3 mt-1.5">
                 {b.nonPrevu.length} poste{b.nonPrevu.length > 1 ? 's' : ''} sans budget · {f$(b.nonPrevuActualEur)} € dépensés
               </div>
             </>
@@ -135,7 +135,7 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
         <>
           <button
             onClick={() => setOpen(o => !o)}
-            className="w-full flex items-center justify-center gap-1.5 py-2 border-t border-border text-[11px] text-t-3 hover:text-t-1 active:bg-bg-4 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 py-2 border-t border-border text-[11px] mob:text-[13px] text-t-3 hover:text-t-1 active:bg-bg-4 transition-colors cursor-pointer"
           >
             {open ? 'Masquer le détail' : 'Voir le détail poste par poste'}
             <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -144,13 +144,13 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
             <div className="border-t border-border px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-3 max-md:grid-cols-1">
               {b.overruns.length > 0 && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-danger font-semibold mb-1">Dépassements</div>
+                  <div className="text-[10px] mob:text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-danger font-semibold mb-1">Dépassements</div>
                   <div className="space-y-0.5">
                     {b.overruns.map(p => (
-                      <div key={p.name} className="flex justify-between text-[11px]">
+                      <div key={p.name} className="flex justify-between text-[11px] mob:text-[13px]">
                         <span className="text-t-2 truncate pr-2">
                           {p.name}
-                          {p.isExtra && <span className="text-t-4 ml-1 text-[9px]">(extra budgété)</span>}
+                          {p.isExtra && <span className="text-t-4 ml-1 text-[9px] mob:text-[12px]">(extra budgété)</span>}
                         </span>
                         <span className="text-danger font-mono mono-value shrink-0">{signed(p.delta)}</span>
                       </div>
@@ -160,13 +160,13 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
               )}
               {b.margins.length > 0 && (
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-accent font-semibold mb-1">Marges restantes</div>
+                  <div className="text-[10px] mob:text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-accent font-semibold mb-1">Marges restantes</div>
                   <div className="space-y-0.5">
                     {b.margins.map(p => (
-                      <div key={p.name} className="flex justify-between text-[11px]">
+                      <div key={p.name} className="flex justify-between text-[11px] mob:text-[13px]">
                         <span className="text-t-2 truncate pr-2">
                           {p.name}
-                          {p.isExtra && <span className="text-t-4 ml-1 text-[9px]">(extra budgété)</span>}
+                          {p.isExtra && <span className="text-t-4 ml-1 text-[9px] mob:text-[12px]">(extra budgété)</span>}
                         </span>
                         <span className="text-accent font-mono mono-value shrink-0">{signed(p.delta)}</span>
                       </div>
@@ -176,10 +176,10 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
               )}
               {b.nonPrevu.length > 0 && (
                 <div className="col-span-2 max-md:col-span-1">
-                  <div className="text-[10px] uppercase tracking-wider text-warning font-semibold mb-1">Imprévus (sans budget)</div>
+                  <div className="text-[10px] mob:text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-warning font-semibold mb-1">Imprévus (sans budget)</div>
                   <div className="space-y-0.5">
                     {b.nonPrevu.map(e => (
-                      <div key={e.name} className="flex justify-between text-[11px]">
+                      <div key={e.name} className="flex justify-between text-[11px] mob:text-[13px]">
                         <span className="text-t-2 truncate pr-2">{e.name}</span>
                         <span className="text-danger font-mono mono-value shrink-0">−{f$(e.actualEur)} €</span>
                       </div>
@@ -196,51 +196,51 @@ export default function BudgetBalanceCard({ month, postes, liveRate, forecast }:
       <div className="border-t border-border-2 bg-bg-2/60 px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[12px] uppercase tracking-wider text-t-2 font-bold">Récap fin de mois</div>
-            <div className="text-[11px] text-t-4 mt-0.5">budget prévu + dépassements + imprévus · charges fixes incluses</div>
+            <div className="text-[12px] uppercase tracking-wider mob:normal-case mob:tracking-normal text-t-2 font-bold">Récap fin de mois</div>
+            <div className="text-[11px] mob:text-[13px] text-t-4 mt-0.5">budget prévu + dépassements + imprévus · charges fixes incluses</div>
           </div>
           <div className="text-right shrink-0">
             <div className="text-[20px] font-bold mono-value text-t-1">≈ {f$(projTotalEur)} €</div>
-            <div className="text-[11px] text-t-4 mono-value">déjà dépensé {f$(spentTotalEur)} €</div>
+            <div className="text-[11px] mob:text-[13px] text-t-4 mono-value">déjà dépensé {f$(spentTotalEur)} €</div>
           </div>
         </div>
         {forecast && (
           <div className="mt-3 pt-3 border-t border-border/60 space-y-1.5">
             <div className="flex justify-between gap-3 text-[13px]">
-              <span className="text-t-2">Revenus − dépenses <span className="text-t-4 text-[11px]">(confirmés)</span></span>
+              <span className="text-t-2">Revenus − dépenses <span className="text-t-4 text-[11px] mob:text-[13px]">(confirmés)</span></span>
               <span className={`mono-value font-bold shrink-0 ${revDepConf >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepConf)}</span>
             </div>
             {forecast.previewEur > 0 && (
               <div className="flex justify-between gap-3 text-[13px]">
-                <span className="text-t-2">Revenus − dépenses <span className="text-t-4 text-[11px]">(avec {f$(forecast.previewEur)} € en prévision)</span></span>
+                <span className="text-t-2">Revenus − dépenses <span className="text-t-4 text-[11px] mob:text-[13px]">(avec {f$(forecast.previewEur)} € en prévision)</span></span>
                 <span className={`mono-value font-bold shrink-0 ${revDepAll >= 0 ? 'text-accent' : 'text-danger'}`}>{signed(revDepAll)}</span>
               </div>
             )}
             <div className="flex justify-between gap-3 text-[13px]">
-              <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px]">(confirmés)</span></span>
+              <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px] mob:text-[13px]">(confirmés)</span></span>
               <span className={`mono-value font-bold shrink-0 ${bankEndAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAed)} AED</span>
             </div>
             {forecast.previewEur > 0 && (
               <div className="flex justify-between gap-3 text-[13px]">
-                <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px]">(avec prévisions)</span></span>
+                <span className="text-t-2">Solde compte fin de mois <span className="text-t-4 text-[11px] mob:text-[13px]">(avec prévisions)</span></span>
                 <span className={`mono-value font-bold shrink-0 ${bankEndAllAed >= 0 ? 'text-t-1' : 'text-danger'}`}>≈ {f0(bankEndAllAed)} AED</span>
               </div>
             )}
             {pocketEur > 0.5 && (
               <div className="mt-2 pt-2 border-t border-border/60 space-y-1.5">
                 <div className="flex justify-between gap-3 text-[13px]">
-                  <span className="text-t-2">+ Cash pocket voyage <span className="text-t-4 text-[11px]">(déjà sorti du compte)</span></span>
+                  <span className="text-t-2">+ Cash pocket voyage <span className="text-t-4 text-[11px] mob:text-[13px]">(déjà sorti du compte)</span></span>
                   <span className="mono-value font-bold shrink-0 text-info">+{f0(pocketAed)} AED</span>
                 </div>
                 <div className="flex justify-between gap-3 text-[13px]">
-                  <span className="text-t-1 font-semibold">= Total fin de mois <span className="text-t-4 text-[11px] font-normal">(compte + pockets)</span></span>
+                  <span className="text-t-1 font-semibold">= Total fin de mois <span className="text-t-4 text-[11px] mob:text-[13px] font-normal">(compte + pockets)</span></span>
                   {/* Le scénario avec prévisions est mis en avant ; le confirmé passe en sous-ligne */}
                   <span className="text-right shrink-0">
                     <span className={`text-[15px] mono-value font-bold ${(forecast.previewEur > 0 ? totalEndAllAed : totalEndAed) >= 0 ? 'text-accent' : 'text-danger'}`}>
                       ≈ {f0(forecast.previewEur > 0 ? totalEndAllAed : totalEndAed)} AED
                     </span>
                     {forecast.previewEur > 0 && (
-                      <span className="block text-[10px] text-t-4 mono-value">{f0(totalEndAed)} AED sans les prévisions</span>
+                      <span className="block text-[10px] mob:text-[12px] text-t-4 mono-value">{f0(totalEndAed)} AED sans les prévisions</span>
                     )}
                   </span>
                 </div>

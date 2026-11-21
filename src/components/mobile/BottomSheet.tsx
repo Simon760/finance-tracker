@@ -82,7 +82,7 @@ export default function BottomSheet({ open, onClose, title, subtitle, children, 
 
   return (
     <div
-      className={`fixed inset-0 z-[210] flex items-end bg-black/60 transition-opacity duration-200 ${closing ? 'opacity-0 pointer-events-none' : 'animate-fade-in'}`}
+      className={`fixed inset-0 z-[210] flex items-end justify-center bg-black/60 transition-opacity duration-200 ${closing ? 'opacity-0 pointer-events-none' : 'animate-fade-in'}`}
       onClick={onClose}
       role="presentation"
     >
@@ -91,7 +91,7 @@ export default function BottomSheet({ open, onClose, title, subtitle, children, 
         role="dialog"
         aria-modal="true"
         aria-label={c.title || 'Fenêtre'}
-        className={`w-full bg-sheet rounded-t-[24px] flex flex-col transition-transform duration-200 ease-out ${closing ? 'translate-y-full' : 'animate-sheet-in'} ${fullHeight ? 'h-[calc(100dvh-var(--kb,0px)-env(safe-area-inset-top)-12px)]' : 'max-h-[calc(100dvh-var(--kb,0px)-env(safe-area-inset-top)-28px)]'}`}
+        className={`w-full max-w-[600px] bg-sheet rounded-t-[24px] flex flex-col transition-transform duration-200 ease-out ${closing ? 'translate-y-full' : 'animate-sheet-in'} ${fullHeight ? 'h-[calc(100dvh-var(--kb,0px)-env(safe-area-inset-top)-12px)]' : 'max-h-[calc(100dvh-var(--kb,0px)-env(safe-area-inset-top)-28px)]'}`}
         style={{ marginBottom: 'var(--kb, 0px)' }}
         onClick={e => e.stopPropagation()}
       >

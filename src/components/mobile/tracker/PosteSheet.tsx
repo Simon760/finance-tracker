@@ -200,7 +200,7 @@ export default function PosteSheet({ open, onClose, month: m, sel, unit, onAdd, 
         {/* Historique */}
         {history.length > 0 && (
           <div className="mb-4">
-            <MLabel right={history.length > 4 ? <button type="button" onClick={() => setAllHist(v => !v)} className="text-[13px] text-t-1 font-medium h-8 px-1">{allHist ? 'Réduire' : 'Tout voir'}</button> : undefined}>Historique</MLabel>
+            <MLabel right={history.length > 4 ? <button type="button" onClick={() => setAllHist(v => !v)} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">{allHist ? 'Réduire' : 'Tout voir'}</button> : undefined}>Historique</MLabel>
             <MCard surface="sheet">
               {histShown.map((h, k) => (
                 <div key={h.mo.id}>

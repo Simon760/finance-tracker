@@ -167,7 +167,7 @@ export default function MobileRevenus() {
             )}
             <div className="flex items-center gap-1 mt-3.5">
               <button type="button" onClick={goPrev} disabled={curIdx <= 0} className="w-10 h-10 flex items-center justify-center rounded-full text-t-3 disabled:opacity-25 active:bg-bg-3" aria-label="Mois précédent"><ChevronLeft size={19} /></button>
-              <button type="button" onClick={() => setSheet('picker')} className="h-9 px-4 rounded-full bg-bg-3 flex items-center gap-1.5 text-[14px] font-medium text-t-1 active:opacity-70">
+              <button type="button" onClick={() => setSheet('picker')} className="h-10 px-4 rounded-full bg-bg-3 flex items-center gap-1.5 text-[14px] font-medium text-t-1 active:opacity-70">
                 {cap(tab)} {year}
                 {R.isFuture(tab) && <MBadge tone="info">À venir</MBadge>}
                 <ChevronDown size={15} className="text-t-3" />
@@ -207,8 +207,12 @@ export default function MobileRevenus() {
                     <MRow
                       icon={<MIcon color={catColor(e.cat)}>{(e.client || '?').trim().charAt(0).toUpperCase() || '?'}</MIcon>}
                       title={e.client || 'Sans nom'}
-                      badge={status === 'preview' ? <MBadge tone="info">Prévision</MBadge> : status === 'pending' ? <MBadge tone="warning">En attente</MBadge> : undefined}
-                      sub={[shortDay(e.date, today), e.cat, e.comment].filter(Boolean).join(' · ')}
+                      sub={<>
+                        {/* Statut dans la ligne secondaire : à côté du nom il le tronquait sur petit écran */}
+                        {status === 'preview' && <><span className="text-info">Prévision</span> · </>}
+                        {status === 'pending' && <><span className="text-warning">En attente</span> · </>}
+                        {[shortDay(e.date, today), e.cat, e.comment].filter(Boolean).join(' · ')}
+                      </>}
                       right={<span className={`mono-value ${TONE[status]}`}>+{f$(e.cashed || 0)} €</span>}
                       rightSub={
                         e.currency && e.currency !== 'EUR' && e.origAmount != null ? <span className="mono-value">{f$(e.origAmount)} {e.currency}</span>
@@ -325,7 +329,7 @@ export default function MobileRevenus() {
 
           {A.clientStats.length > 0 && (
             <>
-              <MLabel right={A.clientStats.length > 5 ? <button type="button" onClick={() => setSheet('clients')} className="text-[13px] text-t-1 font-medium h-8 px-1">Tout voir</button> : undefined}>Clients</MLabel>
+              <MLabel right={A.clientStats.length > 5 ? <button type="button" onClick={() => setSheet('clients')} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">Tout voir</button> : undefined}>Clients</MLabel>
               <MCard className="mb-2">{A.clientStats.slice(0, 5).map((c, k) => <ClientRow key={c.client} c={c} k={k} today={today} />)}</MCard>
             </>
           )}

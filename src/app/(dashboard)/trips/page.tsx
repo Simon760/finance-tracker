@@ -436,7 +436,6 @@ export default function TripsPage() {
             sub={`${shortDay(trip.startDate, today)}${trip.endDate ? ` → ${shortDay(trip.endDate, today)}` : ''} · ${trip.country}`}
             right={<span className={`mono-value ${remaining < 0 ? 'text-danger' : ''}`}>{f$(remaining)} {trip.currency}</span>}
             rightSub={<span className="mono-value">sur {f0(budget)}</span>}
-            chevron
             onClick={() => setSelectedTripId(trip.id)}
           />
         </div>
@@ -479,7 +478,7 @@ export default function TripsPage() {
             )}
             {endedTrips.length > 0 && (
               <>
-                <MLabel right={<button type="button" onClick={() => setEndedOpen(o => !o)} className="text-[13px] text-t-1 font-medium h-8 px-1">{endedOpen ? 'Masquer' : 'Afficher'}</button>}>{endedTrips.length} terminé{endedTrips.length > 1 ? 's' : ''}</MLabel>
+                <MLabel right={<button type="button" onClick={() => setEndedOpen(o => !o)} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">{endedOpen ? 'Masquer' : 'Afficher'}</button>}>{endedTrips.length} terminé{endedTrips.length > 1 ? 's' : ''}</MLabel>
                 {endedOpen && <MCard className="mb-2">{endedTrips.map(tripRow)}</MCard>}
               </>
             )}
@@ -561,7 +560,7 @@ export default function TripsPage() {
                 </div>
               </MCard>
 
-              <MLabel right={selDay ? <MPill surface="sheet" className="!h-8" onClick={() => setSelDay(null)}>Tout afficher</MPill> : undefined}>
+              <MLabel right={selDay ? <MPill surface="sheet" className="-my-1.5" onClick={() => setSelDay(null)}>Tout afficher</MPill> : undefined}>
                 {selDay ? cap(fmtDay(selDay)) : `${tripExpenses.length} dépense${tripExpenses.length > 1 ? 's' : ''}`}
               </MLabel>
               <MCard surface="sheet" className="mb-4">

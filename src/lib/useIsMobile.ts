@@ -33,7 +33,9 @@ export function useIsMobile(breakpoint = 768): boolean | null {
       return;
     }
 
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    // Un téléphone tourné en paysage dépasse 768px de large : on le reconnaît à son écran
+    // tactile peu haut, pour ne pas basculer sur la mise en page ordinateur.
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px), (pointer: coarse) and (max-height: 520px)`);
     const update = () => { setIsMobile(mq.matches); mark(mq.matches); };
     update();
     mq.addEventListener('change', update);

@@ -127,7 +127,7 @@ export default function DashboardPage() {
       </div>
     );
     const bars = (data: { name: string; value: number }[]) => (allBars ? data : data.slice(0, 8));
-    const more = (n: number) => (n > 8 ? <button type="button" onClick={() => setAllBars(v => !v)} className="text-[13px] text-t-1 font-medium h-8 px-1">{allBars ? 'Réduire' : 'Tout voir'}</button> : undefined);
+    const more = (n: number) => (n > 8 ? <button type="button" onClick={() => setAllBars(v => !v)} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">{allBars ? 'Réduire' : 'Tout voir'}</button> : undefined);
     return (
       <div className="-mx-1">
         <div className="flex flex-col items-center pt-3 pb-6">

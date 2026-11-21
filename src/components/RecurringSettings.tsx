@@ -97,7 +97,7 @@ export default function RecurringSettings() {
   if (isMobile === true) {
     const group = (title: string, list: RecurringRule[], kind: RecurringRule['kind'], empty: string) => (
       <div className="mb-4">
-        <MLabel right={<button type="button" onClick={() => openAdd(kind)} className="text-[13px] text-t-1 font-medium h-8 px-1">Ajouter</button>}>{title}</MLabel>
+        <MLabel right={<button type="button" onClick={() => openAdd(kind)} className="text-[13px] text-t-1 font-medium h-10 -my-1.5 px-2 -mr-2">Ajouter</button>}>{title}</MLabel>
         <MCard surface="sheet">
           {list.length === 0 && <div className="px-4 py-5 text-center text-[13px] text-t-3">{empty}</div>}
           {list.map((r, k) => (

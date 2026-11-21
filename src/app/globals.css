@@ -335,6 +335,8 @@ html[data-ui="mobile"] .m-sub .mono-value { font-weight: 500; letter-spacing: -0
 .m-input::placeholder { color: rgb(var(--t-4)); }
 select.m-input { appearance: none; -webkit-appearance: none; }
 input[type="date"].m-input { min-height: 24px; }
+/* Zone tactile d'un champ : 44px, même quand son texte est petit. */
+html[data-ui="mobile"] .m-input:not(textarea) { min-height: 44px; }
 .m-noscroll::-webkit-scrollbar { display: none; }
 .m-noscroll { scrollbar-width: none; }
 
@@ -371,3 +373,11 @@ html[data-ui="mobile"] .m-legacy > div { background: transparent; border: 0; box
 html[data-ui="mobile"] .m-legacy button { min-height: 40px; padding-left: 12px; padding-right: 12px; font-size: 13px; }
 html[data-ui="mobile"] .m-legacy table { font-size: 12px; }
 html[data-ui="mobile"] .m-legacy input { min-height: 40px; }
+
+/* Boutons hérités (.btn) : mêmes rôles que le kit mobile — principal neutre, secondaire
+   sans bordure. Le vert reste réservé aux montants. */
+html[data-ui="mobile"] .btn-primary { background: rgb(var(--t-1)); color: rgb(var(--bg)); box-shadow: none; }
+html[data-ui="mobile"] .btn-ghost { background: rgb(var(--bg-3)); border-color: transparent; color: rgb(var(--t-1)); }
+html[data-ui="mobile"] [role="dialog"] .btn-ghost,
+html[data-ui="mobile"] [role="alertdialog"] .btn-ghost { background: rgb(var(--cell)); }
+html[data-ui="mobile"] .btn-danger { border-color: transparent; }

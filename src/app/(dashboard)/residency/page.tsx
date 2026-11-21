@@ -405,13 +405,13 @@ export default function ResidencyPage() {
 
         <MLabel className="mt-2">Par pays</MLabel>
         <MCard className="mb-4">
-          <MRow icon={<MIcon>{flag('UAE')}</MIcon>} title="Émirats" sub={`Seuil 90 j${isCurrentYear ? ` · projection ${computed.projection.uae} j` : ''}`} right={<span className="mono-value">{computed.uae} j</span>} />
+          <MRow icon={<MIcon>{flag('UAE')}</MIcon>} title="Émirats" sub="Seuil 90 j" right={<span className="mono-value">{computed.uae} j</span>} rightSub={isCurrentYear ? `projection ${computed.projection.uae}` : undefined} />
           {bar(computed.uae, 90, uaeZone.color)}
           <MDivider />
-          <MRow icon={<MIcon>{flag('FR')}</MIcon>} title="France" sub={<><span style={{ color: frZone.color }}>{frZone.label}</span> · plafond 183 j{isCurrentYear ? ` · projection ${computed.projection.fr} j` : ''}</>} right={<span className="mono-value">{computed.fr} j</span>} />
+          <MRow icon={<MIcon>{flag('FR')}</MIcon>} title="France" sub={<><span style={{ color: frZone.color }}>{frZone.label}</span> · plafond 183 j</>} right={<span className="mono-value">{computed.fr} j</span>} rightSub={isCurrentYear ? `projection ${computed.projection.fr}` : undefined} />
           {bar(computed.fr, 183, frZone.color)}
           <MDivider />
-          <MRow icon={<MIcon>{flag('OTHER')}</MIcon>} title="Autres pays" sub={isCurrentYear ? `Projection ${computed.projection.other} j` : undefined} right={<span className="mono-value">{computed.other} j</span>} />
+          <MRow icon={<MIcon>{flag('OTHER')}</MIcon>} title="Autres pays" right={<span className="mono-value">{computed.other} j</span>} rightSub={isCurrentYear ? `projection ${computed.projection.other}` : undefined} />
         </MCard>
 
         <MCard className="mb-4">
